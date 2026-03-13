@@ -1,0 +1,8 @@
+{
+  "name": "deploy-staging",
+  "description": "Automated deployment to staging via CD pipeline — syncs main with develop, merges feature branches, pushes to trigger staging pipeline, and verifies the run",
+  "author": { "name": "Chewiesoft" },
+  "version": "1.2.0",
+  "keywords": ["deploy", "staging", "cd", "pipeline", "git-flow", "github-actions"],
+  "commands": "./commands"
+}

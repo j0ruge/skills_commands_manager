@@ -12,6 +12,11 @@
       "name": "cicd",
       "source": "./plugins/cicd",
       "version": "2.0.0"
+    },
+    {
+      "name": "deploy-staging",
+      "source": "./plugins/deploy-staging",
+      "version": "1.2.0"
     }
   ]
 }

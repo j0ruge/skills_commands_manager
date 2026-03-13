@@ -1,0 +1,17 @@
+{
+  "name": "chewiesoft-marketplace",
+  "owner": {
+    "name": "Chewiesoft"
+  },
+  "metadata": {
+    "description": "Chewiesoft's Claude Code plugin marketplace — skills and commands for development workflows",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "cicd",
+      "source": "./plugins/cicd",
+      "version": "2.0.0"
+    }
+  ]
+}

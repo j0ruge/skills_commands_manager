@@ -1,0 +1,10 @@
+{
+  "name": "cicd",
+  "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "2.0.0",
+  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment"],
+  "skills": "./skills"
+}

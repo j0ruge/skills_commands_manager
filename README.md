@@ -7,6 +7,7 @@ Plugin marketplace for Claude Code — skills and commands for development workf
 | Plugin | Version | Description |
 |--------|---------|-------------|
 | **cicd** | 2.0.0 | Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners |
+| **deploy-staging** | 1.2.0 | Automated deployment to staging via CD pipeline — syncs main with develop, merges feature branches, pushes to trigger staging pipeline, and verifies the run |
 
 ## Installation
 
@@ -51,6 +52,11 @@ Generate a token at: https://github.com/settings/tokens
 ## Team Distribution
 
 Projects that clone this repo get automatic marketplace discovery via `.claude/settings.json`. When team members trust the folder, Claude Code will prompt them to install the marketplace.
+
+## References
+
+- [Plugin Marketplaces — Claude Code Docs](https://code.claude.com/docs/en/plugin-marketplaces)
+- [Plugins Reference — Claude Code Docs](https://code.claude.com/docs/en/plugins-reference)
 
 ## License
 

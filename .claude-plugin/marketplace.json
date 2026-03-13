@@ -23,6 +23,14 @@
       "description": "Automated deployment to staging via CD pipeline — syncs main with develop, merges feature branches, pushes to trigger staging pipeline, and verifies the run",
       "category": "development",
       "keywords": ["deploy", "staging", "cd", "pipeline", "git-flow", "github-actions"]
+    },
+    {
+      "name": "codereview",
+      "source": "./plugins/codereview",
+      "version": "1.0.0",
+      "description": "Automated pre-PR code review inspired by The Zen of Python (PEP 20). Produces severity-rated findings, test coverage assessment, and letter grading. Stack-agnostic with TypeScript/React defaults.",
+      "category": "quality",
+      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review"]
     }
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "name": "codereview",
+  "description": "Automated pre-PR code review inspired by The Zen of Python (PEP 20). Produces severity-rated findings, test coverage assessment, and letter grading. Stack-agnostic with TypeScript/React defaults.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "1.0.0",
+  "category": "quality",
+  "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review"],
+  "skills": "./skills"
+}

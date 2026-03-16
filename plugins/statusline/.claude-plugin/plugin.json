@@ -2,7 +2,7 @@
   "name": "statusline",
   "description": "Interactive setup for Claude Code status line — customize model info, context bar, git branch, cost tracking, and more. Cross-platform: generates Bash (.sh) or PowerShell (.ps1) based on OS.",
   "author": { "name": "Chewiesoft" },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "customization",
   "keywords": ["statusline", "status-bar", "footer", "customization", "ui", "claude-code"],
   "commands": "./commands"

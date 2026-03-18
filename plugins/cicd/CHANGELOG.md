@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.2.0] - 2026-03-18
+
+### Adicionado
+
+- Detecção de projeto Biome: `biome.jsonc` / `biome.json` → **Backend (Biome)** na tabela de detecção
+- Variante CI para Backend (Biome): `checkout → install → [prisma generate] → biome check → [test if configured]`
+- 2 entradas na Quick Troubleshooting table: `npx biome check .` em arquivos de config e Biome 2.x `unknown key "ignore"`
+- Lição #27: Biome verifica todos os arquivos por padrão — scoping com `files.includes`
+- Lição #28: Primeiro deploy requer workflows no branch `develop`
+- `troubleshooting-backend.md`: 2 cenários de troubleshooting Biome (escopo de arquivos e migração 2.x)
+- `checklist-backend.md`: variante Biome na seção de Lint/Format; nota sobre `DATABASE_URL` com `sqlserver://` para MSSQL
+- `checklist-backend.md`: seção de testes agora cobre cenário "sem test framework" — pular steps de teste
+- `checklist-shared.md`: seção 5 "Primeiro Deploy (Bootstrap)" com checklist e comandos para criar branch `develop`
+
+### Alterado
+
+- Compose path na tabela de deploy agora indica "varia por projeto" em vez de hardcoded `infra/nodejs/`
+- Tabela de arquivos do pipeline backend usa paths genéricos (`Dockerfile` ou `infra/*/Dockerfile`)
+- Comando de rollback backend usa `<COMPOSE_PATH>` genérico
+- `checklist-backend.md`: seção 7 (Workflow CD) inclui verificação de compose path
+- Versão: 2.1.0 → 2.2.0
+
+### Motivação
+
+Deploy de `estimates_api` (npm, Biome, SQL Server/MSSQL, sem testes) para staging revelou 6 gaps na skill v2.1.0 que foi construída a partir de projetos ESLint+Prettier+PostgreSQL+Jest. A skill agora suporta múltiplas variantes de stack backend.
+
+---
+
 ## [2.1.0] - 2026-03-16
 
 ### Alterado

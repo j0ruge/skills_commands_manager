@@ -94,6 +94,32 @@ Cannot find module '@repositories/vessel.repository'
 
 **Correção:** Adicionar `--skipLibCheck` ao comando `tsc`.
 
+### `npx biome check .` falha em arquivos não-source
+
+**Sintoma:** Biome reporta erros em arquivos de config (`biome.jsonc`, `tsconfig.json`, `Dockerfile`, etc.) ou em arquivos fora de `src/`.
+
+**Causa:** Biome verifica todos os arquivos por padrão, diferente de ESLint que geralmente é configurado para escopo específico.
+
+**Correção:** Configurar `files.includes` em `biome.jsonc` para limitar o escopo:
+
+```jsonc
+{
+  "files": {
+    "includes": ["src/**", "prisma/**"]
+  }
+}
+```
+
+Ou corrigir os erros reportados nos arquivos de config (empty blocks, `node:` protocol, naming conventions).
+
+### Biome 2.x config error (`unknown key "ignore"`)
+
+**Sintoma:** `biome check` falha com erro de configuração ao migrar para Biome 2.x.
+
+**Causa:** Biome 2.x removeu a chave `files.ignore` em favor de `files.includes` (lógica invertida).
+
+**Correção:** Substituir `files.ignore` por `files.includes` no `biome.jsonc`.
+
 ### `ERR_CONNECTION_REFUSED` via browser (nginx-proxy OK)
 
 **Sintoma:** Browser retorna `ERR_CONNECTION_REFUSED`. Certificado SSL renova normalmente. Container da API está rodando.
@@ -116,7 +142,7 @@ docker exec service_report_api sh -c "wget -qO- http://localhost:3003/health || 
 ```text
 Workflow falhou
 ├── Qual job?
-│   ├── lint → ESLint warnings / Prettier
+│   ├── lint → ESLint warnings / Prettier / Biome check
 │   ├── test → Ver exit code e mensagem
 │   │   ├── Exit 134/137 → OOM → aumentar heap
 │   │   ├── Exit 1 → Ler log do Jest

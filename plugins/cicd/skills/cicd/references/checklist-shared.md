@@ -53,3 +53,30 @@ Verificar em: `github.com/orgs/JRC-Brasil/packages`
 - [ ] nginx-proxy container está rodando
 - [ ] `VIRTUAL_HOST` configurado no DNS (ou `/etc/hosts` para teste)
 - [ ] `NGINX_NETWORK_NAME` secret corresponde ao nome exato da rede
+
+---
+
+## 5. Primeiro Deploy (Bootstrap)
+
+Quando o repositório é novo e nunca fez deploy para staging:
+
+- [ ] Workflows (`.github/workflows/ci.yml`, `cd-staging.yml`, `cd-production.yml`) estão commitados e pushados
+- [ ] Branch `develop` existe no remote: `git ls-remote --heads origin develop`
+- [ ] Workflows estão presentes no branch `develop` (CD Staging triggera em push para `develop` — se os workflows não estiverem nesse branch, o pipeline não dispara)
+- [ ] Após o primeiro push para `develop`, verificar: `gh run list --limit 5`
+- [ ] Se o pipeline não disparou, verificar se os arquivos `.github/workflows/*.yml` estão no branch `develop`
+
+**Bootstrap típico:**
+
+```bash
+# Se develop não existe ainda
+git checkout -b develop
+git push -u origin develop
+
+# Se develop já existe mas não tem os workflows
+git checkout develop
+git merge main  # traz os workflows do main
+git push
+```
+
+> **Nota:** Se você cria os workflows em `main` e faz merge para `develop`, os workflows estarão em ambos os branches. O CD Staging só dispara quando há push para `develop`.

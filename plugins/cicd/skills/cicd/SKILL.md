@@ -1,7 +1,7 @@
 ---
 name: cicd
 metadata:
-  version: 2.1.0
+  version: 2.2.0
 description: |
   Troubleshooting e configuração de pipelines CI/CD com GitHub Actions, Docker, GHCR e self-hosted runners.
   Skill unificada — detecta automaticamente backend (Prisma) ou frontend (Vite) e roteia para referências específicas.
@@ -18,10 +18,13 @@ Skill para troubleshooting e configuração de pipelines CI/CD. Detecta o tipo d
 
 ## Detecção de Projeto
 
-| Indicador                   | Projeto      |
-| --------------------------- | ------------ |
-| `prisma/schema.prisma`      | **Backend**  |
-| `vite.config.ts`            | **Frontend** |
+| Indicador                   | Projeto               |
+| --------------------------- | --------------------- |
+| `prisma/schema.prisma`      | **Backend**           |
+| `biome.jsonc` / `biome.json`| **Backend (Biome)**   |
+| `vite.config.ts`            | **Frontend**          |
+
+> **Linter detection:** Se o projeto tem `biome.jsonc` (ou `biome.json`), usa Biome para lint/format. Caso contrário, assume ESLint+Prettier. Projetos Biome NÃO usam ESLint nem Prettier.
 
 > Verificar qual projeto antes de consultar referências. Cenários marcados `[S]` são compartilhados, `[B]` backend-only, `[F]` frontend-only.
 
@@ -40,9 +43,12 @@ Ambos os projetos usam **3 workflows separados** com triggers idênticos:
 ### Diferenças no CI
 
 ```text
-Backend:   checkout → install → prisma generate → lint → prettier → migrate → test (Jest)
-Frontend:  checkout → install → lint → typecheck → test (Vitest)
+Backend (ESLint):  checkout → install → prisma generate → lint → prettier → migrate → test (Jest)
+Backend (Biome):   checkout → install → [prisma generate] → biome check → [test if configured]
+Frontend:          checkout → install → lint → typecheck → test (Vitest)
 ```
+
+> **Nota:** `[prisma generate]` e `[test]` são opcionais — dependem do projeto ter Prisma e um test framework configurado, respectivamente. Projetos sem test framework (ex: `estimates_api`) pulam o step de teste no CI e CD.
 
 ### Diferenças no Deploy
 
@@ -54,7 +60,7 @@ Frontend:  checkout → install → lint → typecheck → test (Vitest)
 | `VIRTUAL_PORT`       | Obrigatório (`API_PORT` ≠ 80)             | Não necessário (nginx = porta 80)             |
 | GHCR login no deploy | `docker/login-action@v3` antes do pull     | `docker/login-action@v3` antes do pull        |
 | Prune                | `docker image prune -f`                    | `docker image prune -f --filter "label=..."`  |
-| Compose path         | `infra/nodejs/docker-compose.yml`          | `infra/dsr_web/docker-compose.yml`            |
+| Compose path         | Varia por projeto (ex: `infra/nodejs/`, `infra/`) | `infra/dsr_web/docker-compose.yml`            |
 
 ### Concurrency & Auth
 
@@ -88,6 +94,8 @@ Frontend:  checkout → install → lint → typecheck → test (Vitest)
 | `[F]` | `Cannot access 'X' before initialization`              | `treeshake.moduleSideEffects` + circular chunks      | Remover `treeshake` e `manualChunks` do vite.config.ts                                |
 | `[F]` | Container `unhealthy` (healthcheck falha)              | Alpine resolve `localhost` como IPv6                 | Usar `127.0.0.1` no healthcheck                                                      |
 | `[F]` | Vitest coletando testes E2E Playwright                 | `vitest.config.ts` sem exclude de `e2e/`             | Adicionar `exclude: ['e2e/**']`                                                       |
+| `[B]` | `npx biome check .` falha em arquivos de config        | Biome verifica todos os arquivos por padrão          | Usar `files.includes` em `biome.jsonc` para escopo ou corrigir os arquivos            |
+| `[B]` | Biome 2.x config error (`unknown key "ignore"`)       | Biome 2.x removeu `ignore` em favor de `includes`   | Usar `files.includes` em vez de `files.ignore` no `biome.jsonc`                       |
 | `[F]` | Container nginx retorna 403                            | dist/ vazio ou não copiado                           | Verificar `npm run build` e `COPY --from=build` no Dockerfile                         |
 
 ---
@@ -136,6 +144,8 @@ Frontend:  checkout → install → lint → typecheck → test (Vitest)
 | 24 | `[F]` | Vitest coletando testes E2E Playwright | `vitest.config.ts` com `exclude: ['e2e/**']` |
 | 25 | `[F]` | `treeshake.moduleSideEffects` + circular chunks | Remover treeshake e manualChunks customizados |
 | 26 | `[S]` | GHCR login necessário no deploy job | `docker/login-action@v3` antes do pull (ambos os projetos) |
+| 27 | `[B]` | Biome verifica todos os arquivos por padrão | Usar `files.includes` em `biome.jsonc` para limitar escopo ao `src/` ou corrigir arquivos de config |
+| 28 | `[S]` | Primeiro deploy requer workflows no branch `develop` | CD Staging triggera em push para `develop` — workflows devem estar nesse branch antes do primeiro push |
 
 ---
 
@@ -161,10 +171,10 @@ gh api orgs/JRC-Brasil/packages/container/<PACKAGE_NAME>/versions
 ### Backend
 
 ```bash
-# Rollback manual
+# Rollback manual (path do compose varia por projeto)
 export IMAGE_TAG=<tag-anterior>
-docker compose -f infra/nodejs/docker-compose.yml pull
-docker compose -f infra/nodejs/docker-compose.yml up -d --force-recreate
+docker compose -f <COMPOSE_PATH>/docker-compose.yml pull
+docker compose -f <COMPOSE_PATH>/docker-compose.yml up -d --force-recreate
 ```
 
 ### Frontend
@@ -190,8 +200,8 @@ docker exec service_report_web sh -c "grep -r 'jrcbrasil' /usr/share/nginx/html/
 | `.github/workflows/ci.yml`            | Pipeline CI (lint + test) para PRs      |
 | `.github/workflows/cd-staging.yml`    | Pipeline CD para staging (push develop) |
 | `.github/workflows/cd-production.yml` | Pipeline CD para produção (tags v\*)    |
-| `infra/nodejs/Dockerfile`             | Multi-stage build                       |
-| `infra/nodejs/docker-compose.yml`     | Compose com imagem GHCR                 |
+| `Dockerfile` ou `infra/*/Dockerfile`  | Multi-stage build (path varia por projeto) |
+| `infra/*/docker-compose.yml`          | Compose com imagem GHCR (path varia)   |
 | `src/env.ts`                          | Validação Zod de env vars               |
 
 ### Frontend

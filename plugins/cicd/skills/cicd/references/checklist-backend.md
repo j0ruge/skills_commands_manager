@@ -6,7 +6,7 @@ Para seções compartilhadas (runner, GHCR, DNS/SSL, rede base), ver `checklist-
 
 ## 1. GitHub Environment Secrets (12 por environment)
 
-- [ ] `DATABASE_URL` — connection string com prefixo `postgres://` (não `postgresql://`)
+- [ ] `DATABASE_URL` — connection string com prefixo correto: `postgres://` para PostgreSQL (não `postgresql://`), `sqlserver://` para MSSQL/SQL Server
 - [ ] `JWT_SECRET` — gerar com `openssl rand -hex 32`
 - [ ] `GOOGLE_CLIENT_ID` — OAuth2 client ID do Google Cloud Console
 - [ ] `GOOGLE_CLIENT_SECRET` — OAuth2 client secret
@@ -25,7 +25,7 @@ Todas as variáveis que `src/env.ts` (Zod) valida devem estar no step de teste:
 
 ```yaml
 env:
-  DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+  DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db  # ou sqlserver://... para MSSQL
   API_PORT: 3003
   JWT_SECRET: ci-test-jwt-secret
   NODE_ENV: test
@@ -37,7 +37,7 @@ env:
   GOOGLE_REDIRECT: http://localhost:3000/auth/callback
 ```
 
-> **Importante:** `DATABASE_URL` deve usar prefixo `postgres://`, não `postgresql://`.
+> **Importante:** Para PostgreSQL, `DATABASE_URL` deve usar prefixo `postgres://`, não `postgresql://`. Para MSSQL/SQL Server, usar `sqlserver://`.
 
 ## 3. Docker Image Compatibility
 
@@ -45,13 +45,25 @@ env:
 - [ ] Env vars do container correspondem à imagem (ex: `POSTGRES_USER`, não `POSTGRESQL_USERNAME`)
 - [ ] Health check command é compatível (ex: `pg_isready -U test_user -d test_db`)
 
-## 4. ESLint + Prettier
+## 4. Lint / Format
+
+### Variante ESLint + Prettier (projetos sem `biome.jsonc`)
 
 - [ ] Sem warnings pendentes com `--max-warnings 0`
 - [ ] `prettier` em `devDependencies` (não apenas os plugins)
 - [ ] `yarn lint:check` passa sem erros
 
-## 5. Jest / Testes
+### Variante Biome (projetos com `biome.jsonc`)
+
+- [ ] `npx biome check .` passa sem erros
+- [ ] `files.includes` configurado em `biome.jsonc` se necessário para limitar escopo (ex: `["src/**"]`)
+- [ ] Sem erros em arquivos de config (Biome verifica todos os arquivos por padrão)
+
+## 5. Testes
+
+> **Se o projeto NÃO tem test framework configurado** (nem Jest, nem Vitest), pular steps de teste no CI e CD. Não adicionar steps de teste vazios ou placeholders.
+
+### Variante Jest (projetos com Jest configurado)
 
 - [ ] `node --max-old-space-size=4096` configurado para evitar OOM
 - [ ] `--forceExit` para garantir que Jest termina
@@ -73,6 +85,7 @@ env:
 - [ ] `docker/login-action@v3` no job `deploy` antes do `docker compose pull`
 - [ ] Generate .env com todos os secrets do environment
 - [ ] `prisma migrate deploy` antes do `docker compose up`
+- [ ] Compose path correto para o projeto (ex: `infra/nodejs/`, `infra/`, etc.)
 - [ ] `docker image prune -f` no cleanup
 - [ ] Cleanup .env com `if: always()`
 - [ ] Permissions: `packages: write, contents: read`

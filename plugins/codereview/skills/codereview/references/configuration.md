@@ -15,7 +15,7 @@
 | `configFilePatterns` | `["*.config.*", "tsconfig*", ".env*", "package.json"]` | Globs matched as CONFIG files. |
 | `styleFilePatterns` | `["**/*.css", "**/*.scss", "**/*.less"]` | Globs matched as STYLES files. |
 
-> **Nota:** Os valores de array na tabela acima estão em formato JSON apenas para clareza. Ao fazer override, use valores separados por vírgula sem colchetes (veja Override Syntax abaixo).
+> **Note:** The array values in the table above are in JSON format for clarity only. When overriding, use comma-separated values without brackets (see Override Syntax below).
 
 ## Override Syntax
 

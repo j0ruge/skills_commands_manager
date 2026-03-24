@@ -2,6 +2,16 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.1.0] - 2026-03-23
+
+### Adicionado
+
+- Nova sub-skill `coderabbit_pr` — extrai comentarios do CodeRabbit de um PR, cria checklist estruturado, verifica e corrige cada item, e roda testes de regressao
+- Mapeamento de severidades CodeRabbit (🔴🟠🟡🔵) para CRITICO/ALTO/MEDIO/BAIXO
+- Suporte a `--dry-run` (somente verificacao) e `--skip-tests`
+- `references/checklist-template.md` — template do arquivo de checklist gerado
+- Deteccao automatica de comando de teste (npm/cargo/pytest/go/make)
+
 ## [1.0.0] - 2026-03-13
 
 ### Adicionado

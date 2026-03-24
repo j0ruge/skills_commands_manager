@@ -21,7 +21,7 @@ $ARGUMENTS
 You **MUST** consider the user input before proceeding (if not empty). Valid inputs:
 
 - Empty: full review of all changed files
-- Focus area: `seguranca`, `performance`, `types`, `bugs`, `testes`
+- Focus area: `security`, `performance`, `types`, `bugs`, `tests`
 - File path or glob: review only matching changed files (e.g. `src/components/Quote*`)
 - Key-value overrides: `baseDir=app/ fileExtensions=ts,js uiLibReducedRigor=true` (see `references/configuration.md`)
 
@@ -47,7 +47,7 @@ This skill is **stack-agnostic** — defaults target TypeScript/React but all va
 - **File read failures**: skip the file and record it as `Could not analyze: {filename} ({reason})` in the final report.
 - **Git diff / merge-base / binary file issues**: flag the affected file as `unanalyzable` and continue with the remaining files.
 - **Context / memory / token exhaustion**: finish analyzing files already processed, then record `Analysis incomplete due to context limits. {n} files not analyzed.` and proceed to the final report.
-- **Timeout**: if analysis is taking too long, prioritize CRITICO/ALTO checks on remaining files, skip MEDIO/BAIXO, and note the truncation in the report.
+- **Timeout**: if analysis is taking too long, prioritize CRITICAL/HIGH checks on remaining files, skip MEDIUM/LOW, and note the truncation in the report.
 - **Parsing errors** (malformed source, non-UTF-8 content, etc.): flag the file as `unanalyzable` and continue.
 
 Regardless of which failures occur, always produce a final report that lists:
@@ -128,30 +128,30 @@ If `CHANGED_FILES` is empty, output a short message: "No changes detected betwee
 
 | Category | Pattern (uses config values) | Review Rigor |
 |----------|-------------------------------|--------------|
-| `CODIGO` | `{baseDir}/**/*.{fileExtensions}` — excluding `testFilePatterns` and `generatedDirs` | Full analysis |
-| `UI_LIB` | files matching `generatedDirs` (e.g. `src/components/ui/**`) | Reduced rigor when `uiLibReducedRigor=true` — only flag CRITICO/ALTO issues |
-| `TESTES` | files matching `testFilePatterns` (e.g. `src/**/*.test.ts`, `src/test/**`) | Test quality analysis |
+| `CODE` | `{baseDir}/**/*.{fileExtensions}` — excluding `testFilePatterns` and `generatedDirs` | Full analysis |
+| `UI_LIB` | files matching `generatedDirs` (e.g. `src/components/ui/**`) | Reduced rigor when `uiLibReducedRigor=true` — only flag CRITICAL/HIGH issues |
+| `TESTS` | files matching `testFilePatterns` (e.g. `src/**/*.test.ts`, `src/test/**`) | Test quality analysis |
 | `CONFIG` | files matching `configFilePatterns` (e.g. `*.config.*`, `tsconfig*`, `package.json`) | Config-specific checks only |
 | `DOCS` | `*.md`, `*.txt` (excluding `.claude/`) | Skip analysis, note in header |
 | `STYLES` | files matching `styleFilePatterns` (e.g. `**/*.css`) | Minimal review |
 
-If more than 15 files are classified as `CODIGO` or `TESTES`, prioritize files with the most changes (by diff stat lines changed). Note any deprioritized files in the report.
+If more than 15 files are classified as `CODE` or `TESTS`, prioritize files with the most changes (by diff stat lines changed). Note any deprioritized files in the report.
 
 ### 3. Load Context for Analysis
 
 For each file, load the appropriate context:
 
-- **CODIGO / TESTES**: Read the full git diff for the file AND the complete current file content. If the file imports local modules that were also changed, note the relationship.
+- **CODE / TESTS**: Read the full git diff for the file AND the complete current file content. If the file imports local modules that were also changed, note the relationship.
 - **UI_LIB**: Read only the git diff (not full file content).
 - **CONFIG**: Read the git diff only.
 
 Use the `Read` tool for file contents and `Bash` with `git diff` for diffs.
 
-When a `CODIGO` file imports types or functions from other changed files, note these cross-file dependencies for coherence analysis.
+When a `CODE` file imports types or functions from other changed files, note these cross-file dependencies for coherence analysis.
 
 ### 4. Assess Test Coverage
 
-Map each `CODIGO` file to its corresponding test file(s) using the following priority order. Probe each candidate path in order and stop at the first level that yields **at least one existing file**:
+Map each `CODE` file to its corresponding test file(s) using the following priority order. Probe each candidate path in order and stop at the first level that yields **at least one existing file**:
 
 | Priority | Candidate pattern (given source `{dir}/{Base}.{ext}`) |
 |----------|-------------------------------------------------------|
@@ -159,7 +159,7 @@ Map each `CODIGO` file to its corresponding test file(s) using the following pri
 | 2 | `{dir}/{Base}.test.ts`, `{dir}/{Base}.test.tsx`, `{dir}/{Base}.test.js`, `{dir}/{Base}.test.jsx` — same directory, all extensions |
 | 3 | `{dir}/__tests__/{Base}.test.{ext}`, `{dir}/__tests__/{Base}.spec.{ext}` — `__tests__` sibling folder |
 | 4 | `{testRoot}/{dir}/{Base}.test.{ext}`, `{testRoot}/{dir}/{Base}.spec.{ext}` — project test root |
-| 5 (lowest) | Any file in `CHANGED_FILES` (TESTES category) whose basename matches `{Base}` (case-insensitive) |
+| 5 (lowest) | Any file in `CHANGED_FILES` (TESTS category) whose basename matches `{Base}` (case-insensitive) |
 
 **Auto-detect `{testRoot}`**: Check in order:
 
@@ -171,17 +171,17 @@ Map each `CODIGO` file to its corresponding test file(s) using the following pri
 
 - A **match** at a priority level means one or more candidate paths resolve to real files in the repository.
 - Matching stops at the first level that produces at least one match; lower-priority levels are not checked.
-- When multiple test files match (e.g. both `.test.ts` and `.test.tsx` exist), treat them as a **single logical match group** — any one of them being in `CHANGED_FILES` satisfies the COM_TESTE condition.
+- When multiple test files match (e.g. both `.test.ts` and `.test.tsx` exist), treat them as a **single logical match group** — any one of them being in `CHANGED_FILES` satisfies the WITH_TESTS condition.
 
-Classify each `CODIGO` file using the matched group:
+Classify each `CODE` file using the matched group:
 
-- **COM_TESTE**: A matching test file group was found AND at least one file in the group was modified in this branch (i.e. appears in `CHANGED_FILES`).
-- **TESTE_DESATUALIZADO**: A matching test file group was found but **none** of the files in the group were modified in this branch despite production code changes.
-- **SEM_TESTE**: No matching test file found at any priority level.
+- **WITH_TESTS**: A matching test file group was found AND at least one file in the group was modified in this branch (i.e. appears in `CHANGED_FILES`).
+- **STALE_TESTS**: A matching test file group was found but **none** of the files in the group were modified in this branch despite production code changes.
+- **NO_TESTS**: No matching test file found at any priority level.
 
 ### 5. Zen Principles Analysis
 
-Apply these 5 principles as analysis lenses to all `CODIGO` files (reduced rigor for `UI_LIB`):
+Apply these 5 principles as analysis lenses to all `CODE` files (reduced rigor for `UI_LIB`):
 
 #### 5.1 "Beautiful is better than ugly" & "Readability counts"
 
@@ -205,7 +205,7 @@ Apply these 5 principles as analysis lenses to all `CODIGO` files (reduced rigor
 - Unnecessary indirection (wrapper functions that just forward calls)
 - Single Responsibility Principle violations (component doing too much)
 - Custom hooks that could be replaced with simpler patterns
-- Premature optimization without evidence of need (flag as BAIXO with note: "Consider profiling to confirm benefit before applying")
+- Premature optimization without evidence of need (flag as LOW with note: "Consider profiling to confirm benefit before applying")
 
 #### 5.4 "Flat is better than nested"
 
@@ -249,10 +249,10 @@ Apply these 5 principles as analysis lenses to all `CODIGO` files (reduced rigor
 - Inline object/array/function creation in JSX props (new reference every render)
 - Large components that should be split for code-splitting / lazy loading
 - Missing `key` props or using array index as `key` in dynamic lists
-- **`React.memo` missing** — flag as **MEDIO** only when the component is rendered inside a list or loop, or when prop identity changes are known to cause unnecessary child re-renders. Otherwise flag as **BAIXO** or omit.
-- **`useCallback` missing** — flag as **MEDIO** only when the callback is passed as a prop to a memoized child or used in a `useEffect` dependency array and its identity changes provably cause repeated effect execution. Otherwise flag as **BAIXO** or omit.
-- **`useMemo` missing** — flag as **MEDIO** only when the computation is demonstrably expensive (>100ms measured, or explicitly identified by profiling). For cheap computations flag as **BAIXO** or omit.
-- **All other memoization suggestions** — assign **BAIXO** and include a note: _"Recommend running a profiler before applying this optimization to confirm a measurable benefit."_
+- **`React.memo` missing** — flag as **MEDIUM** only when the component is rendered inside a list or loop, or when prop identity changes are known to cause unnecessary child re-renders. Otherwise flag as **LOW** or omit.
+- **`useCallback` missing** — flag as **MEDIUM** only when the callback is passed as a prop to a memoized child or used in a `useEffect` dependency array and its identity changes provably cause repeated effect execution. Otherwise flag as **LOW** or omit.
+- **`useMemo` missing** — flag as **MEDIUM** only when the computation is demonstrably expensive (>100ms measured, or explicitly identified by profiling). For cheap computations flag as **LOW** or omit.
+- **All other memoization suggestions** — assign **LOW** and include a note: _"Recommend running a profiler before applying this optimization to confirm a measurable benefit."_
 - Expensive computations inside render without memoization (apply the `useMemo` criteria above before flagging)
 
 #### 6.4 Type Safety
@@ -269,10 +269,10 @@ Each finding gets one severity:
 
 | Severity | Criteria | Action |
 |----------|----------|--------|
-| **CRITICO** | Security vulnerabilities, data loss risk, crashes in production, exposed secrets | Must fix before merge |
-| **ALTO** | Bugs likely to manifest, missing error handling on user-facing flows, `any` on public API | Should fix before merge |
-| **MEDIO** | Code smell, minor Zen violations, missing tests for new logic, performance concerns | Recommend fixing |
-| **BAIXO** | Style preferences, minor readability improvements, suggestions for future improvement | Optional improvement |
+| **CRITICAL** | Security vulnerabilities, data loss risk, crashes in production, exposed secrets | Must fix before merge |
+| **HIGH** | Bugs likely to manifest, missing error handling on user-facing flows, `any` on public API | Should fix before merge |
+| **MEDIUM** | Code smell, minor Zen violations, missing tests for new logic, performance concerns | Recommend fixing |
+| **LOW** | Style preferences, minor readability improvements, suggestions for future improvement | Optional improvement |
 
 ### 8. Produce Structured Report
 
@@ -285,8 +285,8 @@ Output the Markdown report directly in the conversation following that template.
 - **Zero findings**: Output a congratulatory report. Grade A across all criteria. Still show the header, test coverage table, and grade table.
 - **$ARGUMENTS matches a focus area**: Only run the matching detection passes from steps 5-6. Still show full report structure but mark non-analyzed sections as "Not analyzed (focused review on {area})".
 - **$ARGUMENTS matches a file path/glob**: Only analyze matching files from the changed files list. Show only those files in the report.
-- **UI_LIB files**: Apply only CRITICO and ALTO severity checks. Note in findings: "(UI_LIB - reduced rigor)".
-- **More than 50 findings**: Show all CRITICO/ALTO/MEDIO findings first, then as many BAIXO as fit within the 50-finding cap. Add overflow count. Recommend running focused reviews per file.
+- **UI_LIB files**: Apply only CRITICAL and HIGH severity checks. Note in findings: "(UI_LIB - reduced rigor)".
+- **More than 50 findings**: Show all CRITICAL/HIGH/MEDIUM findings first, then as many LOW as fit within the 50-finding cap. Add overflow count. Recommend running focused reviews per file.
 
 ## Operating Principles
 

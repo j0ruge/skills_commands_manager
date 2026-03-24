@@ -8,22 +8,29 @@ Plugin marketplace for Claude Code — skills and commands for development workf
 |--------|---------|-------------|
 | **cicd** | 2.0.0 | Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners |
 | **deploy** | 1.3.0 | Automated deployment commands — staging and production pipelines via CD |
-| **codereview** | 1.0.0 | Automated pre-PR code review inspired by The Zen of Python (PEP 20). Produces severity-rated findings, test coverage assessment, and letter grading. Stack-agnostic with TypeScript/React defaults. |
+| **codereview** | 1.1.0 | Code review toolkit: pre-PR review with severity grading + CodeRabbit PR comment resolver. Stack-agnostic. |
 | **statusline** | 1.1.0 | Interactive setup for Claude Code status line — cross-platform (Bash + PowerShell) |
 | **release** | 1.0.0 | Automated GitHub Release creation with categorized release notes from git history |
+
+### codereview
+
+| Skill | Description |
+|-------|-------------|
+| `/codereview:codereview` | Automated pre-PR code review — diffs against main, analyzes all changed files, produces severity-rated findings and a final grade (A-F) |
+| `/codereview:coderabbit_pr` | Extracts CodeRabbit comments from a PR, creates a structured checklist, verifies and fixes each item, and runs regression tests |
 
 ### deploy
 
 | Command | Description |
 |---------|-------------|
-| `/deploy:staging` | Sincroniza main com develop, mergeia o branch atual em develop e faz push para triggar o pipeline CD Staging |
+| `/deploy:staging` | Syncs main with develop, merges current branch into develop, and pushes to trigger the CD Staging pipeline |
 | `/deploy:production` | *(planned)* |
 
 ### release
 
 | Command | Description |
 |---------|-------------|
-| `/release:release` | Gera release notes automaticamente a partir do último release e cria um novo GitHub Release via gh CLI |
+| `/release:release` | Automatically generates release notes from the latest release and creates a new GitHub Release via gh CLI |
 
 ### statusline
 

@@ -1,31 +1,31 @@
-# Checklist Pré-Deploy — Backend (Node.js/Express/Prisma)
+# Pre-Deploy Checklist — Backend (Node.js/Express/Prisma)
 
-Para seções compartilhadas (runner, GHCR, DNS/SSL, rede base), ver `checklist-shared.md`.
+For shared sections (runner, GHCR, DNS/SSL, base networking), see `checklist-shared.md`.
 
 ---
 
-## 1. GitHub Environment Secrets (12 por environment)
+## 1. GitHub Environment Secrets (12 per environment)
 
-- [ ] `DATABASE_URL` — connection string com prefixo correto: `postgres://` para PostgreSQL (não `postgresql://`), `sqlserver://` para MSSQL/SQL Server
-- [ ] `JWT_SECRET` — gerar com `openssl rand -hex 32`
-- [ ] `GOOGLE_CLIENT_ID` — OAuth2 client ID do Google Cloud Console
+- [ ] `DATABASE_URL` — connection string with the correct prefix: `postgres://` for PostgreSQL (not `postgresql://`), `sqlserver://` for MSSQL/SQL Server
+- [ ] `JWT_SECRET` — generate with `openssl rand -hex 32`
+- [ ] `GOOGLE_CLIENT_ID` — OAuth2 client ID from the Google Cloud Console
 - [ ] `GOOGLE_CLIENT_SECRET` — OAuth2 client secret
-- [ ] `API_PORT` — porta da aplicação (ex: `3003`)
-- [ ] `NODE_ENV` — `staging` ou `production`
-- [ ] `HOST_API` — `0.0.0.0` (para aceitar conexões externas no container)
-- [ ] `NGINX_NETWORK_NAME` — verificar com `docker network ls | grep proxy`
-- [ ] `GOOGLE_REDIRECT` — OAuth2 redirect URI (deve incluir `https://`)
-- [ ] `WEB_URL` — URL do frontend (deve incluir `https://`)
-- [ ] `FINDVESSEL_API` — URL da API VesselFinder (deve incluir `https://`)
-- [ ] `VIRTUAL_HOST` — subdomínio para nginx-proxy routing
+- [ ] `API_PORT` — application port (e.g., `3003`)
+- [ ] `NODE_ENV` — `staging` or `production`
+- [ ] `HOST_API` — `0.0.0.0` (to accept external connections in the container)
+- [ ] `NGINX_NETWORK_NAME` — verify with `docker network ls | grep proxy`
+- [ ] `GOOGLE_REDIRECT` — OAuth2 redirect URI (must include `https://`)
+- [ ] `WEB_URL` — frontend URL (must include `https://`)
+- [ ] `FINDVESSEL_API` — VesselFinder API URL (must include `https://`)
+- [ ] `VIRTUAL_HOST` — subdomain for nginx-proxy routing
 
-## 2. Env Vars para Testes (CI — Zod validation)
+## 2. Env Vars for Tests (CI — Zod validation)
 
-Todas as variáveis que `src/env.ts` (Zod) valida devem estar no step de teste:
+All variables that `src/env.ts` (Zod) validates must be present in the test step:
 
 ```yaml
 env:
-  DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db  # ou sqlserver://... para MSSQL
+  DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db  # or sqlserver://... for MSSQL
   API_PORT: 3003
   JWT_SECRET: ci-test-jwt-secret
   NODE_ENV: test
@@ -37,60 +37,60 @@ env:
   GOOGLE_REDIRECT: http://localhost:3000/auth/callback
 ```
 
-> **Importante:** Para PostgreSQL, `DATABASE_URL` deve usar prefixo `postgres://`, não `postgresql://`. Para MSSQL/SQL Server, usar `sqlserver://`.
+> **Important:** For PostgreSQL, `DATABASE_URL` must use the `postgres://` prefix, not `postgresql://`. For MSSQL/SQL Server, use `sqlserver://`.
 
 ## 3. Docker Image Compatibility
 
-- [ ] Service container usa imagem oficial (ex: `postgres:17`, não `bitnami/postgresql:17`)
-- [ ] Env vars do container correspondem à imagem (ex: `POSTGRES_USER`, não `POSTGRESQL_USERNAME`)
-- [ ] Health check command é compatível (ex: `pg_isready -U test_user -d test_db`)
+- [ ] Service container uses the official image (e.g., `postgres:17`, not `bitnami/postgresql:17`)
+- [ ] Container env vars match the image (e.g., `POSTGRES_USER`, not `POSTGRESQL_USERNAME`)
+- [ ] Health check command is compatible (e.g., `pg_isready -U test_user -d test_db`)
 
 ## 4. Lint / Format
 
-### Variante ESLint + Prettier (projetos sem `biome.jsonc`)
+### ESLint + Prettier variant (projects without `biome.jsonc`)
 
-- [ ] Sem warnings pendentes com `--max-warnings 0`
-- [ ] `prettier` em `devDependencies` (não apenas os plugins)
-- [ ] `yarn lint:check` passa sem erros
+- [ ] No pending warnings with `--max-warnings 0`
+- [ ] `prettier` in `devDependencies` (not just the plugins)
+- [ ] `yarn lint:check` passes without errors
 
-### Variante Biome (projetos com `biome.jsonc`)
+### Biome variant (projects with `biome.jsonc`)
 
-- [ ] `npx biome check .` passa sem erros
-- [ ] `files.includes` configurado em `biome.jsonc` se necessário para limitar escopo (ex: `["src/**"]`)
-- [ ] Sem erros em arquivos de config (Biome verifica todos os arquivos por padrão)
+- [ ] `npx biome check .` passes without errors
+- [ ] `files.includes` configured in `biome.jsonc` if needed to limit scope (e.g., `["src/**"]`)
+- [ ] No errors in config files (Biome checks all files by default)
 
-## 5. Testes
+## 5. Tests
 
-> **Se o projeto NÃO tem test framework configurado** (nem Jest, nem Vitest), pular steps de teste no CI e CD. Não adicionar steps de teste vazios ou placeholders.
+> **If the project does NOT have a test framework configured** (neither Jest nor Vitest), skip test steps in CI and CD. Do not add empty or placeholder test steps.
 
-### Variante Jest (projetos com Jest configurado)
+### Jest variant (projects with Jest configured)
 
-- [ ] `node --max-old-space-size=4096` configurado para evitar OOM
-- [ ] `--forceExit` para garantir que Jest termina
-- [ ] Todos os imports com case correto (Linux é case-sensitive)
-- [ ] `jest.mock()` paths com case correto
-- [ ] `server.ts` não inicia listener quando `NODE_ENV=test`
-- [ ] Testes de integração inserem seed data em `beforeAll`
-- [ ] Sem `continue-on-error` nos steps de teste
+- [ ] `node --max-old-space-size=4096` configured to prevent OOM
+- [ ] `--forceExit` to ensure Jest terminates
+- [ ] All imports with correct case (Linux is case-sensitive)
+- [ ] `jest.mock()` paths with correct case
+- [ ] `server.ts` does not start the listener when `NODE_ENV=test`
+- [ ] Integration tests insert seed data in `beforeAll`
+- [ ] No `continue-on-error` in test steps
 
 ## 6. Build
 
-- [ ] `tsc` com `--skipLibCheck` (compatibilidade Prisma client)
-- [ ] `prisma generate` executado antes do build
-- [ ] Path aliases resolvidos via `tsc-alias` (script `build_prod`)
+- [ ] `tsc` with `--skipLibCheck` (Prisma client compatibility)
+- [ ] `prisma generate` executed before the build
+- [ ] Path aliases resolved via `tsc-alias` (`build_prod` script)
 
-## 7. Workflow CD Staging/Production
+## 7. CD Staging/Production Workflow
 
-- [ ] `docker/login-action@v3` no job `build-and-push` com `GITHUB_TOKEN`
-- [ ] `docker/login-action@v3` no job `deploy` antes do `docker compose pull`
-- [ ] Generate .env com todos os secrets do environment
-- [ ] `prisma migrate deploy` antes do `docker compose up`
-- [ ] Compose path correto para o projeto (ex: `infra/nodejs/`, `infra/`, etc.)
-- [ ] `docker image prune -f` no cleanup
-- [ ] Cleanup .env com `if: always()`
+- [ ] `docker/login-action@v3` in the `build-and-push` job with `GITHUB_TOKEN`
+- [ ] `docker/login-action@v3` in the `deploy` job before `docker compose pull`
+- [ ] Generate .env with all environment secrets
+- [ ] `prisma migrate deploy` before `docker compose up`
+- [ ] Correct compose path for the project (e.g., `infra/nodejs/`, `infra/`, etc.)
+- [ ] `docker image prune -f` in cleanup
+- [ ] Cleanup .env with `if: always()`
 - [ ] Permissions: `packages: write, contents: read`
 
-## 8. Rede nginx-proxy (Backend-Específico)
+## 8. nginx-proxy Network (Backend-Specific)
 
-- [ ] `VIRTUAL_PORT: '${API_PORT}'` no docker-compose.yml (obrigatório quando `API_PORT` ≠ 80)
-- [ ] Sem `ports:` no compose de staging/produção (nginx-proxy roteia internamente)
+- [ ] `VIRTUAL_PORT: '${API_PORT}'` in docker-compose.yml (required when `API_PORT` is not 80)
+- [ ] No `ports:` in the staging/production compose (nginx-proxy routes internally)

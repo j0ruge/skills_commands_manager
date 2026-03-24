@@ -1,204 +1,204 @@
 ---
-description: Gera release notes automaticamente a partir do último release e cria um novo GitHub Release via gh CLI.
+description: Automatically generates release notes from the last release and creates a new GitHub Release via gh CLI.
 metadata:
   version: 1.0.0
 ---
 
-## Entrada do Usuário
+## User Input
 
 ```text
 $ARGUMENTS
 ```
 
-Interpretar a entrada:
+Interpret the input:
 
-- **Versão semântica** (ex: `3.0.0`, `2.1.0`): usar como versão do novo release.
-- **Vazio**: perguntar ao usuário qual versão usar antes de prosseguir.
-
----
-
-## Objetivo
-
-Criar um **GitHub Release** completo com release notes detalhadas em **português do Brasil**, cobrindo todas as alterações desde o último release tag existente no repositório.
+- **Semantic version** (e.g.: `3.0.0`, `2.1.0`): use as the new release version.
+- **Empty**: ask the user which version to use before proceeding.
 
 ---
 
-## Restrições
+## Objective
 
-- **NÃO** modificar arquivos do projeto. Este comando é somente leitura + criação de release.
-- **NÃO** fazer push de código ou commits.
-- **NÃO** inventar informações — tudo deve vir dos dados do git.
+Create a complete **GitHub Release** with detailed release notes in **English**, covering all changes since the last existing release tag in the repository.
 
 ---
 
-## Execução — Passo a Passo
+## Constraints
 
-### 1. Detectar o nome do projeto
+- **DO NOT** modify project files. This command is read-only + release creation.
+- **DO NOT** push code or commits.
+- **DO NOT** fabricate information — everything must come from git data.
+
+---
+
+## Execution — Step by Step
+
+### 1. Detect the project name
 
 ```bash
-# Nome do projeto (package.json name ou nome do diretório)
+# Project name (package.json name or directory name)
 PROJECT_NAME=$(node -p "try{require('./package.json').name}catch{''}" 2>/dev/null || basename "$(git rev-parse --show-toplevel)")
 ```
 
-Se `PROJECT_NAME` ficar vazio, usar `basename "$(git rev-parse --show-toplevel)"` como fallback.
+If `PROJECT_NAME` is empty, use `basename "$(git rev-parse --show-toplevel)"` as fallback.
 
-### 2. Detectar o último release
+### 2. Detect the last release
 
 ```bash
-# Último tag de release (ordenado por versão semântica)
+# Last release tag (sorted by semantic version)
 git tag -l --sort=-version:refname | head -1
 ```
 
-Se não houver nenhuma tag, informar o usuário e abortar.
+If there are no tags, inform the user and abort.
 
-Guardar o resultado como `$LAST_TAG`.
+Store the result as `$LAST_TAG`.
 
-### 3. Coletar dados do git
+### 3. Collect git data
 
-Executar **em paralelo**:
+Execute **in parallel**:
 
 ```bash
-# Commits desde o último release (sem merges)
+# Commits since the last release (excluding merges)
 git log $LAST_TAG..HEAD --format="%h %s%n%b" --no-merges
 
-# Estatísticas de arquivos alterados
+# Changed file statistics
 git diff --stat $LAST_TAG..HEAD
 
-# PRs mergeados (commits de merge)
+# Merged PRs (merge commits)
 git log $LAST_TAG..HEAD --merges --oneline
 
-# Contribuidores
+# Contributors
 git log $LAST_TAG..HEAD --format="%aN" --no-merges | sort | uniq
 
-# Total de arquivos e linhas
+# Total files and lines
 git diff --shortstat $LAST_TAG..HEAD
 ```
 
-### 4. Analisar e categorizar os commits
+### 4. Analyze and categorize commits
 
-Ler o corpo e o título de cada commit para classificar em categorias:
+Read the body and title of each commit to classify into categories:
 
-| Prefixo / Padrão        | Categoria            |
-|--------------------------|----------------------|
-| `feat:`                  | ✨ Novas Features    |
-| `fix:`                   | 🐛 Bug Fixes        |
-| `refactor:`              | 🏗️ Refatoração      |
-| `docs:`                  | 📚 Documentação      |
-| `test:`                  | 🧪 Testes            |
-| `perf:`                  | ⚡ Performance       |
-| `security` / `harden`   | 🔒 Segurança         |
-| `chore:` / `ci:` / `build:` | 📦 Infraestrutura |
-| Sem prefixo             | Analisar conteúdo e classificar manualmente |
+| Prefix / Pattern           | Category             |
+|----------------------------|----------------------|
+| `feat:`                    | ✨ New Features      |
+| `fix:`                     | 🐛 Bug Fixes        |
+| `refactor:`                | 🏗️ Refactoring      |
+| `docs:`                    | 📚 Documentation     |
+| `test:`                    | 🧪 Tests             |
+| `perf:`                    | ⚡ Performance       |
+| `security` / `harden`     | 🔒 Security          |
+| `chore:` / `ci:` / `build:` | 📦 Infrastructure  |
+| No prefix                  | Analyze content and classify manually |
 
-Para cada **feature** (`feat:`), agrupar por PR/branch de origem quando possível, criando uma subseção com título descritivo.
+For each **feature** (`feat:`), group by source PR/branch when possible, creating a subsection with a descriptive title.
 
-### 5. Identificar dependências adicionadas/removidas
+### 5. Identify added/removed dependencies
 
 ```bash
-# Diferenças no package.json
+# Differences in package.json
 git diff $LAST_TAG..HEAD -- package.json
 ```
 
-Analisar o diff para listar dependências adicionadas, removidas e atualizadas.
+Analyze the diff to list added, removed, and updated dependencies.
 
-### 6. Montar o Release Note
+### 6. Compose the Release Note
 
-Usar **exatamente** este formato (adaptar seções conforme os dados coletados — omitir seções vazias):
+Use **exactly** this format (adapt sections according to the collected data — omit empty sections):
 
 ````markdown
 # 🚀 $PROJECT_NAME v$NEW_VERSION
 
-**Release Date:** $DATA_HOJE
+**Release Date:** $TODAY_DATE
 **Full Changelog:** $LAST_TAG...v$NEW_VERSION
 **$N files changed** — $INSERTIONS insertions(+), $DELETIONS deletions(-)
 
 ---
 
-## ✨ Novas Features
+## ✨ New Features
 
-### Título descritivo da feature (#PR — `nome-da-branch`)
-- Bullet point descrevendo a alteração com detalhes técnicos relevantes
-- Mencionar endpoints, módulos, integrações criados
-- Usar **negrito** para termos técnicos importantes
-
----
-
-## 🏗️ Refatoração
-
-- **Título curto** — descrição da refatoração com contexto
+### Descriptive feature title (#PR — `branch-name`)
+- Bullet point describing the change with relevant technical details
+- Mention endpoints, modules, integrations created
+- Use **bold** for important technical terms
 
 ---
 
-## 🔒 Segurança
+## 🏗️ Refactoring
 
-- **Título curto** — descrição da melhoria de segurança
+- **Short title** — description of the refactoring with context
+
+---
+
+## 🔒 Security
+
+- **Short title** — description of the security improvement
 
 ---
 
 ## 🐛 Bug Fixes
 
-- **Identificador (se houver)** — descrição da correção
+- **Identifier (if any)** — description of the fix
 
 ---
 
 ## ⚡ Performance
 
-- **Título curto** — descrição da melhoria
+- **Short title** — description of the improvement
 
 ---
 
-## 📚 Documentação
+## 📚 Documentation
 
-- Listar documentações adicionadas ou atualizadas
-- Mencionar arquivos específicos quando relevante
-
----
-
-## 🧪 Testes
-
-- **N arquivos de teste** adicionados/modificados
-- Listar tipos de teste: integração, unitário, e2e
-- Mencionar domínios/módulos cobertos
+- List added or updated documentation
+- Mention specific files when relevant
 
 ---
 
-## 📦 Dependências
+## 🧪 Tests
 
-- **Adicionadas:** listar pacotes novos
-- **Removidas:** listar pacotes removidos
-- **Atualizadas:** listar pacotes com mudança de versão
-- Runtime: informações sobre Node.js, TypeScript etc.
+- **N test files** added/modified
+- List test types: integration, unit, e2e
+- Mention covered domains/modules
 
 ---
 
-## Pull Requests incluídos
+## 📦 Dependencies
 
-- #N — título/descrição curta do PR
+- **Added:** list new packages
+- **Removed:** list removed packages
+- **Updated:** list packages with version changes
+- Runtime: information about Node.js, TypeScript, etc.
+
+---
+
+## Included Pull Requests
+
+- #N — short PR title/description
 
 ---
 
 **Contributors:** @usernames
 ````
 
-### 7. Criar o Release
+### 7. Create the Release
 
-Imediatamente após montar o release note, criar o GitHub Release **sem pedir confirmação**:
+Immediately after composing the release note, create the GitHub Release **without asking for confirmation**:
 
 ```bash
 gh release create v$NEW_VERSION --target main --title "v$NEW_VERSION" --notes "$RELEASE_NOTES"
 ```
 
-### 8. Exibir resultado
+### 8. Display result
 
-Exibir o release note completo na conversa junto com a URL do release criado.
+Display the full release note in the conversation along with the URL of the created release.
 
 ---
 
-## Regras de Qualidade
+## Quality Rules
 
-1. **Não inventar** — cada item do release note deve ter um commit ou PR correspondente.
-2. **Português do Brasil** — todo o texto deve estar em PT-BR.
-3. **Detalhes técnicos** — mencionar endpoints, módulos, arquivos e tecnologias específicas.
-4. **Agrupamento por feature** — commits relacionados ao mesmo PR/feature devem ser agrupados, não listados individualmente.
-5. **Omitir seções vazias** — se não houver bug fixes, não incluir a seção 🐛.
-6. **Formato consistente** — seguir exatamente o template acima, incluindo emojis nos headers.
+1. **Do not fabricate** — each item in the release note must have a corresponding commit or PR.
+2. **English** — all text must be in English.
+3. **Technical details** — mention endpoints, modules, files, and specific technologies.
+4. **Group by feature** — commits related to the same PR/feature should be grouped, not listed individually.
+5. **Omit empty sections** — if there are no bug fixes, do not include the 🐛 section.
+6. **Consistent format** — follow the template above exactly, including emojis in headers.

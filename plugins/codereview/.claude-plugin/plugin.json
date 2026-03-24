@@ -1,11 +1,11 @@
 {
   "name": "codereview",
-  "description": "Automated pre-PR code review inspired by The Zen of Python (PEP 20). Produces severity-rated findings, test coverage assessment, and letter grading. Stack-agnostic with TypeScript/React defaults.",
+  "description": "Code review toolkit: automated pre-PR review with severity grading, and CodeRabbit PR comment resolver. Stack-agnostic with TypeScript/React defaults.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "quality",
-  "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review"],
+  "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "pr-comments"],
   "skills": "./skills"
 }

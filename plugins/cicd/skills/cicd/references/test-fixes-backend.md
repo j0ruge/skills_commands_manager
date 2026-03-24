@@ -1,69 +1,69 @@
-# Padrões de Correção de Testes para CI
+# Test Fix Patterns for CI
 
-Problemas comuns ao rodar testes no CI Linux e como corrigi-los.
+Common issues when running tests on CI Linux and how to fix them.
 
 ---
 
-## 1. Case-Sensitivity em Imports
+## 1. Case-Sensitivity in Imports
 
-**Problema:** macOS (HFS+) é case-insensitive por padrão. Um import `@repositories/vessel.repository` funciona local mas falha no Linux se o arquivo se chama `Vessel.repository.ts`.
+**Problem:** macOS (HFS+) is case-insensitive by default. An import `@repositories/vessel.repository` works locally but fails on Linux if the file is named `Vessel.repository.ts`.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
-# Listar arquivos com case diferente do esperado
+# List files with different case than expected
 find src/ -name "*.ts" | sort -f | uniq -di
 ```
 
-**Correção:** Renomear o arquivo para corresponder ao import, ou corrigir o import.
+**Fix:** Rename the file to match the import, or correct the import.
 
 ```typescript
-// ERRADO (no CI Linux)
+// WRONG (on CI Linux)
 import { VesselRepository } from '@repositories/vessel.repository';
-// Arquivo real: src/repositories/Vessel.repository.ts
+// Actual file: src/repositories/Vessel.repository.ts
 
-// CORRETO
+// CORRECT
 import { VesselRepository } from '@repositories/Vessel.repository';
 ```
 
 ---
 
-## 2. Case-Sensitivity em `jest.mock()`
+## 2. Case-Sensitivity in `jest.mock()`
 
-**Problema:** `jest.mock('@repositories/vessel.repository')` não intercepta se o módulo real é `Vessel.repository`. O mock simplesmente não é aplicado, e o teste usa a implementação real.
+**Problem:** `jest.mock('@repositories/vessel.repository')` does not intercept if the actual module is `Vessel.repository`. The mock simply is not applied, and the test uses the real implementation.
 
-**Correção:** O path no `jest.mock()` deve corresponder exatamente ao case do arquivo.
+**Fix:** The path in `jest.mock()` must exactly match the file case.
 
 ```typescript
-// ERRADO
+// WRONG
 jest.mock('@repositories/vessel.repository');
 
-// CORRETO (se o arquivo é Vessel.repository.ts)
+// CORRECT (if the file is Vessel.repository.ts)
 jest.mock('@repositories/Vessel.repository');
 ```
 
 ---
 
-## 3. `prismaTransaction` Opcional
+## 3. Optional `prismaTransaction`
 
-**Problema:** Alguns services recebem `prismaTransaction` como parâmetro opcional, mas os testes não o passam, causando erro no acesso ao banco.
+**Problem:** Some services receive `prismaTransaction` as an optional parameter, but tests do not pass it, causing a database access error.
 
-**Correção:** Garantir que o parâmetro tem fallback para o client principal:
+**Fix:** Ensure the parameter has a fallback to the main client:
 
 ```typescript
 async execute(data: CreateDTO, prismaTransaction?: PrismaClient) {
   const client = prismaTransaction || prisma
-  // usar client ao invés de prismaTransaction diretamente
+  // use client instead of prismaTransaction directly
 }
 ```
 
 ---
 
-## 4. Guard do `server.ts` para `NODE_ENV=test`
+## 4. `server.ts` Guard for `NODE_ENV=test`
 
-**Problema:** Se `server.ts` chama `app.listen()` incondicionalmente, testes que importam o app tentam ouvir na porta, causando `EADDRINUSE` ou interferência entre suites.
+**Problem:** If `server.ts` calls `app.listen()` unconditionally, tests that import the app attempt to listen on the port, causing `EADDRINUSE` or interference between suites.
 
-**Correção:**
+**Fix:**
 
 ```typescript
 // server.ts
@@ -78,15 +78,15 @@ export { app };
 
 ---
 
-## 5. Seed Data em `beforeAll`
+## 5. Seed Data in `beforeAll`
 
-**Problema:** Testes de integração assumem dados pré-existentes no banco (ex: um usuário, um report). No CI, o banco é limpo a cada run.
+**Problem:** Integration tests assume pre-existing data in the database (e.g., a user, a report). On CI, the database is clean on each run.
 
-**Correção:**
+**Fix:**
 
 ```typescript
 beforeAll(async () => {
-  // Inserir dados necessários para os testes
+  // Insert data needed for the tests
   await prisma.user.create({
     data: {
       id: 'test-user-id',
@@ -97,7 +97,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Limpar apenas dados de teste criados no beforeAll
+  // Clean up only test data created in beforeAll
   await prisma.user.delete({
     where: { id: 'test-user-id' },
   });
@@ -107,11 +107,11 @@ afterAll(async () => {
 
 ---
 
-## 6. Skip Condicional de E2E Tests
+## 6. Conditional E2E Test Skip
 
-**Problema:** Testes E2E que fazem requests HTTP reais (com `supertest` contra um servidor real) falham no CI porque o servidor não está rodando.
+**Problem:** E2E tests that make real HTTP requests (with `supertest` against a real server) fail on CI because the server is not running.
 
-**Correção:**
+**Fix:**
 
 ```typescript
 const isCI = process.env.CI === 'true' || process.env.NODE_ENV === 'test';
@@ -122,11 +122,11 @@ describe('E2E: Service Report Routes', () => {
     return;
   }
 
-  // ... testes E2E reais
+  // ... real E2E tests
 });
 ```
 
-Ou usar `describe.skipIf`:
+Or use `describe.skipIf`:
 
 ```typescript
 const skipE2E = !process.env.E2E_BASE_URL;
@@ -140,16 +140,16 @@ describe.skipIf(skipE2E)('E2E Tests', () => {
 
 ## 7. Jest OOM Fix
 
-**Problema:** Com muitas test suites, Jest pode exceder o heap limit padrão do Node.js (~1.7GB), terminando com `FATAL ERROR: Reached heap limit Allocation failed` (exit code 134 / SIGABRT).
+**Problem:** With many test suites, Jest can exceed the default Node.js heap limit (~1.7GB), terminating with `FATAL ERROR: Reached heap limit Allocation failed` (exit code 134 / SIGABRT).
 
-**Correção no CI workflow:**
+**Fix in CI workflow:**
 
 ```yaml
 - name: Run tests
   run: node --max-old-space-size=4096 node_modules/.bin/jest --forceExit
 ```
 
-**Correção local (package.json):**
+**Local fix (package.json):**
 
 ```json
 {
@@ -162,11 +162,11 @@ describe.skipIf(skipE2E)('E2E Tests', () => {
 
 ---
 
-## 8. Assertions com Dados Dinâmicos
+## 8. Assertions with Dynamic Data
 
-**Problema:** Testes que comparam UUIDs, timestamps ou dados gerados falham porque os valores mudam a cada execução.
+**Problem:** Tests that compare UUIDs, timestamps, or generated data fail because the values change on each execution.
 
-**Correção:** Usar matchers parciais:
+**Fix:** Use partial matchers:
 
 ```typescript
 expect(response.body).toEqual(
@@ -180,15 +180,15 @@ expect(response.body).toEqual(
 
 ---
 
-## Resumo de Padrões
+## Pattern Summary
 
-| Problema                    | Fix Rápido                            |
+| Problem                     | Quick Fix                             |
 | --------------------------- | ------------------------------------- |
-| Import case mismatch        | Corrigir case do arquivo ou import    |
-| jest.mock case mismatch     | Alinhar path com nome real do arquivo |
-| prismaTransaction undefined | Adicionar fallback `\|\| prisma`      |
-| server.ts inicia no test    | Guard `NODE_ENV !== 'test'`           |
-| Dados faltantes             | Seed em `beforeAll`                   |
-| E2E sem servidor            | `describe.skip` condicional           |
+| Import case mismatch        | Fix the file or import case           |
+| jest.mock case mismatch     | Align path with actual file name      |
+| prismaTransaction undefined | Add fallback `\|\| prisma`            |
+| server.ts starts in test    | Guard `NODE_ENV !== 'test'`           |
+| Missing data                | Seed in `beforeAll`                   |
+| E2E without server          | Conditional `describe.skip`           |
 | Jest OOM                    | `--max-old-space-size=4096`           |
 | UUIDs/timestamps            | `expect.any(String)`                  |

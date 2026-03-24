@@ -1,33 +1,33 @@
 ---
-description: Sincroniza main com develop, mergeia o branch atual em develop e faz push para triggar o pipeline CD Staging.
+description: Syncs main with develop, merges the current branch into develop, and pushes to trigger the CD Staging pipeline.
 metadata:
   version: 1.4.0
 ---
 
 ## Deploy to Staging
 
-Fluxo automatizado para enviar o branch atual para o ambiente de staging via CD pipeline.
-Detecta automaticamente se o usuario esta em `develop` ou num feature branch e ajusta o fluxo.
+Automated flow to send the current branch to the staging environment via CD pipeline.
+Automatically detects whether the user is on `develop` or a feature branch and adjusts the flow accordingly.
 
-### Pre-requisitos
+### Prerequisites
 
-- Branch atual deve ter todos os commits e mudancas commitadas (working tree limpo)
-- `origin/develop` deve estar acessivel
-- Acesso push a `origin/main` e `origin/develop`
+- Current branch must have all changes committed (clean working tree)
+- `origin/develop` must be reachable
+- Push access to `origin/main` and `origin/develop`
 
 ### Workflow
 
-1. **Verificar working tree**
+1. **Check working tree**
 
 ```bash
 git status --short
 ```
 
-Se houver mudancas nao commitadas, abortar e informar o usuario.
+If there are uncommitted changes, abort and inform the user.
 
-2. **Pre-flight: lint + typecheck + testes**
+2. **Pre-flight: lint + typecheck + tests**
 
-Rodar as mesmas verificacoes que o CI executa para evitar falhas no pipeline:
+Run the same checks that CI executes to avoid pipeline failures:
 
 ```bash
 npx eslint src/ --max-warnings 0
@@ -35,7 +35,7 @@ npx tsc --noEmit
 yarn test --watchAll=false
 ```
 
-Se qualquer comando falhar, abortar e informar o usuario. Nao prosseguir com push.
+If any command fails, abort and inform the user. Do not proceed with push.
 
 3. **Fetch remotes**
 
@@ -43,21 +43,21 @@ Se qualquer comando falhar, abortar e informar o usuario. Nao prosseguir com pus
 git fetch origin
 ```
 
-4. **Detectar branch atual**
+4. **Detect current branch**
 
 ```bash
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 ```
 
-5. **Detectar cenario (develop vs feature branch)**
+5. **Detect scenario (develop vs feature branch)**
 
-Se o branch atual for `develop`, seguir o **fluxo simplificado** (step 5a).
-Caso contrario, seguir o **fluxo completo** (steps 6-8).
+If the current branch is `develop`, follow the **simplified flow** (step 5a).
+Otherwise, follow the **full flow** (steps 6-8).
 
-#### 5a. Fluxo develop — sincronizar main e push
+#### 5a. Develop flow — sync main and push
 
-Quando ja estamos em `develop`, nao ha merge de feature branch. Apenas sincronizamos
-`main` com o que ja esta no remote de develop e depois pushamos os commits locais.
+When already on `develop`, there is no feature branch merge. We only sync
+`main` with what is already on the develop remote and then push the local commits.
 
 ```bash
 git checkout main
@@ -67,13 +67,13 @@ git checkout develop
 git push origin develop
 ```
 
-Se o merge ff-only falhar, avisar o usuario que ha divergencia em main e abortar.
+If the ff-only merge fails, warn the user that there is divergence on main and abort.
 
-Apos o push, pular diretamente para o step 9 (verificar pipeline).
+After the push, skip directly to step 9 (verify pipeline).
 
 ---
 
-6. **Sincronizar main com develop** (fluxo feature branch)
+6. **Sync main with develop** (feature branch flow)
 
 ```bash
 git checkout main
@@ -81,9 +81,9 @@ git merge origin/develop --ff-only
 git push origin main
 ```
 
-Se o merge falhar (non-fast-forward), avisar o usuario que ha divergencia e abortar.
+If the merge fails (non-fast-forward), warn the user that there is divergence and abort.
 
-7. **Merge feature branch em develop**
+7. **Merge feature branch into develop**
 
 ```bash
 git checkout develop
@@ -91,15 +91,15 @@ git pull origin develop
 git merge $CURRENT_BRANCH
 ```
 
-Se houver conflitos, abortar e informar o usuario.
+If there are conflicts, abort and inform the user.
 
-8. **Push develop para triggar CD staging**
+8. **Push develop to trigger CD staging**
 
 ```bash
 git push origin develop
 ```
 
-8a. **Voltar ao branch de trabalho**
+8a. **Return to working branch**
 
 ```bash
 git checkout $CURRENT_BRANCH
@@ -107,43 +107,43 @@ git checkout $CURRENT_BRANCH
 
 ---
 
-9. **Capturar run-id do pipeline triggado**
+9. **Capture the run-id of the triggered pipeline**
 
-Aguardar alguns segundos para o run aparecer, depois capturar o ID:
+Wait a few seconds for the run to appear, then capture the ID:
 
 ```bash
 gh run list --branch develop --limit 1 --json databaseId,status,name --jq '.[0].databaseId'
 ```
 
-Armazenar o `run-id` retornado.
+Store the returned `run-id`.
 
-10. **Monitorar pipeline ate completar**
+10. **Monitor pipeline until completion**
 
 ```bash
 gh run watch <run-id>
 ```
 
-Aguardar o pipeline completar. Nao considerar o deploy concluido ate o pipeline terminar.
+Wait for the pipeline to complete. Do not consider the deploy finished until the pipeline ends.
 
-11. **Avaliar resultado**
+11. **Evaluate result**
 
-Se o pipeline **falhar**:
+If the pipeline **fails**:
 
 ```bash
 gh run view <run-id> --log-failed
 ```
 
-Exibir o log do step que falhou e reportar o erro ao usuario com detalhes.
+Display the log of the failed step and report the error to the user with details.
 
-Se o pipeline **suceder**:
+If the pipeline **succeeds**:
 
-Reportar sucesso ao usuario com o link do run:
+Report success to the user with the run link:
 `https://github.com/<owner>/<repo>/actions/runs/<run-id>`
 
-**IMPORTANTE:** A skill so deve considerar o trabalho concluido quando o pipeline completar com sucesso. Se falhar, investigar e reportar — nao encerrar silenciosamente.
+**IMPORTANT:** The skill should only consider the work complete when the pipeline finishes successfully. If it fails, investigate and report — do not exit silently.
 
-### Notas
+### Notes
 
-- O push em `develop` trigga o workflow `cd-staging.yml` automaticamente
-- A imagem Docker e buildada com tag `:staging` e pushada para GHCR
-- O deploy e feito no self-hosted runner com label `staging`
+- Pushing to `develop` automatically triggers the `cd-staging.yml` workflow
+- The Docker image is built with the `:staging` tag and pushed to GHCR
+- The deploy runs on the self-hosted runner with the `staging` label

@@ -1,21 +1,21 @@
-# Checklist Compartilhado — Infra CI/CD
+# Shared Checklist — CI/CD Infrastructure
 
-Seções compartilhadas entre backend e frontend para configuração de novo environment.
+Shared sections between backend and frontend for new environment configuration.
 
 ---
 
 ## 1. Self-Hosted Runner
 
-- [ ] Runner instalado e rodando como serviço: `sudo systemctl status actions.runner.*`
-- [ ] Runner com label correto: `staging` ou `production`
-- [ ] Runner aparece como "Online" em GitHub > Settings > Actions > Runners
-- [ ] Docker instalado e acessível pelo runner user
-- [ ] Runner user no grupo `docker` (evita problemas sudo/user)
-- [ ] Runner user tem permissão para `docker compose`
-- [ ] Labels verificados em GitHub > Settings > Actions > Runners
-- [ ] GHCR login no deploy job via `docker/login-action@v3` antes do `docker compose pull` (logout automático no post-step, config isolada por job — preferir sobre `docker login` manual em self-hosted runners)
+- [ ] Runner installed and running as a service: `sudo systemctl status actions.runner.*`
+- [ ] Runner with the correct label: `staging` or `production`
+- [ ] Runner appears as "Online" in GitHub > Settings > Actions > Runners
+- [ ] Docker installed and accessible by the runner user
+- [ ] Runner user in the `docker` group (avoids sudo/user issues)
+- [ ] Runner user has permission for `docker compose`
+- [ ] Labels verified in GitHub > Settings > Actions > Runners
+- [ ] GHCR login in the deploy job via `docker/login-action@v3` before `docker compose pull` (automatic logout in post-step, config isolated per job — prefer over manual `docker login` on self-hosted runners)
 
-**Instalação do runner:**
+**Runner installation:**
 
 ```bash
 mkdir -p /opt/actions-runner && cd /opt/actions-runner
@@ -28,55 +28,55 @@ sudo ./svc.sh install && sudo ./svc.sh start
 
 ---
 
-## 2. GHCR / Imagens
+## 2. GHCR / Images
 
-- [ ] Visibilidade do package é **Private** (herda do repo)
-- [ ] `GITHUB_TOKEN` tem permissão `packages: write` no workflow
-- [ ] Tags de imagem corretas: `staging` para develop, `v*` + `latest` para produção
+- [ ] Package visibility is **Private** (inherited from the repo)
+- [ ] `GITHUB_TOKEN` has `packages: write` permission in the workflow
+- [ ] Correct image tags: `staging` for develop, `v*` + `latest` for production
 
-Verificar em: `github.com/orgs/JRC-Brasil/packages`
-
----
-
-## 3. DNS e SSL
-
-- [ ] DNS do domínio resolve para o IP do servidor: `dig dominio +short`
-- [ ] Porta 80 acessível externamente (HTTP-01 challenge do Let's Encrypt)
-- [ ] nginx-proxy + acme-companion rodando no servidor
-- [ ] Certificado SSL via Let's Encrypt (`LETSENCRYPT_HOST` configurado)
+Verify at: `github.com/orgs/JRC-Brasil/packages`
 
 ---
 
-## 4. Rede nginx-proxy (Base)
+## 3. DNS and SSL
 
-- [ ] Rede Docker do nginx-proxy existe no servidor: `docker network ls | grep proxy`
-- [ ] nginx-proxy container está rodando
-- [ ] `VIRTUAL_HOST` configurado no DNS (ou `/etc/hosts` para teste)
-- [ ] `NGINX_NETWORK_NAME` secret corresponde ao nome exato da rede
+- [ ] Domain DNS resolves to the server IP: `dig domain +short`
+- [ ] Port 80 externally accessible (Let's Encrypt HTTP-01 challenge)
+- [ ] nginx-proxy + acme-companion running on the server
+- [ ] SSL certificate via Let's Encrypt (`LETSENCRYPT_HOST` configured)
 
 ---
 
-## 5. Primeiro Deploy (Bootstrap)
+## 4. nginx-proxy Network (Base)
 
-Quando o repositório é novo e nunca fez deploy para staging:
+- [ ] nginx-proxy Docker network exists on the server: `docker network ls | grep proxy`
+- [ ] nginx-proxy container is running
+- [ ] `VIRTUAL_HOST` configured in DNS (or `/etc/hosts` for testing)
+- [ ] `NGINX_NETWORK_NAME` secret matches the exact network name
 
-- [ ] Workflows (`.github/workflows/ci.yml`, `cd-staging.yml`, `cd-production.yml`) estão commitados e pushados
-- [ ] Branch `develop` existe no remote: `git ls-remote --heads origin develop`
-- [ ] Workflows estão presentes no branch `develop` (CD Staging triggera em push para `develop` — se os workflows não estiverem nesse branch, o pipeline não dispara)
-- [ ] Após o primeiro push para `develop`, verificar: `gh run list --limit 5` (requer [GitHub CLI](https://cli.github.com/) instalado e autenticado, ou verificar via web em Actions)
-- [ ] Se o pipeline não disparou, verificar se os arquivos `.github/workflows/*.yml` estão no branch `develop`
+---
 
-**Bootstrap típico:**
+## 5. First Deploy (Bootstrap)
+
+When the repository is new and has never been deployed to staging:
+
+- [ ] Workflows (`.github/workflows/ci.yml`, `cd-staging.yml`, `cd-production.yml`) are committed and pushed
+- [ ] Branch `develop` exists on the remote: `git ls-remote --heads origin develop`
+- [ ] Workflows are present in the `develop` branch (CD Staging triggers on push to `develop` — if the workflows are not in that branch, the pipeline will not fire)
+- [ ] After the first push to `develop`, verify: `gh run list --limit 5` (requires [GitHub CLI](https://cli.github.com/) installed and authenticated, or check via web under Actions)
+- [ ] If the pipeline did not fire, check that the `.github/workflows/*.yml` files are in the `develop` branch
+
+**Typical bootstrap:**
 
 ```bash
-# Se develop não existe ainda
+# If develop does not exist yet
 git checkout -b develop
 git push -u origin develop
 
-# Se develop já existe mas não tem os workflows
+# If develop already exists but does not have the workflows
 git checkout develop
-git merge main  # traz os workflows do main (ou master, se for o caso)
+git merge main  # brings the workflows from main (or master, as applicable)
 git push
 ```
 
-> **Nota:** Se você cria os workflows em `main` e faz merge para `develop`, os workflows estarão em ambos os branches. O CD Staging só dispara quando há push para `develop`.
+> **Note:** If you create the workflows in `main` and merge into `develop`, the workflows will be in both branches. CD Staging only fires when there is a push to `develop`.

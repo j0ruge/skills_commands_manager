@@ -1,60 +1,60 @@
 # Troubleshooting — Frontend (React/Vite/nginx)
 
-Cenários de troubleshooting específicos do frontend. Para cenários de infra compartilhados, ver `troubleshooting-shared.md`.
+Frontend-specific troubleshooting scenarios. For shared infrastructure scenarios, see `troubleshooting-shared.md`.
 
 ---
 
-## Cenários Detalhados
+## Detailed Scenarios
 
-### 1. Página em Branco (SPA não carrega)
+### 1. Blank Page (SPA does not load)
 
-**Sintoma**: Browser mostra página branca sem erros de rede.
+**Symptom**: Browser shows a blank page with no network errors.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
-# Verificar se dist/ tem conteúdo
+# Check if dist/ has content
 docker exec service_report_web ls -la /usr/share/nginx/html/
 
-# Verificar se index.html referencia os assets corretos
+# Check if index.html references the correct assets
 docker exec service_report_web cat /usr/share/nginx/html/index.html
 
-# Verificar se VITE_* estão embeddadas
+# Check if VITE_* are embedded
 docker exec service_report_web sh -c "grep -r 'VITE_' /usr/share/nginx/html/assets/*.js | head -5"
 ```
 
-**Causas comuns:**
+**Common causes:**
 
-1. VITE_* não foram passadas como `build-args` no `docker/build-push-action`. O `vite build` completou sem erro, mas `import.meta.env.VITE_API_URL` é `undefined`.
-2. `vite.config.ts` ausente no git (ex: adicionado ao `.gitignore`). Sem o arquivo, o `vite build` executa sem o plugin React, gerando um bundle que não renderiza nada.
+1. VITE_* were not passed as `build-args` in the `docker/build-push-action`. The `vite build` completed without error, but `import.meta.env.VITE_API_URL` is `undefined`.
+2. `vite.config.ts` missing from git (e.g., added to `.gitignore`). Without the file, `vite build` runs without the React plugin, generating a bundle that renders nothing.
 
-**Solução:** Verificar que todos os 11 ARGs estão no Dockerfile, que o workflow passa cada um via `build-args:`, e que `vite.config.ts` está versionado.
+**Solution:** Verify that all 11 ARGs are in the Dockerfile, that the workflow passes each one via `build-args:`, and that `vite.config.ts` is versioned.
 
 ---
 
-### 2. API Calls Falhando (CORS, URL errada)
+### 2. Failing API Calls (CORS, wrong URL)
 
-**Sintoma:** App carrega mas chamadas para a API falham.
+**Symptom:** App loads but API calls fail.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
 docker exec service_report_web sh -c "grep -o 'https://[^\"]*jrcbrasil[^\"]*' /usr/share/nginx/html/assets/*.js | sort -u"
 ```
 
-**Causa:** VITE_API_URL aponta para o ambiente errado (staging vs produção) ou não inclui protocolo `https://`.
+**Cause:** VITE_API_URL points to the wrong environment (staging vs production) or does not include the `https://` protocol.
 
-**Solução:** Verificar e corrigir o secret `VITE_API_URL` no environment correto do GitHub.
+**Solution:** Check and fix the `VITE_API_URL` secret in the correct GitHub environment.
 
 ---
 
-### 3. 404 em Rotas do React Router
+### 3. 404 on React Router Routes
 
-**Sintoma:** Rota `/reports` retorna 404 ao acessar diretamente (não via navegação SPA).
+**Symptom:** Route `/reports` returns 404 when accessed directly (not via SPA navigation).
 
-**Causa:** nginx não tem `try_files $uri $uri/ /index.html` configurado.
+**Cause:** nginx does not have `try_files $uri $uri/ /index.html` configured.
 
-**Solução:** Verificar `infra/dsr_web/nginx.conf`:
+**Solution:** Check `infra/dsr_web/nginx.conf`:
 
 ```nginx
 location / {
@@ -66,37 +66,37 @@ location / {
 
 ### 4. `Cannot access 'X' before initialization` (Runtime)
 
-**Sintoma:** App carrega o HTML mas o JavaScript falha com `Cannot access 'X' before initialization` ou `ReferenceError`.
+**Symptom:** App loads the HTML but JavaScript fails with `Cannot access 'X' before initialization` or `ReferenceError`.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
 grep -n 'treeshake\|manualChunks\|moduleSideEffects' vite.config.ts
 ```
 
-**Causa:** `treeshake.moduleSideEffects: false` no `vite.config.ts` combinado com `manualChunks` que agrupam módulos com dependências circulares.
+**Cause:** `treeshake.moduleSideEffects: false` in `vite.config.ts` combined with `manualChunks` that group modules with circular dependencies.
 
-**Solução:** Remover `treeshake` e `manualChunks` customizados do `vite.config.ts`. O treeshaking padrão do Rollup/Vite já é suficiente.
+**Solution:** Remove custom `treeshake` and `manualChunks` from `vite.config.ts`. Rollup/Vite's default treeshaking is sufficient.
 
 ---
 
-### 5. Container `unhealthy` — Healthcheck Falha em Alpine
+### 5. `unhealthy` Container — Healthcheck Fails on Alpine
 
-**Sintoma:** `docker ps` mostra container como `unhealthy` mas nginx está rodando.
+**Symptom:** `docker ps` shows the container as `unhealthy` but nginx is running.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
 docker inspect service_report_web --format '{{json .State.Health}}' | jq .
-# Testar com IPv4 explícito
+# Test with explicit IPv4
 docker exec service_report_web wget -qO- http://127.0.0.1:80/index.html | head -5
-# Comparar com localhost (pode falhar)
+# Compare with localhost (may fail)
 docker exec service_report_web wget -qO- http://localhost:80/index.html | head -5
 ```
 
-**Causa:** Em imagens Alpine, `localhost` pode resolver para `::1` (IPv6). Se o nginx escuta apenas em IPv4, o healthcheck falha.
+**Cause:** On Alpine images, `localhost` can resolve to `::1` (IPv6). If nginx only listens on IPv4, the healthcheck fails.
 
-**Solução:** Usar `127.0.0.1` em vez de `localhost` no healthcheck:
+**Solution:** Use `127.0.0.1` instead of `localhost` in the healthcheck:
 
 ```yaml
 healthcheck:
@@ -105,19 +105,19 @@ healthcheck:
 
 ---
 
-### 6. Vitest Coletando Testes E2E Playwright
+### 6. Vitest Collecting Playwright E2E Tests
 
-**Sintoma:** CI falha com erros de import do Playwright ou testes inesperados sendo executados.
+**Symptom:** CI fails with Playwright import errors or unexpected tests being executed.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
 npx vitest run --reporter=verbose 2>&1 | grep "e2e/"
 ```
 
-**Causa:** Sem configuração explícita, o Vitest coleta todos os `*.test.ts` / `*.spec.ts`, incluindo os de `e2e/`.
+**Cause:** Without explicit configuration, Vitest collects all `*.test.ts` / `*.spec.ts`, including those in `e2e/`.
 
-**Solução:** Criar ou atualizar `vitest.config.ts` com exclude:
+**Solution:** Create or update `vitest.config.ts` with exclude:
 
 ```typescript
 import { defineConfig } from 'vitest/config'
@@ -131,73 +131,73 @@ export default defineConfig({
 
 ---
 
-### 7. Container nginx 403 — dist/ Vazio
+### 7. nginx Container 403 — Empty dist/
 
-**Sintoma:** nginx retorna 403 Forbidden.
+**Symptom:** nginx returns 403 Forbidden.
 
-**Causa:** O diretório `dist/` não foi copiado ou está vazio na imagem.
+**Cause:** The `dist/` directory was not copied or is empty in the image.
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
 docker exec service_report_web ls -la /usr/share/nginx/html/
 ```
 
-**Solução:** Verificar que `npm run build` gera `dist/` no Dockerfile e que o `COPY --from=build` está correto.
+**Solution:** Verify that `npm run build` generates `dist/` in the Dockerfile and that the `COPY --from=build` is correct.
 
 ---
 
-## Fluxo de Diagnóstico — Frontend
+## Diagnosis Flow — Frontend
 
 ```text
-Pipeline falhou?
-├── Qual job?
+Pipeline failed?
+├── Which job?
 │   ├── CI (lint/typecheck/test)
-│   │   ├── ESLint falhou? → --max-warnings 0 com warnings existentes
-│   │   ├── tsc --noEmit falhou? → Erros de tipo
-│   │   └── Vitest falhou?
-│   │       ├── Teste específico → verificar localmente
-│   │       └── Coletando testes E2E? → vitest.config.ts com exclude
+│   │   ├── ESLint failed? → --max-warnings 0 with existing warnings
+│   │   ├── tsc --noEmit failed? → Type errors
+│   │   └── Vitest failed?
+│   │       ├── Specific test → verify locally
+│   │       └── Collecting E2E tests? → vitest.config.ts with exclude
 │   │
 │   ├── Build-and-push
-│   │   ├── Docker build falhou?
-│   │   │   ├── yarn install falhou → verificar yarn.lock
-│   │   │   ├── npm run build falhou → verificar tsc e vite build
-│   │   │   └── ARG faltando → verificar build-args no workflow
-│   │   └── Docker push falhou? → GHCR auth (permissions: packages: write)
+│   │   ├── Docker build failed?
+│   │   │   ├── yarn install failed → check yarn.lock
+│   │   │   ├── npm run build failed → check tsc and vite build
+│   │   │   └── Missing ARG → check build-args in the workflow
+│   │   └── Docker push failed? → GHCR auth (permissions: packages: write)
 │   │
 │   └── Deploy
-│       ├── Container unhealthy? → localhost IPv6 em Alpine → usar 127.0.0.1
-│       ├── Container subiu mas app não funciona?
-│       │   ├── Página em branco → VITE_* faltando ou vite.config.ts ausente
+│       ├── Container unhealthy? → localhost IPv6 on Alpine → use 127.0.0.1
+│       ├── Container started but app does not work?
+│       │   ├── Blank page → missing VITE_* or vite.config.ts absent
 │       │   ├── Cannot access 'X' before initialization → treeshake / circular
-│       │   ├── 404 em rotas → nginx try_files
-│       │   ├── 403 Forbidden → dist/ vazio
-│       │   └── API calls falhando → VITE_API_URL incorreto
-│       └── SSL? → ERR_SSL → DNS não aponta (ver troubleshooting-shared.md)
-└── Reproduzir localmente antes de alterar o workflow
+│       │   ├── 404 on routes → nginx try_files
+│       │   ├── 403 Forbidden → empty dist/
+│       │   └── API calls failing → incorrect VITE_API_URL
+│       └── SSL? → ERR_SSL → DNS not pointing (see troubleshooting-shared.md)
+└── Reproduce locally before modifying the workflow
 ```
 
 ---
 
-## Comandos de Diagnóstico
+## Diagnostic Commands
 
 ```bash
-# Status do container
+# Container status
 docker ps --filter name=service_report_web
 
-# Logs do container
+# Container logs
 docker logs service_report_web --tail 50
 
-# Verificar imagem usada
+# Check the image used
 docker inspect service_report_web --format '{{.Config.Image}}'
 
-# Verificar healthcheck
+# Check healthcheck
 docker inspect service_report_web --format '{{json .State.Health}}' | jq .
 
-# Testar nginx (usar 127.0.0.1, não localhost)
+# Test nginx (use 127.0.0.1, not localhost)
 docker exec service_report_web wget -qO- http://127.0.0.1:80/index.html | head -5
 
-# Verificar VITE_* embeddadas no JS
+# Check embedded VITE_* in JS
 docker exec service_report_web sh -c "grep -r 'jrcbrasil' /usr/share/nginx/html/assets/*.js | head -5"
 ```

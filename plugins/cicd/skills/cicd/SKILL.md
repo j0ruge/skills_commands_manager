@@ -3,44 +3,44 @@ name: cicd
 metadata:
   version: 2.2.0
 description: |
-  Troubleshooting e configuração de pipelines CI/CD com GitHub Actions, Docker, GHCR e self-hosted runners.
-  Skill unificada — detecta automaticamente backend (Prisma) ou frontend (Vite) e roteia para referências específicas.
+  Troubleshooting and configuration of CI/CD pipelines with GitHub Actions, Docker, GHCR, and self-hosted runners.
+  Unified skill — automatically detects backend (Prisma) or frontend (Vite) and routes to specific references.
   Triggers: "CI/CD", "pipeline", "GitHub Actions", "workflow", "CI failing", "build failed",
   "deploy", "staging", "production", "docker build", "GHCR", "self-hosted runner",
   "gh run", "workflow dispatch", "secrets", "environment secrets"
 ---
 
-# CI/CD Skill — GitHub Actions, Docker & GHCR (Unificada)
+# CI/CD Skill — GitHub Actions, Docker & GHCR (Unified)
 
-Skill para troubleshooting e configuração de pipelines CI/CD. Detecta o tipo de projeto e roteia para referências específicas.
+Skill for troubleshooting and configuring CI/CD pipelines. Detects the project type and routes to specific references.
 
 ---
 
-## Detecção de Projeto
+## Project Detection
 
-| Indicador                   | Projeto               |
+| Indicator                   | Project               |
 | --------------------------- | --------------------- |
 | `prisma/schema.prisma`      | **Backend**           |
 | `biome.jsonc` / `biome.json`| **Backend (Biome)**   |
 | `vite.config.ts`            | **Frontend**          |
 
-> **Linter detection:** Se o projeto tem `biome.jsonc` (ou `biome.json`), usa Biome para lint/format. Caso contrário, assume ESLint+Prettier. Projetos Biome NÃO usam ESLint nem Prettier.
+> **Linter detection:** If the project has `biome.jsonc` (or `biome.json`), it uses Biome for lint/format. Otherwise, it assumes ESLint+Prettier. Biome projects do NOT use ESLint or Prettier.
 
-> Verificar qual projeto antes de consultar referências. Cenários marcados `[S]` são compartilhados, `[B]` backend-only, `[F]` frontend-only.
+> Check the project type before consulting references. Scenarios marked `[S]` are shared, `[B]` backend-only, `[F]` frontend-only.
 
 ---
 
 ## Workflow Overview
 
-Ambos os projetos usam **3 workflows separados** com triggers idênticos:
+Both projects use **3 separate workflows** with identical triggers:
 
-| Workflow          | Arquivo             | Trigger                  | Runners                                     |
+| Workflow          | File                | Trigger                  | Runners                                     |
 | ----------------- | ------------------- | ------------------------ | ------------------------------------------- |
-| **CI**            | `ci.yml`            | PR → `develop` ou `main` | `ubuntu-latest`                             |
+| **CI**            | `ci.yml`            | PR → `develop` or `main` | `ubuntu-latest`                             |
 | **CD Staging**    | `cd-staging.yml`    | Push → `develop`         | `ubuntu-latest` + `self-hosted, staging`    |
 | **CD Production** | `cd-production.yml` | Tag `v*`                 | `ubuntu-latest` + `self-hosted, production` |
 
-### Diferenças no CI
+### CI Differences
 
 ```text
 Backend (ESLint):  checkout → install → prisma generate → lint → prettier → migrate → test (Jest)
@@ -48,131 +48,131 @@ Backend (Biome):   checkout → install → [prisma generate] → biome check �
 Frontend:          checkout → install → lint → typecheck → test (Vitest)
 ```
 
-> **Nota:** `[prisma generate]` e `[test]` são opcionais — dependem do projeto ter Prisma e um test framework configurado, respectivamente. Projetos sem test framework (ex: `estimates_api`) pulam o step de teste no CI e CD.
+> **Note:** `[prisma generate]` and `[test]` are optional — they depend on whether the project has Prisma and a configured test framework, respectively. Projects without a test framework (e.g., `estimates_api`) skip the test step in CI and CD.
 
-### Diferenças no Deploy
+### Deploy Differences
 
-| Aspecto              | Backend                                    | Frontend                                      |
+| Aspect               | Backend                                    | Frontend                                      |
 | -------------------- | ------------------------------------------ | --------------------------------------------- |
-| Build-args           | Não precisa de `environment:` no build job | `environment:` obrigatório (VITE_* secrets)   |
-| Imagem               | Genérica (mesma para todos os envs)        | Environment-specific (VITE_* embeddadas no JS)|
-| Migration            | `prisma migrate deploy` antes do `up`      | Sem migration                                 |
-| `VIRTUAL_PORT`       | Obrigatório (`API_PORT` ≠ 80)             | Não necessário (nginx = porta 80)             |
-| GHCR login no deploy | `docker/login-action@v3` antes do pull     | `docker/login-action@v3` antes do pull        |
+| Build-args           | Does not need `environment:` in build job  | `environment:` required (VITE_* secrets)      |
+| Image                | Generic (same for all envs)                | Environment-specific (VITE_* embedded in JS)  |
+| Migration            | `prisma migrate deploy` before `up`        | No migration                                  |
+| `VIRTUAL_PORT`       | Required (`API_PORT` ≠ 80)                | Not needed (nginx = port 80)                  |
+| GHCR login on deploy | `docker/login-action@v3` before pull       | `docker/login-action@v3` before pull          |
 | Prune                | `docker image prune -f`                    | `docker image prune -f --filter "label=..."`  |
-| Compose path         | Varia por projeto (ex: `infra/nodejs/`, `infra/`) | `infra/dsr_web/docker-compose.yml`            |
+| Compose path         | Varies by project (e.g., `infra/nodejs/`, `infra/`) | `infra/dsr_web/docker-compose.yml`            |
 
 ### Concurrency & Auth
 
-- **CI:** `ci-${{ github.ref }}` com `cancel-in-progress: true`
-- **CD:** `deploy-{staging|production}-<project>` com `cancel-in-progress: false`
-- **GHCR:** `GITHUB_TOKEN` (automático) via `docker/login-action@v3` — sem PAT
+- **CI:** `ci-${{ github.ref }}` with `cancel-in-progress: true`
+- **CD:** `deploy-{staging|production}-<project>` with `cancel-in-progress: false`
+- **GHCR:** `GITHUB_TOKEN` (automatic) via `docker/login-action@v3` — no PAT
 
 ---
 
 ## Quick Troubleshooting
 
-| Tag   | Sintoma                                                | Causa Provável                                       | Solução                                                                               |
+| Tag   | Symptom                                                | Probable Cause                                       | Solution                                                                              |
 | ----- | ------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `[S]` | `unauthorized` no docker pull (self-hosted)            | Docker login em contexto diferente (sudo vs user)    | `docker login ghcr.io` no mesmo contexto que executa o pull                           |
-| `[S]` | `network declared as external, but could not be found` | Nome da rede nginx-proxy incorreto no secret         | `docker network ls \| grep proxy` e corrigir `NGINX_NETWORK_NAME`                     |
-| `[S]` | `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`                   | DNS não aponta para o servidor                       | `dig dominio +short` deve resolver para o IP do servidor                              |
-| `[S]` | Deploy queued indefinidamente                          | Self-hosted runner offline                           | `systemctl status actions.runner.*` no servidor                                       |
-| `[S]` | Deploy blocked                                         | Concurrency group com run anterior                   | Aguardar ou cancelar run anterior via `gh run cancel`                                 |
-| `[S]` | `--max-warnings 0` falha no ESLint                     | Warnings pré-existentes                              | Corrigir warnings ou usar `eslint-disable`                                            |
-| `[B]` | `manifest unknown` no service container                | Imagem Docker descontinuada                          | Trocar para imagem oficial (ex: `postgres:17`)                                        |
-| `[B]` | Zod validation error no boot                           | Env vars faltantes no CI ou no Generate .env         | Comparar `src/env.ts` com bloco `env:` dos testes e `printf` do CD                   |
-| `[B]` | `ZodError invalid_string`                              | Secret URL sem protocolo `https://`                  | Verificar formato do secret                                                           |
-| `[B]` | Testes passam local, falham no CI                      | Case-sensitivity em imports (Linux)                  | Corrigir case do arquivo ou import                                                    |
+| `[S]` | `unauthorized` on docker pull (self-hosted)            | Docker login in different context (sudo vs user)     | `docker login ghcr.io` in the same context that runs the pull                         |
+| `[S]` | `network declared as external, but could not be found` | Incorrect nginx-proxy network name in secret         | `docker network ls \| grep proxy` and fix `NGINX_NETWORK_NAME`                        |
+| `[S]` | `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`                   | DNS does not point to the server                     | `dig domain +short` should resolve to the server IP                                   |
+| `[S]` | Deploy queued indefinitely                             | Self-hosted runner offline                           | `systemctl status actions.runner.*` on the server                                     |
+| `[S]` | Deploy blocked                                         | Concurrency group with previous run                  | Wait or cancel previous run via `gh run cancel`                                       |
+| `[S]` | `--max-warnings 0` fails in ESLint                     | Pre-existing warnings                                | Fix warnings or use `eslint-disable`                                                  |
+| `[B]` | `manifest unknown` in service container                | Discontinued Docker image                            | Switch to official image (e.g., `postgres:17`)                                        |
+| `[B]` | Zod validation error on boot                           | Missing env vars in CI or in Generate .env           | Compare `src/env.ts` with `env:` block of tests and `printf` in CD                    |
+| `[B]` | `ZodError invalid_string`                              | Secret URL missing `https://` protocol               | Check secret format                                                                   |
+| `[B]` | Tests pass locally, fail in CI                         | Case-sensitivity in imports (Linux)                  | Fix file or import case                                                               |
 | `[B]` | `FATAL ERROR: heap limit` / Exit 134                   | Jest OOM                                             | `node --max-old-space-size=4096`                                                      |
-| `[B]` | `EADDRINUSE` nos testes                                | `server.ts` chama `app.listen()` em test             | Guard `NODE_ENV !== 'test'`                                                           |
-| `[B]` | `ERR_CONNECTION_REFUSED` (nginx-proxy OK)              | `VIRTUAL_PORT` não definido no compose               | Adicionar `VIRTUAL_PORT: '${API_PORT}'`                                               |
-| `[B]` | Erros de tipo `tsc` (Prisma client)                    | `--skipLibCheck` ausente                             | Adicionar `--skipLibCheck` ao `tsc`                                                   |
-| `[F]` | Página em branco (SPA não carrega)                     | VITE_* faltando ou `vite.config.ts` ausente          | Verificar ARGs no Dockerfile e build-args no workflow                                 |
-| `[F]` | `VITE_API_URL` = `undefined` no JS                     | VITE_* não passadas como build-arg                   | Verificar `build-args` no `docker/build-push-action`                                  |
-| `[F]` | 404 em rotas do React Router                           | nginx `try_files` não configurado                    | `try_files $uri $uri/ /index.html` no nginx.conf                                     |
-| `[F]` | `Cannot access 'X' before initialization`              | `treeshake.moduleSideEffects` + circular chunks      | Remover `treeshake` e `manualChunks` do vite.config.ts                                |
-| `[F]` | Container `unhealthy` (healthcheck falha)              | Alpine resolve `localhost` como IPv6                 | Usar `127.0.0.1` no healthcheck                                                      |
-| `[F]` | Vitest coletando testes E2E Playwright                 | `vitest.config.ts` sem exclude de `e2e/`             | Adicionar `exclude: ['e2e/**']`                                                       |
-| `[B]` | `npx biome check .` falha em arquivos de config        | Biome verifica todos os arquivos por padrão          | Usar `files.includes` em `biome.jsonc` para escopo ou corrigir os arquivos            |
-| `[B]` | Biome 2.x config error (`unknown key "ignore"`)       | Biome 2.x removeu `ignore` em favor de `includes`   | Usar `files.includes` em vez de `files.ignore` no `biome.jsonc`                       |
-| `[F]` | Container nginx retorna 403                            | dist/ vazio ou não copiado                           | Verificar `npm run build` e `COPY --from=build` no Dockerfile                         |
+| `[B]` | `EADDRINUSE` in tests                                  | `server.ts` calls `app.listen()` in test             | Guard `NODE_ENV !== 'test'`                                                           |
+| `[B]` | `ERR_CONNECTION_REFUSED` (nginx-proxy OK)              | `VIRTUAL_PORT` not defined in compose                | Add `VIRTUAL_PORT: '${API_PORT}'`                                                     |
+| `[B]` | `tsc` type errors (Prisma client)                      | `--skipLibCheck` missing                             | Add `--skipLibCheck` to `tsc`                                                         |
+| `[F]` | Blank page (SPA doesn't load)                          | Missing VITE_* or `vite.config.ts` absent            | Check ARGs in Dockerfile and build-args in workflow                                   |
+| `[F]` | `VITE_API_URL` = `undefined` in JS                     | VITE_* not passed as build-arg                       | Check `build-args` in `docker/build-push-action`                                      |
+| `[F]` | 404 on React Router routes                             | nginx `try_files` not configured                     | `try_files $uri $uri/ /index.html` in nginx.conf                                     |
+| `[F]` | `Cannot access 'X' before initialization`              | `treeshake.moduleSideEffects` + circular chunks      | Remove `treeshake` and `manualChunks` from vite.config.ts                             |
+| `[F]` | Container `unhealthy` (healthcheck fails)              | Alpine resolves `localhost` as IPv6                  | Use `127.0.0.1` in healthcheck                                                       |
+| `[F]` | Vitest collecting Playwright E2E tests                 | `vitest.config.ts` without `e2e/` exclude            | Add `exclude: ['e2e/**']`                                                             |
+| `[B]` | `npx biome check .` fails on config files              | Biome checks all files by default                    | Use `files.includes` in `biome.jsonc` to scope or fix the config files                |
+| `[B]` | Biome 2.x config error (`unknown key "ignore"`)       | Biome 2.x removed `ignore` in favor of `includes`   | Use `files.includes` instead of `files.ignore` in `biome.jsonc`                       |
+| `[F]` | Container nginx returns 403                            | dist/ empty or not copied                            | Check `npm run build` and `COPY --from=build` in Dockerfile                           |
 
 ---
 
-## Tabela de Roteamento — Referências Detalhadas
+## Routing Table — Detailed References
 
-| Categoria do Problema                         | Referência                                   |
+| Problem Category                               | Reference                                    |
 | --------------------------------------------- | -------------------------------------------- |
-| Infra compartilhada (GHCR, rede, SSL, runner) | `references/troubleshooting-shared.md`       |
-| Checklist compartilhado (runner, GHCR, DNS)   | `references/checklist-shared.md`             |
-| Troubleshooting backend (Zod, Prisma, Jest)   | `references/troubleshooting-backend.md`      |
-| Checklist backend (secrets, testes, build)     | `references/checklist-backend.md`            |
-| Padrões de correção de testes Jest            | `references/test-fixes-backend.md`           |
-| Troubleshooting frontend (Vite, SPA, nginx)   | `references/troubleshooting-frontend.md`     |
-| Checklist frontend (VITE_*, Dockerfile, CD)   | `references/checklist-frontend.md`           |
+| Shared infra (GHCR, network, SSL, runner)      | `references/troubleshooting-shared.md`       |
+| Shared checklist (runner, GHCR, DNS)           | `references/checklist-shared.md`             |
+| Backend troubleshooting (Zod, Prisma, Jest)    | `references/troubleshooting-backend.md`      |
+| Backend checklist (secrets, tests, build)       | `references/checklist-backend.md`            |
+| Jest test fix patterns                         | `references/test-fixes-backend.md`           |
+| Frontend troubleshooting (Vite, SPA, nginx)    | `references/troubleshooting-frontend.md`     |
+| Frontend checklist (VITE_*, Dockerfile, CD)    | `references/checklist-frontend.md`           |
 
 ---
 
-## Lições Aprendidas (Resumo)
+## Lessons Learned (Summary)
 
-| # | Tag   | Lição | Contexto |
-|---|-------|-------|----------|
-| 1 | `[S]` | GHCR auth: contexto sudo vs user | `~/.docker/config.json` é per-user |
-| 2 | `[S]` | Nome da rede nginx-proxy varia por instalação | Verificar com `docker network ls` |
-| 3 | `[S]` | Secrets URL devem incluir `https://` | Zod `z.string().url()` rejeita sem protocolo |
-| 4 | `[S]` | Port mapping desnecessário com nginx-proxy | Sem `ports:` no compose de staging/prod |
-| 5 | `[S]` | DNS deve apontar para o IP do servidor | Let's Encrypt precisa de HTTP-01 challenge |
-| 6 | `[S]` | Concurrency groups bloqueiam deploys | `cancel-in-progress: false` enfileira |
-| 7 | `[S]` | Lint local antes de push para develop | Push dispara CD; erros desperdiçam ciclos |
-| 8 | `[S]` | Re-trigger sem `workflow_dispatch` | `gh run rerun` ou `git commit --allow-empty` |
-| 9 | `[B]` | Imagem `bitnami/postgresql` descontinuada | Usar `postgres:17` com `POSTGRES_USER` |
-| 10 | `[B]` | `--skipLibCheck` necessário no build | Prisma client gera tipos conflitantes |
-| 11 | `[B]` | Prettier não instalado como dependência | Precisa ser devDependency explícita |
-| 12 | `[B]` | Validação Zod falha no CI | Todas as vars do `src/env.ts` no step de teste |
-| 13 | `[B]` | `DATABASE_URL` com prefixo errado | Zod do projeto exige `postgres://` |
-| 14 | `[B]` | Vars Zod no Generate .env do CD | Atualizar CI e CD ao adicionar var no Zod |
-| 15 | `[B]` | `VIRTUAL_PORT` obrigatório para porta ≠ 80 | nginx-proxy default é 80 |
-| 16 | `[B]` | `continue-on-error` é paliativo | Usar apenas temporariamente |
-| 17 | `[B]` | `server.ts` guard para `NODE_ENV=test` | Evita `EADDRINUSE` nos testes |
-| 18 | `[F]` | VITE_* são build-time, não runtime | Env vars no container nginx não têm efeito |
-| 19 | `[F]` | Imagem Docker é environment-specific | Staging e prod são imagens diferentes |
-| 20 | `[F]` | `build-and-push` precisa de `environment:` | Para acessar VITE_* secrets como build-args |
-| 21 | `[F]` | Sem `VIRTUAL_PORT` para nginx | nginx escuta na porta 80 (default) |
-| 22 | `[F]` | Healthcheck Alpine: `127.0.0.1` | `localhost` pode resolver para `::1` (IPv6) |
-| 23 | `[F]` | `vite.config.ts` deve estar versionado | Sem ele, bundle sem plugin React → página branca |
-| 24 | `[F]` | Vitest coletando testes E2E Playwright | `vitest.config.ts` com `exclude: ['e2e/**']` |
-| 25 | `[F]` | `treeshake.moduleSideEffects` + circular chunks | Remover treeshake e manualChunks customizados |
-| 26 | `[S]` | GHCR login necessário no deploy job | `docker/login-action@v3` antes do pull (ambos os projetos) |
-| 27 | `[B]` | Biome verifica todos os arquivos por padrão | Usar `files.includes` em `biome.jsonc` para limitar escopo ao `src/` ou corrigir arquivos de config |
-| 28 | `[S]` | Primeiro deploy requer workflows no branch `develop` | CD Staging triggera em push para `develop` — workflows devem estar nesse branch antes do primeiro push |
+| # | Tag   | Lesson | Context |
+|---|-------|--------|---------|
+| 1 | `[S]` | GHCR auth: sudo vs user context | `~/.docker/config.json` is per-user |
+| 2 | `[S]` | nginx-proxy network name varies by installation | Check with `docker network ls` |
+| 3 | `[S]` | Secret URLs must include `https://` | Zod `z.string().url()` rejects without protocol |
+| 4 | `[S]` | Port mapping unnecessary with nginx-proxy | No `ports:` in staging/prod compose |
+| 5 | `[S]` | DNS must point to the server IP | Let's Encrypt needs HTTP-01 challenge |
+| 6 | `[S]` | Concurrency groups block deploys | `cancel-in-progress: false` queues |
+| 7 | `[S]` | Lint locally before pushing to develop | Push triggers CD; errors waste cycles |
+| 8 | `[S]` | Re-trigger without `workflow_dispatch` | `gh run rerun` or `git commit --allow-empty` |
+| 9 | `[B]` | `bitnami/postgresql` image discontinued | Use `postgres:17` with `POSTGRES_USER` |
+| 10 | `[B]` | `--skipLibCheck` required in build | Prisma client generates conflicting types |
+| 11 | `[B]` | Prettier not installed as dependency | Must be an explicit devDependency |
+| 12 | `[B]` | Zod validation fails in CI | All vars from `src/env.ts` in the test step |
+| 13 | `[B]` | `DATABASE_URL` with wrong prefix | Project's Zod requires `postgres://` |
+| 14 | `[B]` | Zod vars in Generate .env of CD | Update CI and CD when adding a var in Zod |
+| 15 | `[B]` | `VIRTUAL_PORT` required for port ≠ 80 | nginx-proxy default is 80 |
+| 16 | `[B]` | `continue-on-error` is a workaround | Use only temporarily |
+| 17 | `[B]` | `server.ts` guard for `NODE_ENV=test` | Prevents `EADDRINUSE` in tests |
+| 18 | `[F]` | VITE_* are build-time, not runtime | Env vars in the nginx container have no effect |
+| 19 | `[F]` | Docker image is environment-specific | Staging and prod are different images |
+| 20 | `[F]` | `build-and-push` needs `environment:` | To access VITE_* secrets as build-args |
+| 21 | `[F]` | No `VIRTUAL_PORT` for nginx | nginx listens on port 80 (default) |
+| 22 | `[F]` | Healthcheck Alpine: `127.0.0.1` | `localhost` may resolve to `::1` (IPv6) |
+| 23 | `[F]` | `vite.config.ts` must be versioned | Without it, bundle without React plugin → blank page |
+| 24 | `[F]` | Vitest collecting Playwright E2E tests | `vitest.config.ts` with `exclude: ['e2e/**']` |
+| 25 | `[F]` | `treeshake.moduleSideEffects` + circular chunks | Remove custom treeshake and manualChunks |
+| 26 | `[S]` | GHCR login required in deploy job | `docker/login-action@v3` before pull (both projects) |
+| 27 | `[B]` | Biome checks all files by default | Use `files.includes` in `biome.jsonc` to limit scope to `src/` or fix config files |
+| 28 | `[S]` | First deploy requires workflows on `develop` branch | CD Staging triggers on push to `develop` — workflows must be on that branch before the first push |
 
 ---
 
-## Comandos Úteis
+## Useful Commands
 
 ```bash
-# Ver status dos workflows
+# View workflow status
 gh run list --limit 5
 
-# Ver logs de um run específico
+# View logs of a specific run
 gh run view <run-id> --log-failed
 
-# Re-executar um workflow falhado
+# Re-run a failed workflow
 gh run rerun <run-id>
 
-# Listar secrets de um environment
+# List secrets of an environment
 gh secret list --env staging
 
-# Verificar imagens no GHCR
+# Check images on GHCR
 gh api orgs/JRC-Brasil/packages/container/<PACKAGE_NAME>/versions
 ```
 
 ### Backend
 
 ```bash
-# Rollback manual (path do compose varia por projeto)
-export IMAGE_TAG=<tag-anterior>
+# Manual rollback (compose path varies by project)
+export IMAGE_TAG=<previous-tag>
 docker compose -f <COMPOSE_PATH>/docker-compose.yml pull
 docker compose -f <COMPOSE_PATH>/docker-compose.yml up -d --force-recreate
 ```
@@ -180,37 +180,37 @@ docker compose -f <COMPOSE_PATH>/docker-compose.yml up -d --force-recreate
 ### Frontend
 
 ```bash
-# Rollback manual
-export IMAGE_TAG=<tag-anterior>
+# Manual rollback
+export IMAGE_TAG=<previous-tag>
 docker compose -f infra/dsr_web/docker-compose.yml pull
 docker compose -f infra/dsr_web/docker-compose.yml up -d --force-recreate
 
-# Verificar VITE_* embeddadas no JS
+# Check VITE_* embedded in JS
 docker exec service_report_web sh -c "grep -r 'jrcbrasil' /usr/share/nginx/html/assets/*.js | head -5"
 ```
 
 ---
 
-## Arquivos do Pipeline
+## Pipeline Files
 
 ### Backend
 
-| Arquivo                               | Descrição                               |
+| File                                  | Description                             |
 | ------------------------------------- | --------------------------------------- |
-| `.github/workflows/ci.yml`            | Pipeline CI (lint + test) para PRs      |
-| `.github/workflows/cd-staging.yml`    | Pipeline CD para staging (push develop) |
-| `.github/workflows/cd-production.yml` | Pipeline CD para produção (tags v\*)    |
-| `Dockerfile` ou `infra/*/Dockerfile`  | Multi-stage build (path varia por projeto) |
-| `infra/*/docker-compose.yml`          | Compose com imagem GHCR (path varia)   |
-| `src/env.ts`                          | Validação Zod de env vars               |
+| `.github/workflows/ci.yml`            | CI pipeline (lint + test) for PRs       |
+| `.github/workflows/cd-staging.yml`    | CD pipeline for staging (push develop)  |
+| `.github/workflows/cd-production.yml` | CD pipeline for production (tags v\*)   |
+| `Dockerfile` or `infra/*/Dockerfile`  | Multi-stage build (path varies by project) |
+| `infra/*/docker-compose.yml`          | Compose with GHCR image (path varies)   |
+| `src/env.ts`                          | Zod validation of env vars              |
 
 ### Frontend
 
-| Arquivo                               | Descrição                               |
+| File                                  | Description                             |
 | ------------------------------------- | --------------------------------------- |
-| `.github/workflows/ci.yml`            | Pipeline CI (lint + typecheck + test)   |
-| `.github/workflows/cd-staging.yml`    | Pipeline CD para staging (push develop) |
-| `.github/workflows/cd-production.yml` | Pipeline CD para produção (tags v\*)    |
+| `.github/workflows/ci.yml`            | CI pipeline (lint + typecheck + test)   |
+| `.github/workflows/cd-staging.yml`    | CD pipeline for staging (push develop)  |
+| `.github/workflows/cd-production.yml` | CD pipeline for production (tags v\*)   |
 | `infra/dsr_web/Dockerfile`            | Multi-stage build (node + nginx)        |
-| `infra/dsr_web/docker-compose.yml`    | Compose com imagem GHCR                 |
+| `infra/dsr_web/docker-compose.yml`    | Compose with GHCR image                 |
 | `infra/dsr_web/nginx.conf`            | nginx config (SPA try_files)            |

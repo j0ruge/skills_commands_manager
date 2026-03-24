@@ -6,57 +6,57 @@ metadata:
 
 ## Status Line Setup
 
-Wizard interativo para configurar o status line do Claude Code com secoes composiveis.
-Detecta automaticamente o OS e gera o script apropriado (`.sh` para Linux/macOS, `.ps1` para Windows).
+Interactive wizard to configure the Claude Code status line with composable sections.
+Automatically detects the OS and generates the appropriate script (`.sh` for Linux/macOS, `.ps1` for Windows).
 
-### Step 1 — Detectar OS
+### Step 1 — Detect OS
 
-Identificar a plataforma do usuario:
+Identify the user's platform:
 
 ```bash
 uname -s 2>/dev/null || echo "Windows"
 ```
 
-- **Linux / Darwin (macOS):** gerar `~/.claude/claude-status.sh` (Bash)
-- **Windows / MINGW / MSYS:** gerar `~/.claude/claude-status.ps1` (PowerShell)
+- **Linux / Darwin (macOS):** generate `~/.claude/claude-status.sh` (Bash)
+- **Windows / MINGW / MSYS:** generate `~/.claude/claude-status.ps1` (PowerShell)
 
-Armazenar a plataforma detectada para uso nos steps seguintes.
+Store the detected platform for use in the following steps.
 
-### Step 2 — Pre-requisitos
+### Step 2 — Prerequisites
 
-Verificar dependencias de acordo com o OS:
+Check dependencies according to the OS:
 
 **Linux/macOS:**
 
 ```bash
-# Verificar se jq esta instalado
-which jq || echo "ERRO: jq nao encontrado. Instale com: sudo apt install jq (ou brew install jq)"
+# Check if jq is installed
+which jq || echo "ERROR: jq not found. Install with: sudo apt install jq (or brew install jq)"
 
-# Verificar se ~/.claude/ existe
-ls -d ~/.claude/ || echo "ERRO: diretorio ~/.claude/ nao encontrado"
+# Check if ~/.claude/ exists
+ls -d ~/.claude/ || echo "ERROR: directory ~/.claude/ not found"
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-# PowerShell 5.1+ e nativo no Windows 10+ (ConvertFrom-Json disponivel)
+# PowerShell 5.1+ is native on Windows 10+ (ConvertFrom-Json available)
 $PSVersionTable.PSVersion
 
-# Verificar se ~/.claude/ existe
+# Check if ~/.claude/ exists
 Test-Path "$env:USERPROFILE\.claude"
 ```
 
-Se qualquer pre-requisito falhar, abortar e informar o usuario como resolver.
+If any prerequisite fails, abort and inform the user how to resolve it.
 
-### Step 3 — Escolha de secoes
+### Step 3 — Section selection
 
-Apresentar a tabela de secoes disponiveis e perguntar ao usuario quais deseja ativar.
-Por padrao, sugerir as secoes 1-5 (model, context bar, git branch, folder, cost).
+Present the table of available sections and ask the user which ones to activate.
+By default, suggest sections 1-5 (model, context bar, git branch, folder, cost).
 
-| # | Secao | Campos JSON | Emoji | Cor default |
-|---|-------|------------|-------|-------------|
+| # | Section | JSON Fields | Emoji | Default Color |
+|---|---------|------------|-------|---------------|
 | 1 | Model name | `model.display_name` | 🤖 | Magenta |
-| 2 | Context bar | `context_window.used_percentage`, `.context_window_size` | 📊 | Dinamica (green < 50%, yellow < 80%, red >= 80%) |
+| 2 | Context bar | `context_window.used_percentage`, `.context_window_size` | 📊 | Dynamic (green < 50%, yellow < 80%, red >= 80%) |
 | 3 | Git branch | `workspace.project_dir` + `git rev-parse` | 🌿 | Green |
 | 4 | Project folder | `workspace.project_dir` (basename) | 📁 | Blue |
 | 5 | Session cost | `cost.total_cost_usd` | 💰 | Yellow |
@@ -65,22 +65,22 @@ Por padrao, sugerir as secoes 1-5 (model, context bar, git branch, folder, cost)
 | 8 | Token counts | `context_window.total_input_tokens`, `.total_output_tokens` | 🔢 | White |
 | 9 | Vim mode | `vim.mode` | ⌨️ | Cyan |
 
-Perguntar: "Quais secoes deseja ativar? (ex: 1,2,3,4,5 ou 'all' para todas)"
+Ask: "Which sections do you want to activate? (e.g.: 1,2,3,4,5 or 'all' for all)"
 
-### Step 4 — Preferencias visuais
+### Step 4 — Visual preferences
 
-Perguntar ao usuario sobre personalizacao:
+Ask the user about customization:
 
-1. **Emoji style:** Manter emojis padrao da tabela ou desativar?
-2. **Color scheme:** Usar cores ANSI padrao ou sem cores (plain text)?
-3. **Largura da barra de contexto:** Numero de caracteres para a progress bar (padrao: 20)
-4. **Separador entre secoes:** Caractere separador (padrao: ` | `)
+1. **Emoji style:** Keep the default emojis from the table or disable them?
+2. **Color scheme:** Use default ANSI colors or no colors (plain text)?
+3. **Context bar width:** Number of characters for the progress bar (default: 20)
+4. **Section separator:** Separator character (default: ` | `)
 
-Se o usuario quiser manter os defaults, prosseguir sem mais perguntas.
+If the user wants to keep the defaults, proceed without further questions.
 
 ### Step 5 — Backup
 
-Verificar se ja existe um script de status line:
+Check if a status line script already exists:
 
 **Linux/macOS:**
 ```bash
@@ -92,8 +92,8 @@ ls ~/.claude/claude-status.sh 2>/dev/null
 Test-Path "$env:USERPROFILE\.claude\claude-status.ps1"
 ```
 
-Se existir, perguntar ao usuario se deseja fazer backup antes de sobrescrever.
-Se sim, copiar com timestamp:
+If it exists, ask the user whether to back it up before overwriting.
+If yes, copy with a timestamp:
 
 ```bash
 # Linux/macOS
@@ -105,18 +105,18 @@ cp ~/.claude/claude-status.sh ~/.claude/claude-status.sh.bak.$(date +%Y%m%d%H%M%
 Copy-Item "$env:USERPROFILE\.claude\claude-status.ps1" "$env:USERPROFILE\.claude\claude-status.ps1.bak.$(Get-Date -Format 'yyyyMMddHHmmss')"
 ```
 
-### Step 6 — Gerar script
+### Step 6 — Generate script
 
-Montar o script compondo apenas os blocos das secoes escolhidas pelo usuario.
+Build the script by composing only the blocks for the sections chosen by the user.
 
-#### Header do script
+#### Script header
 
 **Bash (`claude-status.sh`):**
 
 ```bash
 #!/bin/bash
 # Claude Code Status Line Script
-# Generated by /statusline:setup on {DATA_GERACAO}
+# Generated by /statusline:setup on {GENERATION_DATE}
 
 input=$(cat)
 
@@ -135,7 +135,7 @@ WHITE='\033[0;37m'
 
 ```powershell
 # Claude Code Status Line Script
-# Generated by /statusline:setup on {DATA_GERACAO}
+# Generated by /statusline:setup on {GENERATION_DATE}
 
 # Force UTF-8 output so emojis render correctly in Windows Terminal
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -172,11 +172,11 @@ $eKeyboard = [char]::ConvertFromUtf32(0x2328)  # Section 9 - Vim mode
 > PowerShell 5.1 cannot parse inline emoji — it breaks on surrogate pairs.
 > Always use `[char]::ConvertFromUtf32(0x...)` stored in variables, then interpolate the variable.
 
-#### Blocos composiveis por secao
+#### Composable blocks per section
 
-Incluir apenas os blocos das secoes selecionadas no step 3.
+Include only the blocks for the sections selected in step 3.
 
-**Secao 1 — Model name:**
+**Section 1 — Model name:**
 
 Bash:
 ```bash
@@ -190,7 +190,7 @@ $model = if ($json.model.display_name) { $json.model.display_name } else { "Unkn
 $parts += "$eRobot $MAGENTA$model$RST"
 ```
 
-**Secao 2 — Context bar:**
+**Section 2 — Context bar:**
 
 Bash:
 ```bash
@@ -232,7 +232,7 @@ $parts += "$eChart $barColor$pct%$RST of ${totalK}k [$barColor$bar$RST]"
 > **IMPORTANT (Windows):** Use `#` and `-` for the progress bar instead of `█` and `░`.
 > The Unicode block characters do not render correctly in most Windows terminal fonts.
 
-**Secao 3 — Git branch:**
+**Section 3 — Git branch:**
 
 Bash:
 ```bash
@@ -249,7 +249,7 @@ if (-not $branch) { $branch = "n/a" }
 $parts += "$eLeaf $GREEN$branch$RST"
 ```
 
-**Secao 4 — Project folder:**
+**Section 4 — Project folder:**
 
 Bash:
 ```bash
@@ -265,7 +265,7 @@ $folder = Split-Path $projectDir -Leaf
 $parts += "$eFolder $BLUE$folder$RST"
 ```
 
-**Secao 5 — Session cost:**
+**Section 5 — Session cost:**
 
 Bash:
 ```bash
@@ -283,7 +283,7 @@ $parts += "$eMoney $YELLOW`$$costFormatted$RST"
 > **IMPORTANT (Windows):** Always format cost to 2 decimal places with `"{0:N2}" -f [double]$cost`.
 > Without formatting, the raw float value displays too many decimals (e.g. `$0.55226375` instead of `$0.55`).
 
-**Secao 6 — Session duration:**
+**Section 6 — Session duration:**
 
 Bash:
 ```bash
@@ -301,7 +301,7 @@ $durationSec = [math]::Floor(($durationMs % 60000) / 1000)
 $parts += "$eTimer $CYAN${durationMin}m${durationSec}s$RST"
 ```
 
-**Secao 7 — Lines changed:**
+**Section 7 — Lines changed:**
 
 Bash:
 ```bash
@@ -317,7 +317,7 @@ $removed = if ($json.cost.total_lines_removed) { $json.cost.total_lines_removed 
 $parts += "$ePen $GREEN+$added$RST/$RED-$removed$RST"
 ```
 
-**Secao 8 — Token counts:**
+**Section 8 — Token counts:**
 
 Bash:
 ```bash
@@ -337,7 +337,7 @@ $outputK = [math]::Floor($outputTokens / 1000)
 $parts += "$eNumbers $WHITE${inputK}k in / ${outputK}k out$RST"
 ```
 
-**Secao 9 — Vim mode:**
+**Section 9 — Vim mode:**
 
 Bash:
 ```bash
@@ -354,13 +354,13 @@ if ($json.vim -and $json.vim.mode) {
 }
 ```
 
-#### Footer do script — juntar as partes com o separador
+#### Script footer — join parts with the separator
 
 **Bash:**
 
 ```bash
 # Join parts with separator
-separator="{SEPARADOR}"
+separator="{SEPARATOR}"
 output=""
 for i in "${!parts[@]}"; do
   if [ "$i" -gt 0 ]; then
@@ -376,35 +376,35 @@ echo -e "$output"
 
 ```powershell
 # Join parts with separator
-$separator = "{SEPARADOR}"
+$separator = "{SEPARATOR}"
 $output = $parts -join $separator
 Write-Host $output
 ```
 
-Substituir `{BAR_WIDTH}` pela largura escolhida no step 4 (padrao: 20).
-Substituir `{SEPARADOR}` pelo separador escolhido no step 4 (padrao: ` | `).
-Substituir `{DATA_GERACAO}` pela data atual.
-Se o usuario desativou emojis, remover os emojis de cada bloco.
-Se o usuario desativou cores, remover as variaveis ANSI e referencias a cores.
+Replace `{BAR_WIDTH}` with the width chosen in step 4 (default: 20).
+Replace `{SEPARATOR}` with the separator chosen in step 4 (default: ` | `).
+Replace `{GENERATION_DATE}` with the current date.
+If the user disabled emojis, remove the emojis from each block.
+If the user disabled colors, remove the ANSI variables and color references.
 
-Escrever o script no path apropriado usando a tool Write.
+Write the script to the appropriate path using the Write tool.
 
-### Step 7 — Permissoes
+### Step 7 — Permissions
 
-**Linux/macOS apenas:**
+**Linux/macOS only:**
 
 ```bash
 chmod +x ~/.claude/claude-status.sh
 ```
 
-No Windows, PowerShell scripts nao precisam de chmod. Porem, a execution policy padrao do Windows bloqueia scripts nao assinados.
-Em vez de pedir ao usuario para alterar a policy do sistema, a solucao e usar `-ExecutionPolicy Bypass` no comando do `settings.json` (ja tratado no Step 8).
+On Windows, PowerShell scripts do not need chmod. However, the default Windows execution policy blocks unsigned scripts.
+Instead of asking the user to change the system policy, the solution is to use `-ExecutionPolicy Bypass` in the `settings.json` command (already handled in Step 8).
 
-> **IMPORTANTE:** NAO recomendar `Set-ExecutionPolicy` — e mais simples e seguro usar `-ExecutionPolicy Bypass` diretamente no comando de invocacao.
+> **IMPORTANT:** Do NOT recommend `Set-ExecutionPolicy` — it is simpler and safer to use `-ExecutionPolicy Bypass` directly in the invocation command.
 
-### Step 8 — Atualizar settings.json
+### Step 8 — Update settings.json
 
-Ler o arquivo `~/.claude/settings.json` e inserir ou atualizar o campo `statusLine`:
+Read the `~/.claude/settings.json` file and insert or update the `statusLine` field:
 
 **Linux/macOS:**
 
@@ -428,17 +428,17 @@ Ler o arquivo `~/.claude/settings.json` e inserir ou atualizar o campo `statusLi
 }
 ```
 
-> **IMPORTANT:** O campo `statusLine` requer `"type": "command"` (NAO `"enabled": true`).
-> Usar `"enabled": true` causa erro de validacao no `settings.json`.
-> No Windows, incluir `-ExecutionPolicy Bypass` para evitar bloqueio por execution policy.
+> **IMPORTANT:** The `statusLine` field requires `"type": "command"` (NOT `"enabled": true`).
+> Using `"enabled": true` causes a validation error in `settings.json`.
+> On Windows, include `-ExecutionPolicy Bypass` to avoid execution policy blocking.
 
-Usar a tool Read para ler o settings.json atual, preservar todas as configuracoes existentes, e usar a tool Edit para atualizar apenas o campo `statusLine`. Se o campo ja existir, sobrescrever. Se nao existir, adicionar.
+Use the Read tool to read the current settings.json, preserve all existing settings, and use the Edit tool to update only the `statusLine` field. If the field already exists, overwrite it. If it does not exist, add it.
 
-### Step 9 — Preview e verificacao
+### Step 9 — Preview and verification
 
-Rodar o script gerado com um JSON de exemplo para mostrar o resultado ao usuario:
+Run the generated script with a sample JSON to show the result to the user:
 
-**JSON de teste:**
+**Test JSON:**
 
 ```json
 {
@@ -449,7 +449,7 @@ Rodar o script gerado com um JSON de exemplo para mostrar o resultado ao usuario
     "total_input_tokens": 85000,
     "total_output_tokens": 12000
   },
-  "workspace": { "project_dir": "{PROJECT_DIR_ATUAL}" },
+  "workspace": { "project_dir": "{CURRENT_PROJECT_DIR}" },
   "cost": {
     "total_cost_usd": 0.05,
     "total_duration_ms": 120000,
@@ -459,45 +459,45 @@ Rodar o script gerado com um JSON de exemplo para mostrar o resultado ao usuario
 }
 ```
 
-Substituir `{PROJECT_DIR_ATUAL}` pelo diretorio de trabalho atual do usuario.
+Replace `{CURRENT_PROJECT_DIR}` with the user's current working directory.
 
 **Linux/macOS:**
 ```bash
-echo '<JSON_DE_TESTE>' | ~/.claude/claude-status.sh
+echo '<TEST_JSON>' | ~/.claude/claude-status.sh
 ```
 
 **Windows:**
 ```powershell
-'<JSON_DE_TESTE>' | powershell -ExecutionPolicy Bypass -File ~/.claude/claude-status.ps1
+'<TEST_JSON>' | powershell -ExecutionPolicy Bypass -File ~/.claude/claude-status.ps1
 ```
 
-> **IMPORTANT (Windows):** No JSON de teste, usar barras normais (`/`) nos paths, nao backslash (`\`).
-> Backslash em JSON e interpretado como escape sequence pelo `ConvertFrom-Json` do PowerShell,
-> causando erro: "Sequencia de escape nao reconhecida".
-> Exemplo: usar `"C:/Users/pc_admin"` em vez de `"C:\\Users\\pc_admin"`.
+> **IMPORTANT (Windows):** In the test JSON, use forward slashes (`/`) in paths, not backslashes (`\`).
+> Backslashes in JSON are interpreted as escape sequences by PowerShell's `ConvertFrom-Json`,
+> causing an error: "Unrecognized escape sequence".
+> Example: use `"C:/Users/pc_admin"` instead of `"C:\\Users\\pc_admin"`.
 
-Exibir o output ao usuario e confirmar que o status line esta configurado corretamente.
+Display the output to the user and confirm that the status line is configured correctly.
 
-Se o output estiver correto, informar: "Status line configurado com sucesso! Reinicie o Claude Code para ver o novo status line em acao."
+If the output is correct, inform: "Status line configured successfully! Restart Claude Code to see the new status line in action."
 
-Se houver erro, diagnosticar e corrigir o script.
+If there is an error, diagnose and fix the script.
 
-### Notas
+### Notes
 
-- O status line e atualizado automaticamente pelo Claude Code a cada interacao
-- O JSON de entrada contem dados da sessao atual (modelo, contexto, custos, etc.)
-- Para reconfigurar, basta rodar `/statusline:setup` novamente
-- Para desativar, remover o bloco `statusLine` do `settings.json`
-- O script deve executar rapidamente (< 100ms) para nao impactar a experiencia
+- The status line is automatically updated by Claude Code on each interaction
+- The input JSON contains data from the current session (model, context, costs, etc.)
+- To reconfigure, simply run `/statusline:setup` again
+- To disable, remove the `statusLine` block from `settings.json`
+- The script should execute quickly (< 100ms) to avoid impacting the experience
 
-### Troubleshooting Windows
+### Windows Troubleshooting
 
-| Problema | Causa | Solucao |
-|----------|-------|---------|
-| Emojis aparecem como `??` | Falta encoding UTF-8 no script | Adicionar `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` no header |
-| Emojis causam erro de parsing | Emoji inline no codigo PowerShell | Usar variaveis com `[char]::ConvertFromUtf32()` — nunca emoji direto na string |
-| Barra de progresso com diamantes | Caracteres `█░` incompativeis com fonte | Usar `#` e `-` no lugar |
-| Custo com muitas casas decimais | Valor float nao formatado | Formatar com `"{0:N2}" -f [double]$cost` |
-| Script bloqueado por execution policy | Policy padrao do Windows | Usar `-ExecutionPolicy Bypass` no comando do settings.json |
-| Erro "sequencia de escape nao reconhecida" | Backslash `\` no JSON de teste | Usar barras normais `/` nos paths dentro do JSON |
-| Validacao do settings.json falha | Campo `"enabled": true` invalido | Usar `"type": "command"` em vez de `"enabled": true` |
+| Problem | Cause | Solution |
+|---------|-------|----------|
+| Emojis appear as `??` | Missing UTF-8 encoding in the script | Add `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` in the header |
+| Emojis cause parsing error | Inline emoji in PowerShell code | Use variables with `[char]::ConvertFromUtf32()` — never embed emoji directly in the string |
+| Progress bar shows diamonds | Characters `█░` incompatible with font | Use `#` and `-` instead |
+| Cost with too many decimal places | Unformatted float value | Format with `"{0:N2}" -f [double]$cost` |
+| Script blocked by execution policy | Default Windows policy | Use `-ExecutionPolicy Bypass` in the settings.json command |
+| Error "unrecognized escape sequence" | Backslash `\` in test JSON | Use forward slashes `/` in paths inside the JSON |
+| settings.json validation fails | Invalid `"enabled": true` field | Use `"type": "command"` instead of `"enabled": true` |

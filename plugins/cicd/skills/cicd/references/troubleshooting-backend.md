@@ -1,14 +1,14 @@
 # Troubleshooting — Backend (Node.js/Express/Prisma)
 
-Cenários de troubleshooting específicos do backend. Para cenários de infra compartilhados, ver `troubleshooting-shared.md`.
+Backend-specific troubleshooting scenarios. For shared infrastructure scenarios, see `troubleshooting-shared.md`.
 
 ---
 
-## Diagnóstico por Exit Code
+## Diagnosis by Exit Code
 
-### Exit 1 — Falha Genérica (Test/Lint)
+### Exit 1 — Generic Failure (Test/Lint)
 
-**Causas comuns:** ESLint warnings com `--max-warnings 0`, Prettier formatting mismatch, Jest test failures, TypeScript compilation errors.
+**Common causes:** ESLint warnings with `--max-warnings 0`, Prettier formatting mismatch, Jest test failures, TypeScript compilation errors.
 
 ```bash
 gh run view <run-id> --log-failed
@@ -17,11 +17,11 @@ yarn lint && yarn lint:check && yarn test
 
 ### Exit 2 — Misuse of Command
 
-**Causa:** Flag inválida ou script não encontrado no package.json.
+**Cause:** Invalid flag or script not found in package.json.
 
 ### Exit 127 — Command Not Found
 
-**Causa:** Binário não instalado (ex: `prettier` sem devDependency).
+**Cause:** Binary not installed (e.g., `prettier` without devDependency).
 
 ```bash
 grep "prettier" package.json
@@ -30,7 +30,7 @@ yarn add -D prettier
 
 ### Exit 134 — SIGABRT (OOM)
 
-**Sintoma:** `FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`
+**Symptom:** `FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`
 
 ```yaml
 run: node --max-old-space-size=4096 node_modules/.bin/jest --forceExit
@@ -38,25 +38,25 @@ run: node --max-old-space-size=4096 node_modules/.bin/jest --forceExit
 
 ### Exit 137 — SIGKILL (OOM Killer)
 
-**Causa:** O sistema operacional matou o processo por uso excessivo de memória.
+**Cause:** The operating system killed the process due to excessive memory usage.
 
-**Correção:** Aumentar memória do runner ou otimizar testes (`--runInBand`).
+**Fix:** Increase runner memory or optimize tests (`--runInBand`).
 
 ---
 
-## Por Mensagem de Erro
+## By Error Message
 
 ### `manifest unknown`
 
-**Causa:** Imagem Docker não existe no registry (ex: `bitnami/postgresql:17` descontinuada).
+**Cause:** Docker image does not exist in the registry (e.g., `bitnami/postgresql:17` discontinued).
 
 ```yaml
-# ANTES (não funciona)
+# BEFORE (does not work)
 image: bitnami/postgresql:17
 env:
   POSTGRESQL_USERNAME: test_user
 
-# DEPOIS
+# AFTER
 image: postgres:17
 env:
   POSTGRES_USER: test_user
@@ -64,13 +64,13 @@ env:
 
 ### Zod Validation Error
 
-**3 cenários distintos:**
+**3 distinct scenarios:**
 
-1. **No CI (step de teste) — `invalid_type`:** Variável falta no bloco `env:` do step de teste.
-2. **No deploy (container) — `invalid_type`:** Variável falta no step "Generate .env" do workflow CD.
-3. **No deploy (container) — `invalid_string`:** Variável presente mas com formato inválido (ex: URL sem `https://`).
+1. **In CI (test step) — `invalid_type`:** Variable missing from the `env:` block of the test step.
+2. **In deploy (container) — `invalid_type`:** Variable missing from the "Generate .env" step of the CD workflow.
+3. **In deploy (container) — `invalid_string`:** Variable present but with invalid format (e.g., URL without `https://`).
 
-**Prevenção:** Ao adicionar nova variável no Zod (`src/env.ts`), atualizar AMBOS: o bloco `env:` dos testes E o `printf` do Generate .env nos workflows CD.
+**Prevention:** When adding a new variable in Zod (`src/env.ts`), update BOTH: the `env:` block of the tests AND the `printf` of the Generate .env in the CD workflows.
 
 ### `EADDRINUSE`
 
@@ -78,7 +78,7 @@ env:
 Error: listen EADDRINUSE: address already in use :::3003
 ```
 
-**Causa:** `server.ts` chama `app.listen()` durante os testes. Ver `test-fixes-backend.md` §4.
+**Cause:** `server.ts` calls `app.listen()` during tests. See `test-fixes-backend.md` section 4.
 
 ### `Cannot find module` (case-sensitivity)
 
@@ -86,21 +86,21 @@ Error: listen EADDRINUSE: address already in use :::3003
 Cannot find module '@repositories/vessel.repository'
 ```
 
-**Causa:** Path no import não corresponde ao case real do arquivo no Linux. Ver `test-fixes-backend.md` §1.
+**Cause:** Import path does not match the actual file case on Linux. See `test-fixes-backend.md` section 1.
 
-### `TS2688` / `TS2724` — Erros de tipo Prisma
+### `TS2688` / `TS2724` — Prisma type errors
 
-**Causa:** Incompatibilidade entre tipos gerados pelo Prisma e versão do TypeScript.
+**Cause:** Incompatibility between Prisma-generated types and TypeScript version.
 
-**Correção:** Adicionar `--skipLibCheck` ao comando `tsc`.
+**Fix:** Add `--skipLibCheck` to the `tsc` command.
 
-### `npx biome check .` falha em arquivos não-source
+### `npx biome check .` fails on non-source files
 
-**Sintoma:** Biome reporta erros em arquivos de config (`biome.jsonc`, `tsconfig.json`, `Dockerfile`, etc.) ou em arquivos fora de `src/`.
+**Symptom:** Biome reports errors in config files (`biome.jsonc`, `tsconfig.json`, `Dockerfile`, etc.) or in files outside `src/`.
 
-**Causa:** Biome verifica todos os arquivos por padrão, diferente de ESLint que geralmente é configurado para escopo específico.
+**Cause:** Biome checks all files by default, unlike ESLint which is usually configured for a specific scope.
 
-**Correção:** Configurar `files.includes` em `biome.jsonc` para limitar o escopo:
+**Fix:** Configure `files.includes` in `biome.jsonc` to limit the scope:
 
 ```jsonc
 {
@@ -110,72 +110,72 @@ Cannot find module '@repositories/vessel.repository'
 }
 ```
 
-Ou corrigir os erros reportados nos arquivos de config (empty blocks, `node:` protocol, naming conventions).
+Or fix the reported errors in the config files (empty blocks, `node:` protocol, naming conventions).
 
 ### Biome 2.x config error (`unknown key "ignore"`)
 
-**Sintoma:** `biome check` falha com erro de configuração ao migrar para Biome 2.x.
+**Symptom:** `biome check` fails with a configuration error when migrating to Biome 2.x.
 
-**Causa:** Biome 2.x removeu a chave `files.ignore` em favor de `files.includes` (lógica invertida).
+**Cause:** Biome 2.x removed the `files.ignore` key in favor of `files.includes` (inverted logic).
 
-**Correção:** Substituir `files.ignore` por `files.includes` no `biome.jsonc`.
+**Fix:** Replace `files.ignore` with `files.includes` in `biome.jsonc`.
 
 ### `ERR_CONNECTION_REFUSED` via browser (nginx-proxy OK)
 
-**Sintoma:** Browser retorna `ERR_CONNECTION_REFUSED`. Certificado SSL renova normalmente. Container da API está rodando.
+**Symptom:** Browser returns `ERR_CONNECTION_REFUSED`. SSL certificate renews normally. API container is running.
 
-**Causa:** `VIRTUAL_PORT` não definido no `docker-compose.yml`. nginx-proxy usa default porta 80, mas a API escuta em outra porta (ex: 3003).
+**Cause:** `VIRTUAL_PORT` not defined in `docker-compose.yml`. nginx-proxy uses default port 80, but the API listens on a different port (e.g., 3003).
 
-**Diagnóstico:**
+**Diagnosis:**
 
 ```bash
 docker exec nginx-proxy cat /etc/nginx/conf.d/default.conf | grep -A 10 "api.dsr"
 docker exec service_report_api sh -c "wget -qO- http://localhost:3003/health || curl -s http://localhost:3003"
 ```
 
-**Correção:** Adicionar `VIRTUAL_PORT: '${API_PORT}'` no `environment` do `docker-compose.yml`.
+**Fix:** Add `VIRTUAL_PORT: '${API_PORT}'` in the `environment` section of `docker-compose.yml`.
 
 ---
 
-## Fluxo de Diagnóstico — Backend
+## Diagnosis Flow — Backend
 
 ```text
-Workflow falhou
-├── Qual job?
+Workflow failed
+├── Which job?
 │   ├── lint → ESLint warnings / Prettier / Biome check
-│   ├── test → Ver exit code e mensagem
-│   │   ├── Exit 134/137 → OOM → aumentar heap
-│   │   ├── Exit 1 → Ler log do Jest
+│   ├── test → Check exit code and message
+│   │   ├── Exit 134/137 → OOM → increase heap
+│   │   ├── Exit 1 → Read Jest log
 │   │   │   ├── Cannot find module → case-sensitivity
-│   │   │   ├── ZodError invalid_type → env var faltante
-│   │   │   ├── ZodError invalid_string → URL sem https://
+│   │   │   ├── ZodError invalid_type → missing env var
+│   │   │   ├── ZodError invalid_string → URL without https://
 │   │   │   ├── EADDRINUSE → guard server.ts
-│   │   │   └── Assertion error → dados/seed
-│   │   └── Exit 127 → dependência faltante
-│   ├── build-and-push → Dockerfile ou GHCR auth
-│   └── deploy → Runner offline, compose error ou env var
-│       ├── ZodError invalid_type → env var faltante no Generate .env
-│       ├── ZodError invalid_string → URL sem https://
-│       ├── ERR_CONNECTION_REFUSED → VIRTUAL_PORT não definido
+│   │   │   └── Assertion error → data/seed
+│   │   └── Exit 127 → missing dependency
+│   ├── build-and-push → Dockerfile or GHCR auth
+│   └── deploy → Runner offline, compose error, or env var
+│       ├── ZodError invalid_type → missing env var in Generate .env
+│       ├── ZodError invalid_string → URL without https://
+│       ├── ERR_CONNECTION_REFUSED → VIRTUAL_PORT not defined
 │       └── runner offline → systemctl status actions.runner.*
-└── Reproduzir localmente antes de alterar o workflow
+└── Reproduce locally before modifying the workflow
 ```
 
 ---
 
-## Comandos de Diagnóstico
+## Diagnostic Commands
 
 ```bash
-# Logs completos do run falhado
+# Full logs of the failed run
 gh run view <run-id> --log-failed
 
-# Logs de um job específico
+# Logs of a specific job
 gh run view <run-id> --log --job <job-id>
 
-# Re-executar apenas jobs falhados
+# Re-run only failed jobs
 gh run rerun <run-id> --failed
 
-# Status do runner no servidor
+# Runner status on the server
 sudo systemctl status actions.runner.*
 journalctl -u actions.runner.*.service --since "1 hour ago"
 ```

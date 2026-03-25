@@ -2,6 +2,21 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.2.0] - 2026-03-25
+
+### Fixed (Windows / Git Bash)
+
+- Path normalization: convert `C:\...` to `/c/...` so `git -C` and `basename` work in Git Bash
+- `realpath --relative-to` fallback: chain through `python3` → `python` → `realpath` → `basename`
+- Auto-detect Windows OS and use ASCII-safe progress bar characters (`#`/`-` instead of `█`/`░`)
+
+### Changed
+
+- Use `.workspace.current_dir` as primary JSON field (fallback to `.workspace.project_dir` and `.cwd`)
+- All Bash git commands now use the normalized `$cwd` variable from the header
+- Project folder section computes relative path within the git repo instead of just `basename`
+- Added troubleshooting entries for path normalization and realpath issues
+
 ## [1.1.0] - 2026-03-16
 
 ### Corrigido (Windows)

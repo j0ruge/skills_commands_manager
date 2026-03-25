@@ -1,7 +1,7 @@
 ---
 description: Interactive wizard to configure Claude Code status line — sections, colors, emojis, and separator. Cross-platform (Bash + PowerShell).
 metadata:
-  version: 1.0.0
+  version: 1.2.0
 ---
 
 ## Status Line Setup
@@ -120,6 +120,21 @@ Build the script by composing only the blocks for the sections chosen by the use
 
 input=$(cat)
 
+# Windows path normalization (Git Bash receives C:\... but needs /c/...)
+# This is critical — without it, git -C and basename fail silently on Windows.
+_raw_cwd=$(echo "$input" | jq -r '.workspace.current_dir // .workspace.project_dir // .cwd // ""')
+cwd=$(echo "$_raw_cwd" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):/|/\L\1/|')
+
+# Detect Windows and use ASCII-safe progress bar characters
+# Unicode block characters (█░) don't render correctly in most Windows terminal fonts.
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || -n "$WINDIR" ]]; then
+  BAR_FILLED="#"
+  BAR_EMPTY="-"
+else
+  BAR_FILLED="█"
+  BAR_EMPTY="░"
+fi
+
 # ANSI color codes
 RST='\033[0m'
 GREEN='\033[0;32m'
@@ -205,8 +220,8 @@ else BAR_COLOR="$RED"; fi
 filled=$((pct * {BAR_WIDTH} / 100))
 empty=$(({BAR_WIDTH} - filled))
 bar=""
-for ((i = 0; i < filled; i++)); do bar+="█"; done
-for ((i = 0; i < empty; i++)); do bar+="░"; done
+for ((i = 0; i < filled; i++)); do bar+="$BAR_FILLED"; done
+for ((i = 0; i < empty; i++)); do bar+="$BAR_EMPTY"; done
 
 parts+=("📊 ${BAR_COLOR}${pct}%${RST} of ${total_k}k [${BAR_COLOR}${bar}${RST}]")
 ```
@@ -236,8 +251,8 @@ $parts += "$eChart $barColor$pct%$RST of ${totalK}k [$barColor$bar$RST]"
 
 Bash:
 ```bash
-project_dir=$(echo "$input" | jq -r '.workspace.project_dir // .cwd // "."')
-branch=$(git -C "$project_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "n/a")
+# Uses $cwd from the header (already normalized for Windows)
+branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "n/a")
 parts+=("🌿 ${GREEN}${branch}${RST}")
 ```
 
@@ -253,8 +268,17 @@ $parts += "$eLeaf $GREEN$branch$RST"
 
 Bash:
 ```bash
-project_dir=$(echo "$input" | jq -r '.workspace.project_dir // .cwd // "."')
-folder=$(basename "$project_dir")
+# Uses $cwd from the header (already normalized for Windows)
+# realpath --relative-to is unavailable on Git Bash; fallback through python → realpath → basename
+if git_root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null); then
+  folder=$(python3 -c "import os,sys; print(os.path.relpath(sys.argv[1],sys.argv[2]))" "$cwd" "$git_root" 2>/dev/null \
+    || python -c "import os,sys; print(os.path.relpath(sys.argv[1],sys.argv[2]))" "$cwd" "$git_root" 2>/dev/null \
+    || realpath --relative-to="$git_root" "$cwd" 2>/dev/null \
+    || basename "$cwd")
+  [ "$folder" = "." ] && folder=$(basename "$git_root")
+else
+  folder=$(basename "$cwd")
+fi
 parts+=("📁 ${BLUE}${folder}${RST}")
 ```
 
@@ -449,7 +473,7 @@ Run the generated script with a sample JSON to show the result to the user:
     "total_input_tokens": 85000,
     "total_output_tokens": 12000
   },
-  "workspace": { "project_dir": "{CURRENT_PROJECT_DIR}" },
+  "workspace": { "current_dir": "{CURRENT_PROJECT_DIR}", "project_dir": "{CURRENT_PROJECT_DIR}" },
   "cost": {
     "total_cost_usd": 0.05,
     "total_duration_ms": 120000,
@@ -501,3 +525,5 @@ If there is an error, diagnose and fix the script.
 | Script blocked by execution policy | Default Windows policy | Use `-ExecutionPolicy Bypass` in the settings.json command |
 | Error "unrecognized escape sequence" | Backslash `\` in test JSON | Use forward slashes `/` in paths inside the JSON |
 | settings.json validation fails | Invalid `"enabled": true` field | Use `"type": "command"` instead of `"enabled": true` |
+| Status line shows no data (Bash on Windows) | `git -C` fails because paths use `C:\...` format | Normalize paths in the script header: convert `\` to `/` and `C:/` to `/c/` (see header template) |
+| `realpath --relative-to` not found | Git Bash doesn't ship `realpath` with `--relative-to` | Use the Python fallback chain: `python3` → `python` → `realpath` → `basename` |

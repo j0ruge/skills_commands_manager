@@ -8,16 +8,31 @@ Plugin marketplace for Claude Code — skills and commands for development workf
 |--------|---------|-------------|
 | **cicd** | 2.3.0 | Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners |
 | **deploy** | 1.3.0 | Automated deployment commands — staging and production pipelines via CD |
-| **codereview** | 1.2.0 | Code review toolkit: pre-PR review with severity grading + CodeRabbit PR comment resolver. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET. |
+| **codereview** | 1.2.0 | Stack-agnostic code review powered by the Zen of Python — 5 analysis principles, bug/security/performance/type-safety detection, test coverage mapping, and A-F grading. Presets: TypeScript/React (default), C#/.NET (`dotnet`), Vue, Angular, Node, Python, Go. |
 | **statusline** | 1.1.0 | Interactive setup for Claude Code status line — cross-platform (Bash + PowerShell) |
 | **release** | 1.0.0 | Automated GitHub Release creation with categorized release notes from git history |
 
 ### codereview
 
+Automated pre-PR code review built on **The Zen of Python** (PEP 20) as a universal, language-agnostic analysis framework. Five timeless principles — *readability*, *explicitness*, *simplicity*, *flatness*, and *error handling* — are applied as analysis lenses to any codebase, regardless of language or framework.
+
+**Analysis layers:**
+- **Zen Principles** — readability, explicit > implicit, simple > complex, flat > nested, errors never silent
+- **Bug Detection** — null access, race conditions, async pitfalls, equality checks
+- **Security** — exposed secrets, injection vectors, UI leaks, input validation
+- **Performance** — unnecessary allocations, missing memoization, per-call instantiation
+- **Type Safety** — unsafe casting, missing exhaustive checks, service locator anti-patterns
+- **Test Coverage** — maps production files to tests, flags stale or missing coverage
+
+**Framework presets** (`frameworkPatterns`):
+- `react` (default) / `vue` / `angular` / `node` — web-frontend checks (hooks, JSX, XSS, memoization)
+- `dotnet` — C#/.NET checks (async void, IDisposable, MessageBox in services, MVVM violations)
+- `generic` — universal checks only
+
 | Skill | Description |
 |-------|-------------|
-| `/codereview:codereview` | Automated pre-PR code review — diffs against main, analyzes all changed files, produces severity-rated findings and a final grade (A-F) |
-| `/codereview:coderabbit_pr` | Extracts CodeRabbit comments from a PR, creates a structured checklist, verifies and fixes each item, and runs regression tests |
+| `/codereview` | Full pre-PR review — diffs against base branch, severity-rated findings (CRITICAL to LOW), and a final grade (A-F) |
+| `/codereview:coderabbit_pr` | Resolves CodeRabbit bot comments on a GitHub PR — extracts, triages, fixes, and runs regression tests |
 
 ### deploy
 

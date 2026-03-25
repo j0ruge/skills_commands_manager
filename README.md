@@ -9,7 +9,7 @@ Plugin marketplace for Claude Code — skills and commands for development workf
 | **cicd** | 2.3.0 | Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners |
 | **deploy** | 1.3.0 | Automated deployment commands — staging and production pipelines via CD |
 | **codereview** | 1.2.0 | Stack-agnostic code review powered by the Zen of Python — 5 analysis principles, bug/security/performance/type-safety detection, test coverage mapping, and A-F grading. Presets: TypeScript/React (default), C#/.NET (`dotnet`), Vue, Angular, Node, Python, Go. |
-| **statusline** | 1.2.0 | Interactive setup for Claude Code status line — cross-platform (Bash + PowerShell) with Windows/Git Bash compatibility |
+| **statusline** | 1.3.0 | Interactive setup for Claude Code status line — cross-platform (Bash + PowerShell), no jq dependency, Windows/Git Bash compatible |
 | **release** | 1.0.0 | Automated GitHub Release creation with categorized release notes from git history |
 
 ### codereview

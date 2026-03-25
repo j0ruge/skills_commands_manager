@@ -2,14 +2,20 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
-## [1.2.0] - 2026-03-25
+## [1.3.0] - 2026-03-25
+
+### Breaking Change
+
+- **Removed `jq` dependency** — Bash template now uses Python (`json` module) for all JSON parsing
+- `jq` is no longer a prerequisite; Python 3.x is the only runtime dependency for Bash scripts
+- All JSON fields are extracted in a single Python call in the script header, then used as shell variables
 
 ### Fixed (Windows / Git Bash)
 
 - Path normalization: convert `C:\...` to `/c/...` so `git -C` and `basename` work in Git Bash
 - `realpath --relative-to` fallback: chain through `python3` → `python` → `realpath` → `basename`
 - Auto-detect Windows OS and use ASCII-safe progress bar characters (`#`/`-` instead of `█`/`░`)
-- Context percentage: use `jq | floor` instead of `cut -d. -f1` for robust integer parsing (fixes `--% ` display)
+- Context percentage: robust integer parsing via Python `math.floor()` (fixes `--% ` display)
 - Cost formatting: apply `printf "%.2f"` to avoid raw float display (e.g., `$0.05226375` → `$0.05`)
 
 ### Changed
@@ -17,7 +23,7 @@ Formato: [Semantic Versioning](https://semver.org/)
 - Use `.workspace.current_dir` as primary JSON field (fallback to `.workspace.project_dir` and `.cwd`)
 - All Bash git commands now use the normalized `$cwd` variable from the header
 - Project folder section computes relative path within the git repo instead of just `basename`
-- Added troubleshooting entries for path normalization and realpath issues
+- Added troubleshooting entries for jq-missing, path normalization, and realpath issues
 
 ## [1.1.0] - 2026-03-16
 

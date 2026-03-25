@@ -9,6 +9,8 @@ Formato: [Semantic Versioning](https://semver.org/)
 - Path normalization: convert `C:\...` to `/c/...` so `git -C` and `basename` work in Git Bash
 - `realpath --relative-to` fallback: chain through `python3` → `python` → `realpath` → `basename`
 - Auto-detect Windows OS and use ASCII-safe progress bar characters (`#`/`-` instead of `█`/`░`)
+- Context percentage: use `jq | floor` instead of `cut -d. -f1` for robust integer parsing (fixes `--% ` display)
+- Cost formatting: apply `printf "%.2f"` to avoid raw float display (e.g., `$0.05226375` → `$0.05`)
 
 ### Changed
 

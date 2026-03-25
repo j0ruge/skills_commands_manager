@@ -209,7 +209,7 @@ $parts += "$eRobot $MAGENTA$model$RST"
 
 Bash:
 ```bash
-pct=$(echo "$input" | jq -r '.context_window.used_percentage // 0' | cut -d. -f1)
+pct=$(echo "$input" | jq -r '(.context_window.used_percentage // 0) | floor')
 total=$(echo "$input" | jq -r '.context_window.context_window_size // 200000')
 total_k=$((total / 1000))
 
@@ -293,7 +293,8 @@ $parts += "$eFolder $BLUE$folder$RST"
 
 Bash:
 ```bash
-cost=$(echo "$input" | jq -r '.cost.total_cost_usd // 0')
+cost_raw=$(echo "$input" | jq -r '.cost.total_cost_usd // 0')
+cost=$(printf "%.2f" "$cost_raw")
 parts+=("💰 ${YELLOW}\$${cost}${RST}")
 ```
 

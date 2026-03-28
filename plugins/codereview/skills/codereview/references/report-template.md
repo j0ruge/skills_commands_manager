@@ -55,6 +55,7 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 | Security | {n} | {n} | {n} | {n} | {n} |
 | Performance | {n} | {n} | {n} | {n} | {n} |
 | Type Safety | {n} | {n} | {n} | {n} | {n} |
+| Documentation | {n} | {n} | {n} | {n} | {n} |
 
 ---
 
@@ -77,6 +78,26 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 
 ---
 
+### Documentation Sync
+
+| Area | Status | File | Notes |
+|------|--------|------|-------|
+| Docstrings | OK / MISSING | src/services/foo.ts | 3 exported functions without JSDoc |
+| OpenAPI | OK / STALE | docs/openapi.json | New endpoint not documented |
+| README | OK / STALE | README.md | New feature not in features list |
+| Backend Rules | OK / STALE | .claude/rules/backend-api.md | Model count outdated |
+| Frontend Rules | OK / N/A | .claude/rules/frontend-react.md | — |
+| CLAUDE.md | OK / N/A | CLAUDE.md | — |
+| MEMORY.md | OK / N/A | MEMORY.md | — |
+
+**Docstring coverage of changed CODE files**: {WITH_DOCS}/{Total_changed_functions} functions/methods have up-to-date documentation ({percentage}%)
+
+> Only count functions/methods/classes that are new or modified in this branch.
+> A function counts as "documented" if it has a JSDoc/XML doc/docstring that matches its current behavior.
+> If the project specifies a documentation language (e.g., PT-BR), docstrings in the wrong language count as MISSING.
+
+---
+
 ### Overall Grade
 
 Rate each criterion A through F:
@@ -89,6 +110,7 @@ Rate each criterion A through F:
 | Security | | |
 | Performance | | |
 | Test Coverage | | |
+| Documentation | | |
 | **Overall** | **{grade}** | |
 
 ## Grading Scale

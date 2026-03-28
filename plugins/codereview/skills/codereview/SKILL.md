@@ -1,15 +1,18 @@
 ---
 name: codereview
 metadata:
-  version: 1.2.0
+  version: 1.3.0
 description: >
   Automated pre-PR code review. Diffs current branch against main, analyzes all
   changed files, and produces a structured report with severity-rated findings,
-  test coverage assessment, and a final grade. Use this skill whenever the user
-  asks for code review, pre-PR review, code analysis, quality check, or wants
-  to review changes before merging — even if they don't say "codereview" explicitly.
+  test coverage assessment, documentation sync verification, and a final grade.
+  Checks docstring coverage, OpenAPI/README/rules sync, and code quality.
+  Use this skill whenever the user asks for code review, pre-PR review, code
+  analysis, quality check, documentation check, or wants to review changes
+  before merging — even if they don't say "codereview" explicitly.
   Triggers: "code review", "pre-PR review", "review my code", "quality check",
-  "review changes", "codereview", "check my code", "analyze code", "PR review"
+  "review changes", "codereview", "check my code", "analyze code", "PR review",
+  "check docs", "documentation review"
 ---
 
 ## User Input
@@ -21,7 +24,7 @@ $ARGUMENTS
 You **MUST** consider the user input before proceeding (if not empty). Valid inputs:
 
 - Empty: full review of all changed files
-- Focus area: `security`, `performance`, `types`, `bugs`, `tests`
+- Focus area: `security`, `performance`, `types`, `bugs`, `tests`, `docs`
 - File path or glob: review only matching changed files (e.g. `src/components/Quote*`)
 - Key-value overrides: `baseDir=app/ fileExtensions=ts,js uiLibReducedRigor=true` (see `references/configuration.md`)
 
@@ -375,6 +378,59 @@ Apply these 5 principles as analysis lenses to all `CODE` files (reduced rigor f
 - Missing null checks on deserialized objects (JSON/XML)
 - Casting with `(Type)obj` instead of pattern matching (`is Type t`)
 - `object` or `dynamic` used where a generic `<T>` or interface fits
+
+#### 6.5 Documentation Sync & Docstring Coverage
+
+Stale documentation is worse than no documentation — it actively misleads. This pass verifies that project documentation stays synchronized with code changes and that new/modified code has proper inline documentation.
+
+**Why this matters:** When documentation drifts from code, the next developer (or AI assistant) trusts the docs, makes wrong assumptions, and introduces bugs or writes incompatible code. Catching drift at review time prevents compounding errors.
+
+**6.5.1 Docstring / Code Comment Coverage**
+
+For every **new or modified** function, method, class, or exported constant in the diff, check whether it has documentation appropriate to its language:
+
+- **TypeScript/JavaScript**: JSDoc comment (`/** ... */`) on exported functions, classes, interfaces, and type aliases. At minimum: a one-line description. Parameters and return types documented when not obvious from the signature. If the project's CLAUDE.md or rules specify a documentation language (e.g., "docstrings in Brazilian Portuguese"), flag docstrings written in the wrong language as **MEDIUM**.
+- **C# / .NET**: XML documentation comments (`/// <summary>`) on public members.
+- **Python**: Docstrings on public functions, classes, and modules.
+- **Other languages**: Language-appropriate documentation conventions.
+
+**Severity rules for missing docstrings:**
+- Exported/public function or class without any doc comment → **HIGH** (public API contract undocumented)
+- Internal/private function without doc comment → **LOW** (nice to have)
+- Test callback (`describe`, `it`, `test`) without doc comment → **MEDIUM** if the project's CLAUDE.md or conventions explicitly require it, **LOW** otherwise
+- Modified function where the doc comment no longer matches the behavior (e.g., doc says "returns X" but code now returns Y) → **HIGH** (actively misleading)
+
+**6.5.2 Project Documentation Sync**
+
+When the diff introduces new API endpoints, data models, configuration, features, or architectural patterns, verify that the corresponding project documentation was also updated in the same branch. This prevents the common failure mode where code ships but docs stay stale.
+
+**Check each applicable item:**
+
+| What changed in code | Documentation to verify | Severity if missing |
+|---------------------|------------------------|-------------------|
+| New/modified API endpoints (routes, controllers) | OpenAPI/Swagger spec (`docs/openapi.json`, `swagger.yaml`, or equivalent) | **HIGH** |
+| New/modified API endpoints | `README.md` API section (if project has one listing routes) | **MEDIUM** |
+| New data model / DB migration / schema change (Prisma, EF Core, Django, etc.) | OpenAPI spec (if model surfaces in API), README data model section | **MEDIUM** |
+| New route patterns, middleware, or architectural conventions | Framework rules file (e.g., `.claude/rules/backend-api.md`, `.claude/rules/frontend-react.md`) | **MEDIUM** |
+| New frontend public routes | Framework rules file listing public routes | **MEDIUM** |
+| New features visible to end users | `README.md` features/roadmap section | **LOW** |
+| Changes to stack, dependencies, or project structure | `CLAUDE.md` or equivalent project instructions | **LOW** |
+| New patterns, conventions, or corrections to stale info | `MEMORY.md` or equivalent persistent memory index (if project uses one) | **LOW** |
+
+**How to check:**
+1. From the diff, identify what was added/changed (new routes, new models, new features).
+2. For each applicable row in the table above, check if the corresponding documentation file appears in `CHANGED_FILES`.
+3. If the documentation file was NOT changed, flag it as a finding with the indicated severity.
+4. If the documentation file WAS changed, spot-check that the changes are consistent (e.g., new route appears in both code and OpenAPI spec).
+
+**Detection heuristics (language-agnostic — apply whichever match the project):**
+- New route file, controller, or API endpoint → check OpenAPI/Swagger and README API table
+- New DB migration, schema model, or entity class → check OpenAPI (if model exposed) and model count in rules
+- New page component, public route, or navigation entry → check frontend rules for route listing
+- New service directory, module, or architectural pattern → check rules file for structure tree
+- New NuGet/npm/pip dependency or configuration section → check CLAUDE.md or equivalent for stack listing
+
+**Skip this sub-pass** if the project has no documentation files at all (no README, no OpenAPI, no rules files). Don't penalize projects that haven't started documenting — only penalize projects that have documentation but let it drift.
 
 ### 7. Assign Severities
 

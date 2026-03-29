@@ -1,0 +1,21 @@
+#!/bin/bash
+# Pre-commit hook: valida consistencia de versoes entre marketplace.json e plugin.json.
+# Instalar: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Ou: git config core.hooksPath scripts/
+
+set -e
+
+# Verificar se algum arquivo de plugin foi modificado
+STAGED=$(git diff --cached --name-only)
+
+if echo "$STAGED" | grep -qE '(plugin\.json|marketplace\.json|CHANGELOG\.md)'; then
+    echo "[pre-commit] Plugin files changed — validating version consistency..."
+    python3 scripts/validate-versions.py
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "[pre-commit] BLOCKED: Version mismatch detected."
+        echo "Fix with: python scripts/validate-versions.py --fix"
+        echo "Then: git add .claude-plugin/marketplace.json && git commit"
+        exit 1
+    fi
+fi

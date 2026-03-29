@@ -2,6 +2,23 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.3.0] - 2026-03-28
+
+### Added
+
+- Detection pass 6.5 Documentation Sync & Docstring Coverage
+  - 6.5.1 Docstring coverage: verifica JSDoc/XML doc/docstrings em funcoes novas/modificadas, detecta idioma se projeto especifica (PT-BR, etc.)
+  - 6.5.2 Project documentation sync: verifica se README, OpenAPI, rules, CLAUDE.md e MEMORY.md foram atualizados junto com o codigo
+- Focus area `docs` para revisar apenas documentacao
+- Suporte a docstrings de Go e Shell scripts
+- Grade "Documentation" no relatorio final
+- Secao Documentation Sync no report-template.md
+
+### Changed
+
+- Agnostico de linguagem para deteccao de docstrings (TS/JS, C#/.NET, Python, Go, Shell)
+- Step 9 agora mapeia focus areas para passes especificos explicitamente
+
 ## [1.2.0] - 2026-03-25
 
 ### Added

@@ -1,0 +1,486 @@
+---
+name: dotnet-wpf-design
+description: >
+  Guia de design profissional para WPF/XAML com Fluent Design (WPF-UI). Catalogo de solucoes
+  documentadas para problemas de layout, espacamento, tipografia, sizing de controles e dark
+  theme. Use quando o usuario quiser: corrigir layout de formulario WPF; ajustar espacamento
+  entre campos; resolver toolbar/header que rola junto com conteudo; aumentar tamanho de
+  controles pequenos ou com texto cortado; melhorar respiro visual entre secoes; aplicar
+  tipografia Fluent Design; usar cores corretas de dark theme; diagnosticar problemas de
+  ScrollViewer aninhado; alinhar labels com campos; auditar qualidade visual de uma pagina
+  XAML. Tambem use quando o usuario mencionar "design WPF", "layout XAML", "campos pequenos",
+  "texto cortado", "espacamento", "respiro", "controle apertado", "formulario feio",
+  "dark theme cores", "Fluent Design tokens", "ScrollViewer problema", ou "toolbar rola".
+  NAO use para: setup inicial de projeto (use dotnet-desktop-setup), MVVM/ViewModel (use
+  dotnet-wpf-mvvm), testes E2E (use dotnet-wpf-e2e-testing), logica de negocio, APIs, deploy.
+---
+
+# dotnet-wpf-design
+
+Skill para diagnosticar e corrigir problemas de design em interfaces WPF/XAML, aplicando
+boas praticas do Microsoft Fluent Design System e WPF-UI.
+
+Usa **progressive disclosure** — este arquivo contem o workflow, cookbook de solucoes e
+tabela de tokens essenciais. Guias detalhados com exemplos completos ficam em `references/`
+e sao lidos sob demanda.
+
+---
+
+## Versao e Changelog
+
+**v1.1.0** (2026-04-01)
+- Deep dive no WPF-UI: catalogo completo de 90+ controles em `references/wpfui-controls-catalog.md`
+- ControlAppearance enum (Primary, Danger, Success, Caution) para semantica de cores
+- Accent color system (brushes de accent do sistema)
+- DI services: IContentDialogService, ISnackbarService pattern
+- Controles novos documentados: NumberBox, AutoSuggestBox, ToggleSwitch, ContentDialog, Snackbar, Flyout, CalendarDatePicker, PassiveScrollViewer
+- FontTypography completado: TitleLarge (40px), Display (68px)
+- SystemThemeWatcher e Window backdrop types
+- 6 URLs novas em sources.md (API reference, Gallery app, source code)
+
+**v1.0.0** (2026-04-01)
+- Criacao inicial da skill
+- Cookbook: toolbar fixa com NavigationView, Grid vs StackPanel, espacamento Fluent, sizing de controles
+- Fluent Design tokens: spacing ramp, type ramp, dark theme colors, WCAG
+- 6 referencias detalhadas (layout, form, tipografia, controls, wpfui, sources)
+
+---
+
+## Quando usar
+
+- Campos de formulario muito pequenos ou com texto cortado
+- Falta de espacamento/respiro entre campos, secoes ou controles
+- Toolbar ou header que rola junto com o conteudo da pagina
+- Labels desalinhados ou truncados
+- Controles customizados (UserControl) com sizing inadequado
+- Cores hardcoded em vez de theme brushes
+- FontSize inconsistente entre controles
+- Auditar qualidade visual de uma pagina XAML existente
+- Planejar layout de nova pagina seguindo Fluent Design
+
+---
+
+## Fluent Design Quick Reference
+
+Estes sao os valores mais usados. Para tabelas completas, leia `references/typography-colors.md`.
+
+### Spacing Ramp (unidade base: 4px)
+
+| Token | Valor | Uso comum |
+|-------|-------|-----------|
+| XS | 4px | Margem minima entre elementos inline |
+| S | 8px | Entre botoes, controle e header |
+| M | 12px | Entre controle e label, entre cards |
+| L | 16px | Padding de superficie, margem de pagina |
+| XL | 20px | Espacamento medio entre secoes |
+| XXL | **24px** | **Entre campos de formulario** (padrao Fluent) |
+| XXXL | 32px | Entre grupos de campos |
+
+### Control Heights
+
+| Controle | Altura padrao | Altura compacta |
+|----------|---------------|-----------------|
+| TextBox | 32px | 24px |
+| ComboBox | 32-44px | 24px |
+| Button | 32px | 24px |
+| ToggleButton | 32px | 28px |
+| Touch target minimo | 24x24 (WCAG AA) | — |
+| Touch target recomendado | 40x40 | — |
+
+### Type Ramp (Windows 11)
+
+| Estilo | Tamanho | Peso | Uso |
+|--------|---------|------|-----|
+| Caption | 12px | Regular | Textos auxiliares, hints |
+| Body | **14px** | Regular | **Labels, texto padrao** |
+| Body Strong | 14px | SemiBold | Sub-headers de secao |
+| Body Large | 18px | Regular | Subtitulos |
+| Subtitle | 20px | SemiBold | Titulos de grupo |
+| Title | 28px | SemiBold | Titulo de pagina |
+| Title Large | 40px | SemiBold | Hero text, splash |
+| Display | 68px | SemiBold | Numeros grandes, dashboards |
+
+### Dark Theme — Cores Essenciais
+
+| Elemento | Cor | Brush WPF-UI |
+|----------|-----|-------------|
+| Background app | `#202020` | `SolidBackgroundFillColorBase` |
+| Card/secao | `#0DFFFFFF` | `CardBackgroundFillColorDefault` |
+| Texto primario | `#FFFFFF` | `TextFillColorPrimaryBrush` |
+| Texto secundario | `#C5FFFFFF` (~77%) | `TextFillColorSecondaryBrush` |
+| Texto desabilitado | `#5DFFFFFF` (~36%) | `TextFillColorDisabledBrush` |
+| Borda controle | `#12FFFFFF` | `ControlStrokeColorDefault` |
+| Separador/divider | `#15FFFFFF` | `DividerStrokeColorDefault` |
+
+---
+
+## Workflow: 3 Passos
+
+### Passo 1 — Auditar (diagnostico)
+
+Leia o XAML da pagina e aplique este checklist:
+
+**Layout:**
+- [ ] Pagina com toolbar/header usa `ScrollViewer.CanContentScroll="False"`?
+- [ ] ScrollViewer esta em Grid com `Height="*"`, nao dentro de StackPanel?
+- [ ] Nenhum ScrollViewer aninhado desnecessario?
+- [ ] Grid principal usa RowDefinitions adequadas (Auto + *)?
+
+**Espacamento:**
+- [ ] Rows de formulario tem Margin vertical >= 8px? (ideal: 24px Fluent)
+- [ ] Secoes (Border/Card) tem Padding >= 16px?
+- [ ] Separacao entre secoes >= 12px?
+- [ ] Labels tem margem do campo >= 8px?
+
+**Sizing:**
+- [ ] TextBox/ComboBox tem MinHeight >= 32px?
+- [ ] ToggleButtons tem MinWidth >= 48px e MinHeight >= 28px?
+- [ ] ComboBox tem Width suficiente para mostrar conteudo (minimo 80px para 4 chars)?
+- [ ] Controles customizados (UserControl) tem Height >= 32px?
+
+**Tipografia:**
+- [ ] Body text usa FontSize >= 14px?
+- [ ] Headers de secao usam FontSize >= 14px SemiBold?
+- [ ] Labels usam Foreground com contraste >= 4.5:1 vs background?
+- [ ] Nenhum FontSize < 12px (minimo legivel)?
+
+**Theme:**
+- [ ] Cores usam DynamicResource brushes em vez de valores hardcoded?
+- [ ] BorderBrush usa theme brush em vez de `#555`?
+- [ ] Foreground de labels usa `TextFillColorSecondaryBrush` em vez de `#B0B0B0`?
+
+### Passo 2 — Corrigir
+
+Para cada problema encontrado, consulte o cookbook abaixo e aplique a solucao documentada.
+Para detalhes e exemplos completos, leia o arquivo correspondente em `references/`.
+
+### Passo 3 — Verificar
+
+1. `dotnet build` — confirmar que compila sem erros
+2. Teste visual — abrir a aplicacao e verificar:
+   - Controles legiveis com texto completo visivel
+   - Espacamento confortavel entre campos
+   - Toolbar fixa ao rolar conteudo
+   - Contraste adequado entre texto e fundo
+
+---
+
+## Cookbook — Solucoes Documentadas
+
+### LAYOUT-001: Toolbar fixa com WPF-UI NavigationView
+
+**Problema:** Botoes de toolbar rolam junto com o conteudo da pagina quando hospedada
+dentro de um `NavigationView` do WPF-UI.
+
+**Causa raiz:** O `NavigationViewContentPresenter` do WPF-UI envolve o conteudo da pagina
+em um `DynamicScrollViewer` interno (propriedade `IsDynamicScrollViewerEnabled = true`).
+Isso faz com que o Grid inteiro da pagina (incluindo toolbar em Row 0) role.
+
+**Solucao:** Adicionar `ScrollViewer.CanContentScroll="False"` no elemento `<Page>`:
+
+```xml
+<Page
+    x:Class="MeuProjeto.Pages.MinhaPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    ScrollViewer.CanContentScroll="False"
+    Loaded="Page_Loaded">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />  <!-- Toolbar: fica fixa -->
+            <RowDefinition Height="*" />     <!-- Conteudo: rola independente -->
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal">
+            <!-- botoes da toolbar -->
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <!-- conteudo scrollavel -->
+        </ScrollViewer>
+    </Grid>
+</Page>
+```
+
+**Como funciona:** O `NavigationViewContentPresenter` le
+`ScrollViewer.GetCanContentScroll(page)`. Quando retorna `false`, seta
+`IsDynamicScrollViewerEnabled = false`, removendo o wrapper `DynamicScrollViewer`.
+
+**Referencia:** WPF-UI GitHub Issue #1041, PR #1504
+
+---
+
+### LAYOUT-002: Grid vs StackPanel vs DockPanel
+
+**Regra geral:**
+- **Grid** — layout principal de formularios. Define linhas e colunas explicitas.
+  Sempre use para alinhar labels com campos.
+- **StackPanel** — apenas para listas curtas de elementos inline (botoes de toolbar,
+  grupo de toggles). **Nunca** como container principal de formulario.
+- **DockPanel** — layout de shell (menu + conteudo + status bar).
+  `LastChildFill="True"` para o conteudo principal.
+
+**Por que nao usar StackPanel para formularios:** StackPanel oferece espaco infinito
+na direcao de orientacao. Isso impede que controles com `Width="*"` se expandam e
+que ScrollViewer calcule a viewport corretamente.
+
+Detalhes em `references/layout-patterns.md`.
+
+---
+
+### LAYOUT-003: ScrollViewer — problemas comuns
+
+**Problema 1: ScrollViewer dentro de StackPanel nao rola**
+StackPanel da altura infinita ao ScrollViewer, que entao nao precisa rolar.
+**Fix:** Colocar ScrollViewer em Grid com `Height="*"`.
+
+**Problema 2: ScrollViewers aninhados**
+Dois ScrollViewers competem pelo scroll do mouse.
+**Fix:** Manter apenas um ScrollViewer por eixo. O interno rola conteudo, o externo
+nao deve existir (ou ser desabilitado).
+
+Detalhes em `references/layout-patterns.md`.
+
+---
+
+### FORM-001: Espacamento entre campos de formulario
+
+**Problema:** Campos de formulario muito juntos, sem respiro visual.
+
+**Solucao Fluent Design:**
+
+| Contexto | Margin recomendado |
+|----------|--------------------|
+| Entre campos (row margin) | `Margin="0,12,0,0"` (compacto) ou `Margin="0,24,0,0"` (padrao) |
+| Entre grupos/secoes | `Margin="0,32,0,0"` ou `Margin="0,48,0,0"` |
+| Padding de secao (Border) | `Padding="16,12,16,16"` |
+| Entre botoes | `Margin="0,0,8,0"` |
+| Entre label e campo (vertical) | `Margin="0,0,0,8"` no label |
+
+**Antes (apertado):**
+```xml
+<RowDefinition Height="Auto" />  <!-- Margin="0,4" = 4px, muito pouco -->
+<TextBlock Margin="0,4" />
+```
+
+**Depois (confortavel):**
+```xml
+<RowDefinition Height="Auto" />  <!-- Margin="0,12" = 12px compacto -->
+<TextBlock Margin="0,12,0,0" />  <!-- ou Margin="0,8" para 8px simetrico -->
+```
+
+Detalhes em `references/form-design.md`.
+
+---
+
+### FORM-002: Sizing minimo de controles
+
+**Problema:** TextBox, ComboBox ou controles customizados muito pequenos,
+texto cortado ou ilegivel.
+
+**Valores minimos recomendados:**
+
+| Controle | MinHeight | MinWidth | FontSize |
+|----------|-----------|----------|----------|
+| TextBox | 32px | — | 14px (Body) |
+| ComboBox | 32px | 100px | 14px |
+| ToggleButton | 28px | 48px | 12px (Caption) |
+| UserControl (date/time) | 32px | — | 13-14px |
+| ComboBox (mes abreviado) | 32px | 80px | 13px |
+| TextBox (2 digitos) | 32px | 40px | 13px |
+| TextBox (4 digitos) | 32px | 55px | 13px |
+
+**Exemplo — controle de data (AptDateWPF):**
+```xml
+<UserControl Height="32">
+    <StackPanel Orientation="Horizontal">
+        <TextBox Width="40" FontSize="13" MinHeight="28" />
+        <TextBlock Text="/" Margin="4,0" FontSize="13" />
+        <ComboBox Width="80" FontSize="13" MinHeight="28" />
+        <TextBlock Text="/" Margin="4,0" FontSize="13" />
+        <TextBox Width="55" FontSize="13" MinHeight="28" />
+    </StackPanel>
+</UserControl>
+```
+
+Detalhes em `references/controls-sizing.md`.
+
+---
+
+### THEME-001: DynamicResource brushes vs cores hardcoded
+
+**Problema:** Cores como `#B0B0B0`, `#555`, `#444` hardcoded no XAML nao acompanham
+mudancas de tema e podem ter contraste inadequado.
+
+**Solucao:** Usar DynamicResource com brushes do WPF-UI:
+
+```xml
+<!-- Antes (hardcoded) -->
+<TextBlock Foreground="#B0B0B0" />
+<Border BorderBrush="#555" />
+
+<!-- Depois (theme-aware) -->
+<TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+<Border BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" />
+```
+
+**Mapeamento de cores comuns:**
+
+| Hardcoded | DynamicResource equivalente |
+|-----------|-----------------------------|
+| `#B0B0B0` (label) | `TextFillColorSecondaryBrush` |
+| `#555` (borda) | `ControlStrokeColorDefaultBrush` |
+| `#444` (separador) | `DividerStrokeColorDefaultBrush` |
+| `White` (texto) | `TextFillColorPrimaryBrush` |
+| `#2D2D30` (card bg) | `CardBackgroundFillColorDefaultBrush` |
+
+Detalhes em `references/wpfui-components.md`.
+
+---
+
+### TYPO-001: Tipografia consistente com Type Ramp
+
+**Problema:** FontSize inconsistente entre controles, headers, labels.
+
+**Solucao:** Seguir o type ramp do Windows 11:
+
+```xml
+<!-- Titulo da pagina -->
+<TextBlock FontSize="28" FontWeight="SemiBold" />  <!-- Title -->
+
+<!-- Header de secao -->
+<TextBlock FontSize="14" FontWeight="SemiBold" />  <!-- Body Strong -->
+
+<!-- Label de campo -->
+<TextBlock FontSize="14" />  <!-- Body -->
+
+<!-- Texto auxiliar / hint -->
+<TextBlock FontSize="12" />  <!-- Caption -->
+```
+
+**Com WPF-UI (preferivel):**
+```xml
+<ui:TextBlock FontTypography="Title" Text="Titulo" />
+<ui:TextBlock FontTypography="BodyStrong" Text="Secao" />
+<ui:TextBlock FontTypography="Body" Text="Label" />
+<ui:TextBlock FontTypography="Caption" Text="Hint" />
+```
+
+Detalhes em `references/typography-colors.md`.
+
+---
+
+### CTRL-001: Catalogo de controles WPF-UI
+
+**Problema:** O projeto usa controles WPF padrao (TextBox, ComboBox) quando existem
+equivalentes WPF-UI com funcionalidades extras (PlaceholderText, Icon, ClearButton).
+
+**Controles mais uteis para formularios:**
+
+| Controle WPF-UI | Substitui | Vantagem |
+|------------------|-----------|----------|
+| `ui:TextBox` | TextBox | PlaceholderText, Icon, ClearButtonEnabled |
+| `ui:NumberBox` | TextBox (numerico) | Validacao, Min/Max, SpinButtons, MaxDecimalPlaces |
+| `ui:AutoSuggestBox` | TextBox + filtro | Dropdown de sugestoes, busca integrada |
+| `ui:ToggleSwitch` | CheckBox/ToggleButton | On/Off semantico, OnContent/OffContent |
+| `ui:CalendarDatePicker` | UserControl custom | Calendario popup nativo |
+| `ui:ContentDialog` | MessageBox.Show() | Modal async, DI-friendly, Fluent styled |
+| `ui:Snackbar` | — | Toast temporario para feedback (sucesso/erro) |
+
+Catalogo completo com exemplos XAML em `references/wpfui-controls-catalog.md`.
+
+---
+
+### CTRL-002: ControlAppearance — semantica de cores em botoes
+
+**Problema:** Botoes importantes (Export PDF, Delete) nao se distinguem visualmente.
+
+**Solucao:** Usar `Appearance` nos `ui:Button`:
+
+```xml
+<ui:Button Content="Export PDF" Appearance="Primary" />   <!-- Accent color -->
+<ui:Button Content="Delete" Appearance="Danger" />        <!-- Vermelho -->
+<ui:Button Content="Save" Appearance="Success" />         <!-- Verde -->
+<ui:Button Content="Warning" Appearance="Caution" />      <!-- Laranja -->
+<ui:Button Content="Cancel" Appearance="Secondary" />     <!-- Neutro -->
+```
+
+Valores disponiveis: Primary, Secondary, Info, Dark, Light, Danger, Success, Caution, Transparent.
+
+---
+
+## Anti-padroes desta Skill
+
+1. **StackPanel como container de formulario** — StackPanel da espaco infinito e impede
+   controles `Width="*"` de expandir. Use Grid com ColumnDefinitions.
+
+2. **ScrollViewer dentro de StackPanel** — o ScrollViewer recebe altura infinita e nunca
+   rola. Sempre coloque ScrollViewer em Grid com `RowDefinition Height="*"`.
+
+3. **Cores hardcoded (#B0B0B0, #555)** — nao acompanham mudanca de tema. Use
+   `DynamicResource` com brushes do WPF-UI.
+
+4. **FontSize < 12px** — ilegivel. Minimo absoluto e 12px (Caption). Body text deve
+   ser 14px.
+
+5. **Controles sem MinHeight** — TextBox e ComboBox ficam microscopicos quando o conteudo
+   e vazio. Sempre defina MinHeight >= 32px.
+
+6. **Margin="0,4" entre campos** — 4px e muito pouco respiro. Minimo recomendado: 8px.
+   Padrao Fluent: 24px.
+
+7. **Width fixo em ComboBox muito estreito** — ComboBox com Width=65 nao mostra "Jun."
+   completo com padding. Minimo: 80px para meses abreviados.
+
+8. **Height fixo em UserControl sem MinHeight nos filhos** — o UserControl tem Height=27
+   mas os controles internos podem precisar de mais espaco. Defina MinHeight nos filhos.
+
+---
+
+## Detalhes Criticos (aprendidos nos testes)
+
+1. **ScrollViewer.CanContentScroll="False" e a unica forma confiavel** de desabilitar o
+   DynamicScrollViewer do NavigationView no WPF-UI 4.2.0. `ScrollViewer.VerticalScrollBarVisibility="Disabled"` no Page NAO funciona — o NavigationViewContentPresenter ignora essa propriedade.
+
+2. **WPF-UI herda do Frame** — o `NavigationViewContentPresenter` estende `Frame`, nao
+   `ContentPresenter`. Isso significa que a pagina nao recebe constraints de tamanho
+   automaticamente como em ContentPresenter.
+
+3. **DynamicResource vs StaticResource** — para cores de tema, SEMPRE use `DynamicResource`.
+   `StaticResource` nao atualiza quando o tema muda em runtime.
+
+4. **ComboBox items com espacos iniciais** — se os ComboBoxItems usam `Content="   Good"`
+   com espacos para padding, considere usar `Padding` em vez de espacos. Espacos podem
+   causar problemas ao comparar valores.
+
+5. **ContentDialogHost e o elemento XAML correto** — nao usar `ContentPresenter` ou
+   `ContentDialogPresenter`. O elemento correto do WPF-UI 4.2.0 e `<ui:ContentDialogHost>`.
+
+6. **`using Wpf.Ui.Extensions;` necessario para ShowSimpleDialogAsync** — este e um
+   extension method, nao um metodo da interface. Sem o using, o codigo compila mas
+   o metodo nao e encontrado.
+
+7. **`using Wpf.Ui.Controls;` conflita com System.Windows.Controls** — TextBox, ComboBox,
+   Page, Button existem em ambos namespaces. Usar type aliases para tipos especificos do
+   WPF-UI: `using ControlAppearance = Wpf.Ui.Controls.ControlAppearance;`
+
+8. **`async void` so em event handlers UI** — metodos como SaveFormDataJSON, LoadFormDataJSON
+   que usam `await _contentDialogService.ShowSimpleDialogAsync()` devem ser `async Task`,
+   nao `async void`. Excecoes em `async void` nao sao observaveis e podem crashar a app.
+
+---
+
+## Guias de Referencia (progressive disclosure level 3)
+
+Leia estes arquivos **somente quando necessario** no passo correspondente:
+
+| Arquivo | Leia quando... |
+|---------|----------------|
+| `references/layout-patterns.md` | Problemas de ScrollViewer, toolbar fixa, Grid vs StackPanel |
+| `references/form-design.md` | Espacamento entre campos, label alignment, respiro |
+| `references/typography-colors.md` | FontSize, type ramp, cores dark theme, contraste WCAG |
+| `references/controls-sizing.md` | MinHeight/MinWidth, ComboBox, TextBox, touch targets |
+| `references/wpfui-components.md` | Card, CardExpander, InfoBar, DynamicResource brushes, ControlAppearance, DI services |
+| `references/wpfui-controls-catalog.md` | Catalogo completo de 90+ controles WPF-UI com exemplos XAML |
+| `references/sources.md` | URLs de documentacao oficial e fontes da pesquisa |

@@ -47,6 +47,14 @@
       "description": "Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with --path filter for monorepo component releases. Contributor resolution via org membership cross-reference.",
       "category": "development",
       "keywords": ["release", "release-notes", "github-release", "changelog", "git-tag", "semver", "gh-cli", "dotnet", "monorepo"]
+    },
+    {
+      "name": "dotnet-wpf",
+      "source": "./plugins/dotnet-wpf",
+      "version": "1.0.0",
+      "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
+      "category": "development",
+      "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows"]
     }
   ]
 }

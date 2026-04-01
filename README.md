@@ -11,6 +11,7 @@ Plugin marketplace for Claude Code — skills and commands for development workf
 | **codereview** | 1.3.0 | Stack-agnostic code review powered by the Zen of Python — 5 analysis principles, bug/security/performance/type-safety detection, test coverage mapping, documentation sync verification, and A-F grading. Presets: TypeScript/React (default), C#/.NET (`dotnet`), Vue, Angular, Node, Python, Go. |
 | **statusline** | 1.3.0 | Interactive setup for Claude Code status line — cross-platform (Bash + PowerShell), no jq dependency, Windows/Git Bash compatible |
 | **release** | 1.3.0 | Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with `--path` filter for monorepo component releases. Contributor resolution via org membership cross-reference. |
+| **dotnet-wpf** | 1.0.0 | Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls), WinForms-to-WPF MVVM migration, and FlaUI E2E testing. |
 
 ### codereview
 
@@ -34,6 +35,17 @@ Automated pre-PR code review built on **The Zen of Python** (PEP 20) as a univer
 |-------|-------------|
 | `/codereview` | Full pre-PR review — diffs against base branch, severity-rated findings (CRITICAL to LOW), and a final grade (A-F) |
 | `/codereview:coderabbit_pr` | Resolves CodeRabbit bot comments on a GitHub PR — extracts, triages, fixes, and runs regression tests |
+
+### dotnet-wpf
+
+Complete development toolkit for C#/.NET WPF desktop applications, bundling 4 specialized skills:
+
+| Skill | Description |
+|-------|-------------|
+| `dotnet-desktop-setup` | Configures and audits .NET desktop projects for Claude Code — CLAUDE.md generation, .editorconfig, scoped rules, architecture audit |
+| `dotnet-wpf-design` | Fluent Design guide for WPF/XAML with WPF-UI — layout patterns, typography, 90+ controls catalog |
+| `dotnet-wpf-e2e-testing` | FlaUI + xUnit E2E testing — Page Objects, AutomationId patterns, CI/CD setup |
+| `dotnet-wpf-mvvm` | WinForms-to-WPF MVVM migration — CommunityToolkit.Mvvm, DataBinding, Commands, DI, navigation |
 
 ### deploy
 

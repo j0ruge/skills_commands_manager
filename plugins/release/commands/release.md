@@ -1,7 +1,7 @@
 ---
-description: Automatically generates release notes from the last release and creates a new GitHub Release via gh CLI. Works with any stack (C#/.NET, Node.js, Go, Rust, Python, etc.). Supports --path filter for monorepo component releases.
+description: Automatically generates release notes from the last release and creates a new GitHub Release via gh CLI. Works with any stack (C#/.NET, Node.js, Go, Rust, Python, etc.). Supports --path filter for monorepo component releases. Contributor resolution via org membership cross-reference.
 metadata:
-  version: 1.2.0
+  version: 1.3.0
 ---
 
 ## User Input
@@ -100,13 +100,46 @@ git diff --stat $LAST_TAG..HEAD [-- $PATH_FILTER]
 # Merged PRs (merge commits)
 git log $LAST_TAG..HEAD --merges --oneline [-- $PATH_FILTER]
 
-# Contributors — resolve GitHub usernames from commit emails via gh API
+# Contributors — resolve GitHub usernames via org membership + commit email cross-reference
+# Step 1: Get the repo owner (org or user)
+REPO_OWNER=$(gh repo view --json owner --jq '.owner.login' 2>/dev/null)
+
+# Step 2: Get org members (if org repo) — this is the authoritative source
+ORG_MEMBERS=$(gh api "/orgs/$REPO_OWNER/members" --jq '.[].login' 2>/dev/null)
+
+# Step 3: Get commit emails since last tag
 CONTRIBUTOR_EMAILS=$(git log $LAST_TAG..HEAD --format="%aE" --no-merges [-- $PATH_FILTER] | grep -v "noreply@" | sort | uniq)
+
+# Step 4: For each email, try to match to an org member via gh api
+# If email search fails, try matching git username against org members
 for email in $CONTRIBUTOR_EMAILS; do
+  # Try 1: Search by email (works when email is public on GitHub profile)
   gh_user=$(gh api "/search/users?q=$email+in:email" --jq '.items[0].login' 2>/dev/null)
   if [ -n "$gh_user" ] && [ "$gh_user" != "null" ]; then
     echo "@$gh_user"
+    continue
   fi
+
+  # Try 2: Get git author name for this email, then find matching org member
+  # (case-insensitive match against org members list)
+  git_name=$(git log $LAST_TAG..HEAD --format="%aN" --no-merges [-- $PATH_FILTER] | head -1)
+  if [ -n "$ORG_MEMBERS" ]; then
+    matched=$(echo "$ORG_MEMBERS" | grep -i "$git_name" | head -1)
+    if [ -n "$matched" ]; then
+      echo "@$matched"
+      continue
+    fi
+  fi
+
+  # Try 3: Check if any org member authored commits with this email via git blame/log
+  # by querying each org member's GitHub email list
+  for member in $ORG_MEMBERS; do
+    member_emails=$(gh api "/users/$member" --jq '.email // empty' 2>/dev/null)
+    if [ "$member_emails" = "$email" ]; then
+      echo "@$member"
+      break
+    fi
+  done
 done | sort | uniq
 
 # Total files and lines
@@ -257,5 +290,5 @@ Display the full release note in the conversation along with the URL of the crea
 4. **Group by feature** — commits related to the same PR/feature should be grouped, not listed individually.
 5. **Omit empty sections** — if there are no bug fixes, do not include the 🐛 section.
 6. **Consistent format** — follow the template above exactly, including emojis in headers.
-7. **Contributors must be GitHub usernames** — resolve via `gh api` search by email, not `git log` author names. The same person may have multiple git author names (e.g., `JorUge`, `Jorge Ferrari`, `j0ruge`) but only ONE GitHub username. Never list the same person twice. Exclude bot accounts (e.g., `noreply@anthropic.com`).
+7. **Contributors must be verified GitHub usernames** — NEVER guess or fabricate usernames. NEVER use git author names as GitHub usernames (they are often different — e.g., git name `JorUge` vs GitHub `@j0ruge`). The resolution strategy is: (1) search by email via `gh api`, (2) cross-reference against org members via `gh api /orgs/{owner}/members`, (3) if neither works, omit the contributor rather than guessing. The same person may have multiple git author names but only ONE GitHub username. Never list the same person twice. Exclude bot accounts (e.g., `noreply@anthropic.com`).
 8. **Path filter** — when `--path` is used, only include commits and file changes that touch that directory. The release title should reflect the component name, not the whole repo.

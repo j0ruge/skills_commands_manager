@@ -10,7 +10,7 @@ Plugin marketplace for Claude Code — skills and commands for development workf
 | **deploy** | 1.4.0 | Automated deployment commands — staging and production pipelines via CD |
 | **codereview** | 1.3.0 | Stack-agnostic code review powered by the Zen of Python — 5 analysis principles, bug/security/performance/type-safety detection, test coverage mapping, documentation sync verification, and A-F grading. Presets: TypeScript/React (default), C#/.NET (`dotnet`), Vue, Angular, Node, Python, Go. |
 | **statusline** | 1.3.0 | Interactive setup for Claude Code status line — cross-platform (Bash + PowerShell), no jq dependency, Windows/Git Bash compatible |
-| **release** | 1.2.0 | Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with `--path` filter for monorepo component releases. |
+| **release** | 1.3.0 | Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with `--path` filter for monorepo component releases. Contributor resolution via org membership cross-reference. |
 
 ### codereview
 

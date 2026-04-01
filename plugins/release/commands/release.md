@@ -101,46 +101,25 @@ git diff --stat $LAST_TAG..HEAD [-- $PATH_FILTER]
 git log $LAST_TAG..HEAD --merges --oneline [-- $PATH_FILTER]
 
 # Contributors — resolve GitHub usernames via org membership + commit email cross-reference
-# Step 1: Get the repo owner (org or user)
+# Why this is complex: git author names often differ from GitHub usernames
+# (e.g., "JorUge" in git vs "@j0ruge" on GitHub). Email search fails when
+# emails are not public. The most reliable method is checking commit authorship
+# via the GitHub API, which links commits to GitHub accounts regardless of
+# git config names.
+
+# Step 1: Get the repo owner and name
 REPO_OWNER=$(gh repo view --json owner --jq '.owner.login' 2>/dev/null)
+REPO_NAME=$(gh repo view --json name --jq '.name' 2>/dev/null)
 
-# Step 2: Get org members (if org repo) — this is the authoritative source
-ORG_MEMBERS=$(gh api "/orgs/$REPO_OWNER/members" --jq '.[].login' 2>/dev/null)
+# Step 2: Get commit SHAs since last tag
+COMMIT_SHAS=$(git log $LAST_TAG..HEAD --format="%H" --no-merges [-- $PATH_FILTER])
 
-# Step 3: Get commit emails since last tag
-CONTRIBUTOR_EMAILS=$(git log $LAST_TAG..HEAD --format="%aE" --no-merges [-- $PATH_FILTER] | grep -v "noreply@" | sort | uniq)
-
-# Step 4: For each email, try to match to an org member via gh api
-# If email search fails, try matching git username against org members
-for email in $CONTRIBUTOR_EMAILS; do
-  # Try 1: Search by email (works when email is public on GitHub profile)
-  gh_user=$(gh api "/search/users?q=$email+in:email" --jq '.items[0].login' 2>/dev/null)
-  if [ -n "$gh_user" ] && [ "$gh_user" != "null" ]; then
-    echo "@$gh_user"
-    continue
-  fi
-
-  # Try 2: Get git author name for this email, then find matching org member
-  # (case-insensitive match against org members list)
-  git_name=$(git log $LAST_TAG..HEAD --format="%aN" --no-merges [-- $PATH_FILTER] | head -1)
-  if [ -n "$ORG_MEMBERS" ]; then
-    matched=$(echo "$ORG_MEMBERS" | grep -i "$git_name" | head -1)
-    if [ -n "$matched" ]; then
-      echo "@$matched"
-      continue
-    fi
-  fi
-
-  # Try 3: Check if any org member authored commits with this email via git blame/log
-  # by querying each org member's GitHub email list
-  for member in $ORG_MEMBERS; do
-    member_emails=$(gh api "/users/$member" --jq '.email // empty' 2>/dev/null)
-    if [ "$member_emails" = "$email" ]; then
-      echo "@$member"
-      break
-    fi
-  done
-done | sort | uniq
+# Step 3: For each commit, resolve the GitHub username via the commits API
+# The GitHub API returns the linked GitHub account for each commit, which is
+# the authoritative source (it uses the email-to-account mapping GitHub maintains)
+for sha in $COMMIT_SHAS; do
+  gh api "/repos/$REPO_OWNER/$REPO_NAME/commits/$sha" --jq '.author.login // empty' 2>/dev/null
+done | grep -v '^$' | sort | uniq | sed 's/^/@/'
 
 # Total files and lines
 git diff --shortstat $LAST_TAG..HEAD [-- $PATH_FILTER]

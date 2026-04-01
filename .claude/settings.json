@@ -3,7 +3,7 @@
     "chewiesoft-marketplace": {
       "source": {
         "source": "github",
-        "repo": "ChewieSoft/skills_commands_manager"
+        "repo": "j0ruge/skills_commands_manager"
       },
       "autoUpdate": true
     }

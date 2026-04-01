@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**chewiesoft-marketplace** — a Claude Code plugin marketplace owned by **Chewiesoft**. Distributes skills and commands developed exclusively by the owner for use with Claude Code.
+**chewiesoft-marketplace** — a Claude Code plugin marketplace owned by **j0ruge**. Distributes skills and commands developed exclusively by the owner for use with Claude Code.
 
 This repository follows the [Claude Code Plugin Marketplace](https://code.claude.com/docs/en/plugins-reference) specification.
 
@@ -77,8 +77,8 @@ skills_commands_manager/
 
 When registering plugins in `marketplace.json`, the `source` field supports:
 - **Relative path**: `"./plugins/my-plugin"` — local directory in this repo
-- **GitHub**: `{ "source": "github", "repo": "ChewieSoft/plugin-repo" }` — from a GitHub repository
-- **npm**: `{ "source": "npm", "package": "@chewiesoft/my-plugin" }` — from npm registry
+- **GitHub**: `{ "source": "github", "repo": "j0ruge/plugin-repo" }` — from a GitHub repository
+- **npm**: `{ "source": "npm", "package": "@j0ruge/my-plugin" }` — from npm registry
 
 ## Installation (End Users)
 

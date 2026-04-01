@@ -20,8 +20,8 @@ A curated plugin marketplace for [Claude Code](https://code.claude.com) by **Che
 
 ```bash
 # Add the marketplace (pick one)
-/plugin marketplace add ChewieSoft/skills_commands_manager          # via GitHub
-/plugin marketplace add git@github.com:ChewieSoft/skills_commands_manager.git  # via SSH
+/plugin marketplace add j0ruge/skills_commands_manager          # via GitHub
+/plugin marketplace add git@github.com:j0ruge/skills_commands_manager.git  # via SSH
 ```
 
 Then install any plugin:
@@ -160,5 +160,5 @@ Projects that clone this repo get automatic marketplace discovery via `.claude/s
 ---
 
 <div align="center">
-Proprietary — <strong>Chewiesoft</strong>. All rights reserved.
+Proprietary — <strong>j0ruge</strong>. All rights reserved.
 </div>

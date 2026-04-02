@@ -116,8 +116,8 @@ Leia `references/wpfui-integration.md` para o template completo de App.xaml.cs.
 O App.xaml.cs deve:
 1. Criar `IHost` com `Host.CreateDefaultBuilder()`
 2. Registrar **todos** os services no DI container
-3. Registrar **todos** os ViewModels (Transient)
-4. Registrar **todas** as Pages/Windows (Transient)
+3. Registrar **todos** os ViewModels (Singleton para apps com NavigationView — ver Detalhe #27)
+4. Registrar **todas** as Pages/Windows (Transient ou Singleton conforme necessidade)
 5. Registrar services WPF-UI: INavigationService, IContentDialogService, IThemeService
 6. Iniciar o host em `OnStartup`, parar em `OnExit`
 
@@ -126,8 +126,9 @@ Padrao de registro:
 // Services de negocio
 services.AddSingleton<ILicenseService, LicenseService>();
 
-// ViewModels
-services.AddTransient<MainWindowViewModel>();
+// ViewModels — Singleton para evitar memory leak quando assinam PropertyChanged
+// de servicos Singleton (ver Detalhe #27)
+services.AddSingleton<MainWindowViewModel>();
 
 // Windows/Pages
 services.AddTransient<MainWindow>();
@@ -233,6 +234,10 @@ public MainWindow(MainWindowViewModel viewModel)
 | `label.Content = texto` | `Content="{Binding Texto}"` |
 | `progressBar.Value` | `Value="{Binding Progresso}"` |
 | `control.Enabled = false` | `IsEnabled="{Binding PodeExecutar}"` ou `CanExecute` no Command |
+| `element.Visibility = Visible/Collapsed` | `Visibility="{Binding IsXxx, Converter={StaticResource BoolToVis}}"` |
+| `comboBox.SelectedItem` (ComboBoxItem) | `SelectionChanged` handler ou `SelectedValue="{Binding Prop}"` com `SelectedValuePath` |
+| `scrollViewer.ScrollToTop()` | `PropertyChanged` handler no code-behind (excecao MVVM documentada) |
+| `Mouse.OverrideCursor = Wait` | `[ObservableProperty] bool IsLoading` + trigger ou converter no XAML |
 
 **Dialogs MVVM-friendly:**
 ```csharp
@@ -316,6 +321,13 @@ public void PopularCampos_AtualizaPropriedadesEHabilitaSave()
     Assert.True(vm.IsSaveEnabled);
 }
 ```
+
+### Cuidado com testes que usam reflection
+
+Testes que acessam metodos privados via `typeof(Page).GetMethod("NomeMetodo", BindingFlags.NonPublic)`
+quebrarao quando o metodo for movido do code-behind para o ViewModel. O `typeof` precisa ser
+atualizado de `typeof(MinhaPage)` para `typeof(MinhaPageViewModel)`. Identifique esses testes
+ANTES de mover codigo — consulte a checklist pre-migracao.
 
 ### Testes E2E (para projetos maiores)
 
@@ -483,6 +495,21 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
 26. **IReadOnlyList para caches** — expor caches estaticos como `IReadOnlyList<T>` em vez de
     `List<T>` para prevenir modificacao acidental por consumidores.
 
+27. **Lifecycle mismatch: Transient VM + Singleton Service = memory leak** — se um ViewModel
+    registrado como Transient assina `PropertyChanged` de um servico Singleton (ex: IAppStateService),
+    cada navegacao cria uma nova instancia que nunca e dessubscrita. O Singleton mantem delegate
+    references para instancias mortas, impedindo o GC. Em apps com NavigationView, onde paginas sao
+    recriadas a cada navegacao, isso causa leak cumulativo. **Fix preferido**: registrar ViewModels
+    como Singleton (consistente com Detalhe #19 sobre paginas pesadas). Alternativas: implementar
+    `IDisposable` com unsubscribe, ou usar `WeakEventManager` (mas este requer `System.Windows`
+    que viola a separacao ViewModel/UI).
+
+28. **Visibility bindings esquecidos ao migrar handlers** — ao converter Click handlers que
+    alternavam `Visibility` de paineis para Commands no ViewModel, e comum criar as propriedades
+    `IsXxxVisible` no VM mas esquecer de adicionar `Visibility="{Binding IsXxxVisible,
+    Converter={StaticResource BoolToVis}}"` no XAML. O resultado e que os Commands executam mas
+    nada muda visualmente. Sempre auditar o XAML apos converter handlers de visibilidade.
+
 ---
 
 ## Anti-padroes desta Skill
@@ -515,6 +542,104 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
   `<ui:ContentPresenter>` ou `<ui:ContentDialogPresenter>`. Erro comum que causa crash.
 - **ShowSimpleDialogAsync sem using** — `ShowSimpleDialogAsync` e extension method em
   `Wpf.Ui.Extensions`. Requer `using Wpf.Ui.Extensions;` no arquivo.
+- **`new Service()` dentro do ViewModel** — ViewModel NAO deve instanciar servicos diretamente.
+  Use injecao de construtor. Se o service e thin wrapper (ex: `new UsuariosServicos(repo)`), injete
+  a interface subjacente diretamente (`IUsuariosRepositorio`) e chame `_repo.Salvar()`. Instanciar
+  services no VM impede mocking nos testes e viola o principio de inversao de dependencias.
+- **Remover error handling ao migrar handlers** — handlers de Click frequentemente tem `try/catch`
+  com `MessageBox.Show()` no catch. Ao migrar para `[RelayCommand]`, e facil esquecer o error path.
+  O resultado e que falhas sao engolidas silenciosamente (o usuario nao recebe feedback). Sempre
+  preservar error handling: use `StatusMessage` property ou `IContentDialogService` no catch.
+
+---
+
+## Checklist Pre-Migracao de Pagina
+
+Antes de migrar cada Page para MVVM, audite o code-behind e verifique:
+
+1. **Event handlers** — listar todos (Click, Loaded, TextChanged, SelectionChanged, KeyDown)
+2. **Visibilidade por codigo** — `element.Visibility = Visible/Collapsed` → precisara de
+   binding com `BooleanToVisibilityConverter`. Facil de esquecer (ver Detalhe #28)
+3. **ComboBox com selecao logica** — se a selecao do ComboBox afeta comportamento (ex: tipo
+   de filtro), precisa de binding ou `SelectionChanged` handler que atualiza o ViewModel
+4. **Error handling em handlers** — `try/catch` com MessageBox → preservar no ViewModel com
+   `StatusMessage` ou `IContentDialogService` (nao remover silenciosamente)
+5. **Custom controls imperativos** — controles com API `GetValue()/SetValue()/SetDate()` sem
+   DependencyProperties → nao suportam binding (ver secao Custom Controls abaixo)
+6. **Operacoes visuais** — `ScrollToTop()`, `Focus()`, `Mouse.OverrideCursor` → manter em
+   code-behind como excecao documentada (SC-002 exception)
+7. **Testes com reflection** — testes que usam `typeof(Page).GetMethod()` para metodos privados
+   quebrarao quando o metodo for movido para o ViewModel. Atualizar `typeof` apos mover
+
+---
+
+## Estado Compartilhado (IAppStateService)
+
+Para apps com multiplas paginas que compartilham estado (ex: dados carregados, modo de operacao,
+filtros ativos), um servico Singleton com `INotifyPropertyChanged` e mais simples e direto que
+`IMessenger` (WeakReferenceMessenger):
+
+```csharp
+public interface IAppStateService : INotifyPropertyChanged
+{
+    VDR? Vdr { get; }
+    bool IsVdrLoaded { get; }
+    bool ModoCoCAtivado { get; }
+    string SelectedPath { get; }
+    void CarregarVdr(VDR vdr, string path, bool modoCoc);
+}
+```
+
+**Quando usar IAppStateService vs IMessenger:**
+
+| Cenario | Padrao |
+|---------|--------|
+| Estado central que multiplos VMs leem | IAppStateService (Singleton + INotifyPropertyChanged) |
+| Evento pontual entre VMs sem estado | IMessenger (WeakReferenceMessenger) |
+| Notificacao de navegacao | IMessenger |
+| Dados de sessao (usuario logado, modo) | IAppStateService |
+
+**Regra critica:** se ViewModels assinam `PropertyChanged` de um servico Singleton, registrar
+os VMs tambem como Singleton para evitar memory leak (ver Detalhe #27).
+
+**Testabilidade:** `IAppStateService` e facilmente mockavel com NSubstitute:
+```csharp
+var appState = Substitute.For<IAppStateService>();
+appState.IsVdrLoaded.Returns(true);
+appState.Vdr.Returns(new VDR1800());
+var vm = new ChannelsPageViewModel(appState);
+```
+
+---
+
+## Custom Controls e Data Binding
+
+Se o projeto usa UserControls custom (ex: controles de formulario especializados como
+APTCheckBoxWPF, AptDateWPF), audite ANTES de planejar a migracao:
+
+1. **Verificar DependencyProperties** — o controle expoe DP para seu valor principal?
+   ```bash
+   grep -r "DependencyProperty" VDAControls/WPF/
+   ```
+   Se retorna vazio, o controle nao suporta data binding.
+
+2. **API imperativa = sem binding** — se o controle usa `GetValue()/SetValue()/SetDate()/GetDay()`
+   em vez de DependencyProperties, data binding bidirecional e impossivel.
+
+3. **Abordagem pragmatica para migracao:**
+   - ViewModel gerencia Commands e estado de visibilidade (funciona sem DP)
+   - Code-behind mantem mapeamento imperativo (FillForm/GetForm) como excecao documentada
+   - Planejar spec separada para adicionar DependencyProperties aos custom controls
+   - Quando DPs estiverem prontas, substituir code-behind por binding no XAML
+
+4. **Adicionar DependencyProperties** (spec separada) — cada controle precisa de pelo menos
+   uma DP para seu valor principal. Exemplo para um checkbox custom:
+   ```csharp
+   public static readonly DependencyProperty ValueProperty =
+       DependencyProperty.Register(nameof(Value), typeof(string), typeof(APTCheckBoxWPF),
+           new FrameworkPropertyMetadata(string.Empty, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
+               OnValueChanged));
+   ```
 
 ---
 

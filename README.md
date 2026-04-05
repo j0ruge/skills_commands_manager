@@ -41,7 +41,7 @@ Then install any plugin:
 | Plugin | Version | Category | Description |
 |--------|---------|----------|-------------|
 | [**cicd**](#cicd) | 2.3.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners |
-| [**codereview**](#codereview) | 1.3.0 | Quality | Pre-PR code review with severity grading (A-F) and CodeRabbit PR resolver |
+| [**codereview**](#codereview) | 1.4.0 | Quality | Pre-PR code review with severity grading (A-F), TOCTOU detection, accessibility, and CodeRabbit PR resolver |
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.3.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections |
@@ -72,9 +72,9 @@ Stack-agnostic pre-PR code review built on **The Zen of Python** as a universal 
 | Skill | Description |
 |-------|-------------|
 | `/codereview` | Full pre-PR review — diffs against base branch, severity-rated findings (CRITICAL → LOW), final grade (A-F) |
-| `/codereview:coderabbit_pr` | Resolves CodeRabbit bot comments on a GitHub PR — extracts, triages, fixes, runs regression tests |
+| `/codereview:coderabbit_pr` | Resolves CodeRabbit bot comments on a GitHub PR — extracts, triages, fixes, runs regression tests, resolves GitHub conversations |
 
-**Analysis layers:** Bug Detection · Security · Performance · Type Safety · Test Coverage · Documentation Sync
+**Analysis layers:** Bug Detection · Security · Performance · Type Safety · Test Coverage · Documentation Sync · Race Conditions (TOCTOU) · Accessibility · Data Integrity
 
 **Framework presets:** `react` (default) · `vue` · `angular` · `node` · `dotnet` · `generic`
 

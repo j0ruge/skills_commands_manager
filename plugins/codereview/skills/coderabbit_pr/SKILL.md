@@ -1,15 +1,16 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 1.0.0
+  version: 2.0.0
 description: >
   Resolve CodeRabbit review comments on a GitHub PR. Extracts all review comments
   from coderabbitai[bot], creates a structured checklist with checkboxes, verifies
-  each finding against current code, applies fixes when needed, and runs regression
-  tests. Use this skill whenever the user mentions coderabbit, wants to fix or resolve
-  coderabbit comments, address PR review feedback from CodeRabbit, handle coderabbit
-  findings, process coderabbit suggestions, or triage coderabbit bot comments — even
-  if they say it casually like "fix coderabbit" or "resolve the PR comments".
+  each finding against current code, applies fixes when needed, runs regression
+  tests, and resolves GitHub conversations. Use this skill whenever the user
+  mentions coderabbit, wants to fix or resolve coderabbit comments, address PR
+  review feedback from CodeRabbit, handle coderabbit findings, process coderabbit
+  suggestions, or triage coderabbit bot comments — even if they say it casually
+  like "fix coderabbit" or "resolve the PR comments".
   Triggers: "coderabbit", "coderabbit review", "fix coderabbit", "coderabbit PR",
   "resolve coderabbit", "address coderabbit", "coderabbit comments", "fix PR review",
   "resolver comentarios do coderabbit", "corrigir coderabbit"
@@ -32,7 +33,7 @@ If `$ARGUMENTS` is empty or does not contain a PR number, ask: "What is the PR n
 
 ## Goal
 
-Extract all review comments left by CodeRabbit (`coderabbitai[bot]`) on a GitHub PR, create a structured checklist file (`coderabbit-review.md`), verify each comment against the current code, fix valid issues, and run regression tests. Every item ends resolved with a justification.
+Extract all review comments left by CodeRabbit (`coderabbitai[bot]`) on a GitHub PR, create a structured checklist file (`coderabbit-review.md`), verify each comment against the current code, fix valid issues, run regression tests, and resolve all GitHub conversations. Every item ends resolved with a justification.
 
 This skill is **project-agnostic** — it works with any repo that has a GitHub remote and CodeRabbit reviews.
 
@@ -79,14 +80,19 @@ Capture the result as `REPO` (format: `owner/repo`).
 
 #### 1.2 Fetch Review Comments
 
-Run these API calls to get all CodeRabbit comments. Use `--paginate` for PRs with many comments:
+CodeRabbit posts comments in **two places** — both must be fetched to get the complete picture:
 
 ```bash
-# Inline review comments (file-level, attached to diff lines)
+# Source 1: Inline review comments (file-level, attached to diff lines)
+# These are the comments directly on code lines — typically 2-5 per review
 gh api "repos/{REPO}/pulls/{PR_NUMBER}/comments" --paginate \
   --jq '.[] | select(.user.login == "coderabbitai[bot]") | {path, line: (.line // .original_line), body}'
 
-# Review-level comments (summary/walkthrough reviews)
+# Source 2: Review-level comments (summary body with ALL findings)
+# CRITICAL: This is where CodeRabbit puts the MAJORITY of its findings.
+# The review body contains a summary with "Actionable comments posted: N"
+# followed by an "Outside diff range comments" section that lists 10-30+
+# additional findings that couldn't be posted inline.
 gh api "repos/{REPO}/pulls/{PR_NUMBER}/reviews" --paginate \
   --jq '.[] | select(.user.login == "coderabbitai[bot]") | {state, body}'
 ```
@@ -95,23 +101,62 @@ If the output is very large, use `--jq` filtering to extract only what is needed
 
 #### 1.3 Parse Each Comment
 
-From the inline comments, extract for each one:
+**Source 1 — Inline comments**: Extract for each one:
 
 1. **`path`**: file path relative to repo root
 2. **`line`**: line number (use `line` or fallback to `original_line`)
-3. **Severity**: parse from comment body:
-   - `🔴` or text containing `Critical` → **CRITICAL**
-   - `🟠` or text containing `Major` → **HIGH**
-   - `🟡` or text containing `Medium` → **MEDIUM**
-   - `🔵` or text containing `Minor` or `Low` → **LOW**
-   - Refactor suggestion (`Refactor`) → **MEDIUM**
-   - No marker found → **MEDIUM** (default)
+3. **Severity**: parse from comment body (see severity mapping below)
 4. **Title**: first bold text (`**...**`) or heading in the body
 5. **Summary**: first paragraph after the title, stripped of HTML comments and CodeRabbit metadata
 6. **Addressed status**: if body contains `✅ Addressed` or similar markers, set `pre_addressed: true`
 7. **Suggested fix**: if body contains a code block with `suggestion` or `diff`, extract it
 
-Discard comments that are purely metadata (walkthrough summaries, paused review notices) — keep only actionable review findings.
+**Source 2 — Review body (outside-diff-range comments)**:
+
+This is the most important source to parse correctly. CodeRabbit's review body contains a structured summary with findings grouped by file inside `<details>` blocks. The typical structure is:
+
+```text
+> ⚠️ Outside diff range comments (N)
+>
+> <details>
+> <summary>packages/path/to/file.ts (2)</summary>
+>
+> `42-50`: _🛠️ Refactor suggestion_ | _🟠 Major_
+>
+> **Title of the finding**
+>
+> Description of the issue...
+>
+> `112-120`: _⚠️ Potential issue_ | _🔴 Critical_
+>
+> **Another finding title**
+>
+> ...
+> </details>
+```
+
+Parse each finding from the review body by:
+
+1. **Finding file sections**: Look for `<summary>packages/path/file.ext (N)</summary>` blocks
+2. **Extracting findings within each section**: Match the pattern `` `LINES`: _CATEGORY_ | _SEVERITY_ `` followed by `**TITLE**`
+3. **Building file + line references**: The file path comes from the `<summary>` tag, lines from the backtick-quoted range
+4. **Parsing severity**: From the severity marker in the pattern (see mapping below)
+
+**Severity Mapping** (applies to both sources):
+
+| CodeRabbit Marker | Severity |
+|-------------------|----------|
+| `🔴` or `Critical` | CRITICAL |
+| `🟠` or `Major` | HIGH |
+| `🟡` or `Medium` | MEDIUM |
+| `🔵` or `Minor` / `Low` | LOW |
+| `Refactor suggestion` | MEDIUM |
+| `Potential issue` | Depends on paired severity emoji |
+| No marker found | MEDIUM (default) |
+
+**Deduplication**: Some inline comments also appear in the review body. Deduplicate by matching file path + line range + first 100 chars of title.
+
+**Discard**: Comments that are purely metadata (walkthrough summaries, paused review notices, "Actionable comments posted" headers) — keep only actionable review findings.
 
 Store as a structured list ordered by: severity (CRITICAL first) then file path.
 
@@ -190,6 +235,61 @@ Execute the test command. Capture results.
 Update the "Final Result" table in `coderabbit-review.md` with:
 - Count of items by status (Fixed, Already fixed, Not applicable, Pending)
 - Test results
+
+---
+
+### Phase 5: Resolve GitHub Conversations
+
+After all items are processed and tests pass, resolve all review threads on the PR.
+
+#### 5.1 Fetch All Review Threads
+
+Use the GraphQL API to get all review thread IDs and their resolution status:
+
+```bash
+gh api graphql -f query='
+{
+  repository(owner: "{OWNER}", name: "{REPO_NAME}") {
+    pullRequest(number: {PR_NUMBER}) {
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          comments(first: 1) {
+            nodes {
+              author { login }
+              path
+              body
+            }
+          }
+        }
+      }
+    }
+  }
+}' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | {id, author: .comments.nodes[0].author.login, path: .comments.nodes[0].path}'
+```
+
+#### 5.2 Resolve Each Unresolved Thread
+
+For each unresolved thread (from any reviewer — coderabbitai, gemini-code-assist, Copilot, etc.):
+
+```bash
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "{THREAD_ID}"}) { thread { isResolved } } }'
+```
+
+Resolve threads in parallel when possible (multiple GraphQL calls).
+
+#### 5.3 Verify All Resolved
+
+Run the fetch query again to confirm zero unresolved threads remain. Report the count in the checklist:
+
+```markdown
+### Conversations
+
+- **Total threads**: {n}
+- **Resolved in this run**: {n}
+- **Previously resolved**: {n}
+```
 
 ---
 

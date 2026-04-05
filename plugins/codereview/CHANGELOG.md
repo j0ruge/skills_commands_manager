@@ -2,6 +2,45 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.4.0] - 2026-04-05
+
+### Added
+
+- Detection pass 6.6 Race Conditions & TOCTOU (Time-of-Check to Time-of-Use)
+  - Database check-then-act (findUnique + update without atomic claim)
+  - Read-modify-write on numeric fields (lost updates)
+  - Business rules enforced only in app code (bypass via concurrency)
+  - Read outside transaction, write inside (stale data)
+  - File system check-then-act (exists then read/write)
+  - Cache thundering herd (miss + compute without coalescing)
+  - `references/toctou-patterns.md` — full pattern catalog with code examples
+- Detection pass 6.7 Accessibility
+  - Icon-only buttons without aria-label
+  - Form buttons without type="button" (implicit submit)
+  - Interactive elements without keyboard support
+  - Images without alt text
+- Detection pass 6.8 Data Integrity & Schema Safety
+  - Cascade delete risks on user/tenant entities
+  - Missing database indexes on junction tables
+  - URL fields accepting dangerous protocols (javascript:, data:)
+  - Inconsistent validation schemas across endpoints
+  - Test fakes/mocks missing fields from production schema
+- Focus areas `a11y` and `race-conditions` for targeted reviews
+- `security` focus now includes 6.6 Race Conditions and 6.8 URL/cascade checks
+- `bugs` focus now includes 6.6 Race Conditions
+
+### Changed (coderabbit_pr v2.0.0)
+
+- Fixed parsing of "outside-diff-range" comments from CodeRabbit review body
+  - Now correctly extracts findings from `<details><summary>` blocks in review body
+  - Previously only inline diff comments were detected (2-5 items); now captures all 20-30+ items
+- Added Phase 5: Resolve GitHub Conversations
+  - Uses GraphQL API to fetch and resolve all unresolved review threads
+  - Resolves threads from all reviewers (CodeRabbit, Gemini, Copilot, etc.)
+  - Reports resolution count in checklist
+- Improved severity mapping to handle both emoji and text markers
+- Added deduplication between inline and review body findings
+
 ## [1.3.0] - 2026-03-28
 
 ### Added

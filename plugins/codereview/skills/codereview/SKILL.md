@@ -1,18 +1,21 @@
 ---
 name: codereview
 metadata:
-  version: 1.3.0
+  version: 1.4.0
 description: >
   Automated pre-PR code review. Diffs current branch against main, analyzes all
   changed files, and produces a structured report with severity-rated findings,
   test coverage assessment, documentation sync verification, and a final grade.
-  Checks docstring coverage, OpenAPI/README/rules sync, and code quality.
+  Checks docstring coverage, OpenAPI/README/rules sync, race conditions (TOCTOU),
+  accessibility, data integrity, and code quality.
   Use this skill whenever the user asks for code review, pre-PR review, code
-  analysis, quality check, documentation check, or wants to review changes
-  before merging — even if they don't say "codereview" explicitly.
+  analysis, quality check, documentation check, security review, accessibility
+  audit, or wants to review changes before merging — even if they don't say
+  "codereview" explicitly.
   Triggers: "code review", "pre-PR review", "review my code", "quality check",
   "review changes", "codereview", "check my code", "analyze code", "PR review",
-  "check docs", "documentation review"
+  "check docs", "documentation review", "security review", "accessibility check",
+  "race condition", "toctou"
 ---
 
 ## User Input
@@ -434,6 +437,83 @@ When the diff introduces new API endpoints, data models, configuration, features
 
 **Skip this sub-pass** if the project has no documentation files at all (no README, no OpenAPI, no rules files). Don't penalize projects that haven't started documenting — only penalize projects that have documentation but let it drift.
 
+#### 6.6 Race Conditions & TOCTOU (Time-of-Check to Time-of-Use)
+
+Race conditions occur when code checks a state and then acts on it in separate operations, allowing another process/request to change the state in between. These bugs are hard to reproduce but cause data corruption, duplicate records, and security bypasses.
+
+Read `references/toctou-patterns.md` for the full pattern catalog with code examples. Apply the following detection heuristics during review:
+
+**Universal (all languages/frameworks):**
+
+- **Check-then-act on database records**: A read query (find, get, select) whose result gates a write query (create, update, delete) in a separate call — without wrapping both in an atomic operation. The read provides stale data if another request modifies the record between the two calls.
+  - Severity: **CRITICAL** when it involves tokens, payments, invites, or one-time-use resources
+  - Severity: **HIGH** when it involves user records, resource limits, or state transitions
+  - Fix direction: atomic conditional update (e.g., `UPDATE ... WHERE status = 'unused'` and check affected rows), or wrap in a serializable transaction
+
+- **Read-modify-write on numeric fields**: Reading a value (balance, counter, sequence), computing in application code, then writing back. Concurrent requests cause lost updates.
+  - Severity: **HIGH**
+  - Fix direction: use database-level atomic operations (increment/decrement)
+
+- **Business rules enforced only in application code**: Count checks, uniqueness checks, or limit enforcement done via application query + conditional logic instead of database constraints.
+  - Severity: **HIGH**
+  - Fix direction: database constraints (UNIQUE, CHECK), or serializable transactions
+
+- **Read outside transaction, write inside**: A read performed before a transaction block, with the transaction body relying on that read's result without re-validating.
+  - Severity: **HIGH**
+  - Fix direction: move the read inside the transaction, or re-validate atomically
+
+- **File system check-then-act**: `exists()` / `stat()` followed by `read()` / `write()` in separate calls.
+  - Severity: **MEDIUM**
+  - Fix direction: try the operation directly and handle errors (EAFP pattern)
+
+- **Cache check-then-compute without coalescing**: Simple cache miss → compute → store pattern without mutex, allowing thundering herd under concurrent load.
+  - Severity: **MEDIUM**
+  - Fix direction: promise coalescing, mutex per key, or stale-while-revalidate
+
+#### 6.7 Accessibility
+
+Accessibility issues prevent users who rely on assistive technology (screen readers, keyboard navigation) from using the application. These checks apply to any frontend framework that renders HTML.
+
+**When `frameworkPatterns` is `react|vue|angular|node` (web frontend):**
+
+- **Icon-only buttons without accessible name**: A `<button>` or `<Button>` component whose only child is an icon (SVG, icon component) without `aria-label`, `aria-labelledby`, or visible text. Screen readers announce these as "button" with no description.
+  - Severity: **HIGH**
+
+- **Form buttons without explicit type**: A `<button>` inside a `<form>` without `type="button"` implicitly has `type="submit"`, which may trigger unintended form submission when the button is meant for a different action (e.g., "Cancel", "Toggle", "Open picker").
+  - Severity: **MEDIUM**
+
+- **Interactive elements without keyboard support**: Custom clickable `<div>` or `<span>` elements without `role="button"`, `tabIndex`, and `onKeyDown` handler.
+  - Severity: **MEDIUM**
+
+- **Images without alt text**: `<img>` tags without `alt` attribute (or empty `alt=""` for decorative images).
+  - Severity: **LOW**
+
+#### 6.8 Data Integrity & Schema Safety
+
+These checks catch issues in database schemas, ORM configurations, and data validation that can lead to data loss or inconsistency.
+
+**Universal:**
+
+- **Cascade delete on user/tenant-facing entities**: `ON DELETE CASCADE` (or ORM equivalent like `onDelete: Cascade`) on foreign keys where the parent is a user, account, or tenant. Deleting a user could silently wipe related data (invites, history, audit logs).
+  - Severity: **CRITICAL**
+  - Fix direction: use `RESTRICT` (prevent deletion) or `SET NULL` (orphan safely)
+
+- **Missing database indexes on frequently-queried columns**: Junction tables or foreign keys without indexes, especially in multi-tenant schemas where queries filter by `tenant_id + entity_id`.
+  - Severity: **MEDIUM**
+  - Fix direction: add composite index
+
+- **URL/link fields accepting dangerous protocols**: URL validation that accepts `javascript:`, `data:`, or `vbscript:` protocols. When these URLs end up in `href` attributes, they enable stored XSS.
+  - Severity: **CRITICAL**
+  - Fix direction: validate that URLs start with `http://` or `https://` only
+
+- **Inconsistent validation schemas**: The same field (e.g., `email`, `artista_id`) validated differently across related endpoints — required in one, optional in another, or with different normalization logic.
+  - Severity: **HIGH**
+  - Fix direction: extract shared schema definitions or use helper schemas
+
+- **Test fakes/mocks missing fields from real schema**: Fake repositories or mock objects that don't include all fields from the production schema. Tests pass but the feature is broken because the fake doesn't exercise the full data model.
+  - Severity: **MEDIUM**
+  - Fix direction: update fakes to mirror all schema fields
+
 ### 7. Assign Severities
 
 Each finding gets one severity:
@@ -455,12 +535,14 @@ Output the Markdown report directly in the conversation following that template.
 
 - **Zero findings**: Output a congratulatory report. Grade A across all criteria. Still show the header, test coverage table, and grade table.
 - **$ARGUMENTS matches a focus area**: Only run the matching detection passes from steps 5-6. Still show full report structure but mark non-analyzed sections as "Not analyzed (focused review on {area})".
-  - `security` → run only 6.2 Security
+  - `security` → run only 6.2 Security + 6.6 Race Conditions + 6.8 Data Integrity (URL validation, cascade checks)
   - `performance` → run only 6.3 Performance
   - `types` → run only 6.4 Type Safety
-  - `bugs` → run only 6.1 Bug Detection
+  - `bugs` → run only 6.1 Bug Detection + 6.6 Race Conditions
   - `tests` → run only Step 4 (Test Coverage assessment) and test quality analysis on TESTS files
-  - `docs` → run only 6.5 Documentation Sync & Docstring Coverage (skip 5.x, 6.1-6.4)
+  - `docs` → run only 6.5 Documentation Sync & Docstring Coverage
+  - `a11y` → run only 6.7 Accessibility
+  - `race-conditions` → run only 6.6 Race Conditions & TOCTOU (skip 5.x, 6.1-6.4)
 - **$ARGUMENTS matches a file path/glob**: Only analyze matching files from the changed files list. Show only those files in the report.
 - **UI_LIB files**: Apply only CRITICAL and HIGH severity checks. Note in findings: "(UI_LIB - reduced rigor)".
 - **More than 50 findings**: Show all CRITICAL/HIGH/MEDIUM findings first, then as many LOW as fit within the 50-finding cap. Add overflow count. Recommend running focused reviews per file.

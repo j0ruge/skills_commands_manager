@@ -470,6 +470,12 @@ Read `references/toctou-patterns.md` for the full pattern catalog with code exam
   - Severity: **MEDIUM**
   - Fix direction: promise coalescing, mutex per key, or stale-while-revalidate
 
+- **Shared mutable state without synchronization** (Java, C#, Go, Python): Reading a shared variable (`if (obj == null)`, `if (queue.size() > 0)`) and acting on it (`obj = new ...`, `queue.poll()`) outside a synchronized/lock block. Common in lazy initialization and producer-consumer patterns.
+  - Severity: **MEDIUM**
+  - Fix direction: synchronized block, `lock` statement, `sync.Mutex`, or language-level atomic types
+
+When a check-then-act pattern is ambiguous — e.g., single-user CLI tool, idempotent reads, or the code already handles the race gracefully — downgrade to LOW or skip rather than generating a false positive.
+
 #### 6.7 Accessibility
 
 Accessibility issues prevent users who rely on assistive technology (screen readers, keyboard navigation) from using the application. These checks apply to any frontend framework that renders HTML.

@@ -178,3 +178,66 @@ When reviewing code, look for these patterns in the diff:
 | File system TOCTOU in server code | **MEDIUM** |
 | Cache thundering herd | **MEDIUM** |
 | Stale cache for display (non-security) | **LOW** |
+| Shared mutable state without lock (Java/C#/Go) | **MEDIUM** |
+
+---
+
+## Language Variants
+
+The patterns above use TypeScript/Prisma examples. Here are equivalents in other stacks.
+
+### Python — File I/O TOCTOU
+
+```python
+# VULNERABLE
+import os
+if not os.path.exists("config.txt"):
+    with open("config.txt", "w") as f:  # another process may create it
+        f.write("defaults")
+
+# FIX: atomic create with exclusive mode
+try:
+    with open("config.txt", "x") as f:
+        f.write("defaults")
+except FileExistsError:
+    pass  # already exists, safe
+```
+
+### C# — Shared State Without Lock
+
+```csharp
+// VULNERABLE — lazy init race in multi-threaded context
+if (_instance == null)              // Thread A checks
+{
+    _instance = new MyService();    // Thread B also enters, double init
+}
+
+// FIX: use Lazy<T> or lock
+private static readonly Lazy<MyService> _instance =
+    new(() => new MyService());
+```
+
+### Python — Database Check-Then-Act (Django)
+
+```python
+# VULNERABLE
+user = User.objects.filter(email=email).first()
+if not user:
+    User.objects.create(email=email)  # race: duplicate creation
+
+# FIX: get_or_create (atomic) or unique constraint + IntegrityError catch
+user, created = User.objects.get_or_create(email=email)
+```
+
+### C# — Entity Framework Read-Modify-Write
+
+```csharp
+// VULNERABLE
+var account = await db.Accounts.FindAsync(id);
+account.Balance -= amount;  // lost update if concurrent
+await db.SaveChangesAsync();
+
+// FIX: use raw SQL atomic update
+await db.Database.ExecuteSqlInterpolatedAsync(
+    $"UPDATE Accounts SET Balance = Balance - {amount} WHERE Id = {id} AND Balance >= {amount}");
+```

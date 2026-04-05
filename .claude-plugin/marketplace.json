@@ -27,10 +27,10 @@
     {
       "name": "codereview",
       "source": "./plugins/codereview",
-      "version": "1.3.0",
-      "description": "Code review toolkit: automated pre-PR review with severity grading, and CodeRabbit PR comment resolver. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
+      "version": "1.4.0",
+      "description": "Code review toolkit: automated pre-PR review with severity grading, TOCTOU race condition detection, accessibility checks, data integrity analysis, and CodeRabbit PR comment resolver with GitHub conversation resolution. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
       "category": "quality",
-      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "pr-comments"]
+      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y"]
     },
     {
       "name": "statusline",

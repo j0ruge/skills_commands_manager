@@ -1,9 +1,9 @@
 {
   "name": "release",
-  "description": "Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with --path filter for monorepo component releases.",
+  "description": "Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with --path filter for monorepo component releases. Contributor resolution via org membership cross-reference.",
   "author": { "name": "Chewiesoft" },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "category": "development",
-  "keywords": ["release", "release-notes", "github-release", "changelog", "git-tag", "semver", "gh-cli"],
+  "keywords": ["release", "release-notes", "github-release", "changelog", "git-tag", "semver", "gh-cli", "dotnet", "monorepo"],
   "commands": "./commands"
 }

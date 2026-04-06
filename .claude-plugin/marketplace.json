@@ -51,8 +51,8 @@
     {
       "name": "dotnet-wpf",
       "source": "./plugins/dotnet-wpf",
-      "version": "1.1.0",
-      "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
+      "version": "1.2.0",
+      "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, DataGrid icon patterns, RowHeight sizing), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
       "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows"]
     }

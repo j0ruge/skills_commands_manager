@@ -2,6 +2,16 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.2.0] - 2026-04-06
+
+### Added
+
+- `dotnet-wpf-design` CTRL-003: SymbolIcon sharing bug in DataGrid — icons in Style.Setter.Value are shared across rows, only last row shows icon. Documented correct pattern using DataTemplate.Triggers with Visibility.
+- `dotnet-wpf-design` LAYOUT-001 variant: toolbar fixa em paginas com DataGrid (sem ScrollViewer explicito). CanContentScroll="False" desabilita DynamicScrollViewer e DataGrid usa scroll interno.
+- `dotnet-wpf-design` DataGrid RowHeight recommendation: 30px as sweet spot for readability. Updated controls-sizing.md with comparison table and ListBox equivalent.
+- `dotnet-wpf-design` audit checklist: DataGrid RowHeight >= 30px + SymbolIcon Visibility pattern check.
+- Anti-pattern #9: UIElements in Style Setter.Value inside DataTemplate.
+
 ## [1.0.0] - 2026-04-01
 
 ### Added

@@ -45,7 +45,7 @@ Then install any plugin:
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.3.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections |
-| [**dotnet-wpf**](#dotnet-wpf) | 1.1.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls), MVVM migration, E2E testing |
+| [**dotnet-wpf**](#dotnet-wpf) | 1.2.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls), MVVM migration, E2E testing |
 
 ---
 

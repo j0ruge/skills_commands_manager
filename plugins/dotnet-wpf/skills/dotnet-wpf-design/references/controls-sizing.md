@@ -191,6 +191,25 @@ Para DataGrids com muitas linhas (>100), garantir virtualizacao:
 
 ### Row Height
 
-- MinRowHeight: 32px (padrao Fluent)
-- RowHeight: 36-40px para melhor legibilidade
-- HeaderRowHeight: 40px
+| Contexto | RowHeight | Notas |
+|----------|-----------|-------|
+| Minimo legivel | 22px | Compacto, sem respiro |
+| **Recomendado** | **30px** | Bom respiro visual, confortavel para leitura |
+| Fluent padrao | 32px | Alinhado com MinHeight de controles |
+| Legibilidade maxima | 36-40px | Para DataGrids com poucas colunas |
+| Header | 40px | HeaderRowHeight |
+
+**Consistencia:** Usar o mesmo RowHeight em todas as paginas da aplicacao. A diferenca
+visual entre 22px e 30px e significativa — 30px e o sweet spot entre densidade e
+conforto para tabelas de dados maritimos com muitas colunas.
+
+**ListBox equivalente:** Para paginas que usam ListBox em vez de DataGrid (ex: Log com
+virtualizacao), setar `Height` no `ListBoxItem` Style:
+
+```xml
+<Style x:Key="LogItemStyle" TargetType="ListBoxItem">
+    <Setter Property="Height" Value="30" />
+    <Setter Property="Padding" Value="4,1" />
+    <Setter Property="Margin" Value="0" />
+</Style>
+```

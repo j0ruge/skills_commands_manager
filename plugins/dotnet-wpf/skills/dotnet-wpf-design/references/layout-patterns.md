@@ -67,6 +67,37 @@ Um usuario reportou que `ScrollViewer.CanContentScroll="False"` pode ocasionalme
 "quebrar cores de font do tema" se a pagina afetada for visitada e depois o usuario
 navegar para outras paginas. Edge case raro — monitorar mas nao deve ser problema.
 
+### Variante: Paginas com DataGrid (sem ScrollViewer explicito)
+
+Paginas com DataGrid nao precisam de ScrollViewer explicito — o DataGrid tem scroll interno.
+Com `CanContentScroll="False"` no Page, o DynamicScrollViewer e desabilitado e o DataGrid
+recebe altura finita, ativando seu scroll automaticamente:
+
+```xml
+<Page
+    ScrollViewer.CanContentScroll="False">
+
+    <Grid Margin="16,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <ui:Button Content="Channels" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="1"
+                  ItemsSource="{Binding Data}"
+                  RowHeight="30" />
+    </Grid>
+</Page>
+```
+
+Funciona tambem com ListBox virtualizado — `CanContentScroll="False"` na Page afeta
+apenas o DynamicScrollViewer externo. ListBox com `CanContentScroll="True"` continua
+virtualizando.
+
 **Referencia:** WPF-UI GitHub Issue #1041, PR #1504
 
 ---

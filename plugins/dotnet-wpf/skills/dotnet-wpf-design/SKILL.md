@@ -28,6 +28,12 @@ e sao lidos sob demanda.
 
 ## Versao e Changelog
 
+**v1.2.0** (2026-04-06)
+- LAYOUT-001 expandido: variante para paginas com DataGrid (sem ScrollViewer explicito)
+- CTRL-003 novo: SymbolIcon sharing bug em DataGrid — icons em Style.Setter.Value sao compartilhados entre linhas
+- DataGrid RowHeight recomendado atualizado: 30px para legibilidade confortavel
+- Anti-padrao #9: SymbolIcon em Setter.Value dentro de DataGridTemplateColumn
+
 **v1.1.0** (2026-04-01)
 - Deep dive no WPF-UI: catalogo completo de 90+ controles em `references/wpfui-controls-catalog.md`
 - ControlAppearance enum (Primary, Danger, Success, Caution) para semantica de cores
@@ -137,6 +143,11 @@ Leia o XAML da pagina e aplique este checklist:
 - [ ] ToggleButtons tem MinWidth >= 48px e MinHeight >= 28px?
 - [ ] ComboBox tem Width suficiente para mostrar conteudo (minimo 80px para 4 chars)?
 - [ ] Controles customizados (UserControl) tem Height >= 32px?
+- [ ] DataGrid RowHeight >= 30px? (consistente entre paginas)
+
+**DataGrid Icons:**
+- [ ] SymbolIcon/Image em DataGridTemplateColumn usa DataTemplate.Triggers com Visibility?
+      (NAO Style.Setter.Value — causa sharing bug, icone aparece so em 1 linha)
 
 **Tipografia:**
 - [ ] Body text usa FontSize >= 14px?
@@ -206,6 +217,40 @@ Isso faz com que o Grid inteiro da pagina (incluindo toolbar em Row 0) role.
 **Como funciona:** O `NavigationViewContentPresenter` le
 `ScrollViewer.GetCanContentScroll(page)`. Quando retorna `false`, seta
 `IsDynamicScrollViewerEnabled = false`, removendo o wrapper `DynamicScrollViewer`.
+
+**Variante: Paginas com DataGrid (sem ScrollViewer explicito)**
+
+Paginas que usam DataGrid nao precisam de `<ScrollViewer>` explicito em Row 1 — o DataGrid
+tem ScrollViewer interno. Basta `ScrollViewer.CanContentScroll="False"` no `<Page>` para que
+o DynamicScrollViewer seja desabilitado e o DataGrid receba altura finita, ativando seu
+scroll interno automaticamente:
+
+```xml
+<Page
+    ScrollViewer.CanContentScroll="False">
+
+    <Grid Margin="16,8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />  <!-- Toolbar fixa -->
+            <RowDefinition Height="*" />     <!-- DataGrid com scroll interno -->
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <ui:Button Content="Channels" Icon="{ui:SymbolIcon Grid24}" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="1"
+                  ItemsSource="{Binding Data}"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  RowHeight="30" />
+    </Grid>
+</Page>
+```
+
+Tambem funciona com ListBox virtualizado — o `CanContentScroll="False"` na Page afeta apenas
+o DynamicScrollViewer externo. O ListBox interno com `ScrollViewer.CanContentScroll="True"`
+continua virtualizando normalmente.
 
 **Referencia:** WPF-UI GitHub Issue #1041, PR #1504
 
@@ -410,6 +455,84 @@ Valores disponiveis: Primary, Secondary, Info, Dark, Light, Danger, Success, Cau
 
 ---
 
+### CTRL-003: SymbolIcon sharing bug em DataGrid
+
+**Problema:** Em um `DataGridTemplateColumn`, usar `SymbolIcon` dentro de `Style.Setter.Value`
+com `DataTrigger` faz o icone aparecer em apenas UMA linha (a ultima renderizada). As demais
+linhas ficam vazias.
+
+**Causa raiz:** WPF cria uma unica instancia de `SymbolIcon` no `Setter.Value`. Como um
+UIElement so pode ter um pai visual, cada nova linha "rouba" o icone da anterior.
+
+**Errado (icone compartilhado):**
+```xml
+<DataGridTemplateColumn Header="Level">
+    <DataGridTemplateColumn.CellTemplate>
+        <DataTemplate>
+            <ContentControl>
+                <ContentControl.Style>
+                    <Style TargetType="ContentControl">
+                        <Setter Property="Content">
+                            <Setter.Value>
+                                <!-- UMA instancia para TODAS as linhas! -->
+                                <ui:SymbolIcon Symbol="Info24" Foreground="#3B82F6" />
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Type}" Value="Warning">
+                                <Setter Property="Content">
+                                    <Setter.Value>
+                                        <ui:SymbolIcon Symbol="Warning24" Foreground="#F59E0B" />
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ContentControl.Style>
+            </ContentControl>
+        </DataTemplate>
+    </DataGridTemplateColumn.CellTemplate>
+</DataGridTemplateColumn>
+```
+
+**Correto (icones por linha com Visibility):**
+```xml
+<DataGridTemplateColumn Header="Level" Width="70">
+    <DataGridTemplateColumn.CellTemplate>
+        <DataTemplate>
+            <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ui:SymbolIcon x:Name="InfoIcon" Symbol="Info24"
+                               FontSize="16" Foreground="#3B82F6" Visibility="Visible" />
+                <ui:SymbolIcon x:Name="WarningIcon" Symbol="Warning24"
+                               FontSize="16" Foreground="#F59E0B" Visibility="Collapsed" />
+                <ui:SymbolIcon x:Name="SevereIcon" Symbol="ErrorCircle24"
+                               FontSize="16" Foreground="#EF4444" Visibility="Collapsed" />
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Type}" Value="Warning">
+                    <Setter TargetName="InfoIcon" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="WarningIcon" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Type}" Value="Severe">
+                    <Setter TargetName="InfoIcon" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="SevereIcon" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </DataGridTemplateColumn.CellTemplate>
+</DataGridTemplateColumn>
+```
+
+**Por que funciona:** Cada linha recebe sua propria instancia do DataTemplate. Os 3 icones
+sao criados por linha, empilhados em Grid, e `DataTemplate.Triggers` alterna `Visibility`.
+Sem compartilhamento de UIElement.
+
+**Regra geral:** Nunca coloque UIElements (SymbolIcon, Image, Border, etc.) em `Setter.Value`
+de um Style dentro de DataTemplate. Use `DataTemplate.Triggers` com `Visibility` ou
+`ContentTemplate` (que cria instancias por uso).
+
+---
+
 ## Anti-padroes desta Skill
 
 1. **StackPanel como container de formulario** — StackPanel da espaco infinito e impede
@@ -435,6 +558,11 @@ Valores disponiveis: Primary, Secondary, Info, Dark, Light, Danger, Success, Cau
 
 8. **Height fixo em UserControl sem MinHeight nos filhos** — o UserControl tem Height=27
    mas os controles internos podem precisar de mais espaco. Defina MinHeight nos filhos.
+
+9. **SymbolIcon/Image em Style Setter.Value dentro de DataTemplate** — UIElements em
+   Setter.Value sao instanciados uma unica vez e compartilhados entre todas as linhas.
+   Resultado: so a ultima linha renderizada mostra o icone. Use `DataTemplate.Triggers`
+   com Visibility em vez de `Style.Triggers` com Content.
 
 ---
 

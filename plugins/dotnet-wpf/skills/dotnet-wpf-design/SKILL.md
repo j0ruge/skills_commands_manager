@@ -28,6 +28,13 @@ e sao lidos sob demanda.
 
 ## Versao e Changelog
 
+**v1.3.0** (2026-04-08)
+- FORM-002 corrigido: exemplo do UserControl com `Height="32"` e ComboBox FontSize=13 causava clipping vertical do texto ("Mar.", "Feb." cortados). MinHeight nos filhos nao resolve.
+- FORM-003 novo (chamada curta no SKILL.md, recipe completo em `references/form-design.md`): estilos implicitos em `<StackPanel.Resources>` tem blast radius indesejado em paginas com layouts mistos (form vertical + StackPanel horizontal). Quebra alinhamento de controles fora do form.
+- Anti-padrao #8 reescrito: o pai UserControl com Height fixo limita o espaco total, MinHeight nos filhos nao recupera. Prefira `MinHeight` no proprio UserControl ou auto-tamanho.
+- Detalhe Critico #9 novo: texto clipado em controle Fluent quase sempre e altura, nao largura. Antes de aumentar Width, checar Height do pai e do controle.
+- Passo 3 (Verificar): nota sobre process restart para mudancas em UserControl que vive em DLL referenciada — `dotnet build` nao basta.
+
 **v1.2.0** (2026-04-06)
 - LAYOUT-001 expandido: variante para paginas com DataGrid (sem ScrollViewer explicito)
 - CTRL-003 novo: SymbolIcon sharing bug em DataGrid — icons em Style.Setter.Value sao compartilhados entre linhas
@@ -139,11 +146,15 @@ Leia o XAML da pagina e aplique este checklist:
 - [ ] Labels tem margem do campo >= 8px?
 
 **Sizing:**
-- [ ] TextBox/ComboBox tem MinHeight >= 32px?
+- [ ] TextBox/ComboBox tem MinHeight >= 32px (ou Height>=36 se FontSize=13)?
 - [ ] ToggleButtons tem MinWidth >= 48px e MinHeight >= 28px?
 - [ ] ComboBox tem Width suficiente para mostrar conteudo (minimo 80px para 4 chars)?
-- [ ] Controles customizados (UserControl) tem Height >= 32px?
+- [ ] Controles customizados (UserControl) NAO tem `Height` fixo restritivo? (preferir auto-tamanho ou `MinHeight`)
 - [ ] DataGrid RowHeight >= 30px? (consistente entre paginas)
+- [ ] Texto de ComboBox/TextBox visivel sem clip vertical em abreviacoes (Mar., Sep.) e descenders (g, p, q)?
+
+**Estilos / escopo de Resources:**
+- [ ] Nenhum estilo implicito (`<Style TargetType="...">` sem `x:Key`) em `Page.Resources`/`StackPanel.Resources` que afete inputs em layouts mistos? (use Margin cirurgico ou `x:Key` + `StaticResource` — veja FORM-003)
 
 **DataGrid Icons:**
 - [ ] SymbolIcon/Image em DataGridTemplateColumn usa DataTemplate.Triggers com Visibility?
@@ -173,6 +184,13 @@ Para detalhes e exemplos completos, leia o arquivo correspondente em `references
    - Espacamento confortavel entre campos
    - Toolbar fixa ao rolar conteudo
    - Contraste adequado entre texto e fundo
+
+> ⚠️ **Se voce alterou XAML de um UserControl que vive numa biblioteca referenciada**
+> (ex.: `VDAControls.dll` consumida pelo executavel principal), o `dotnet build` atualiza
+> o DLL no disco, mas o processo da app rodando ainda tem o DLL antigo carregado em
+> memoria. **Instrua o usuario a fechar e reabrir a app** para ver as mudancas — o XAML do
+> UserControl e compilado em BAML embutido no DLL e so e recarregado no startup do
+> processo. Veja Detalhe Critico #10.
 
 ---
 
@@ -336,20 +354,57 @@ texto cortado ou ilegivel.
 | TextBox (2 digitos) | 32px | 40px | 13px |
 | TextBox (4 digitos) | 32px | 55px | 13px |
 
-**Exemplo — controle de data (AptDateWPF):**
+**Exemplo — controle de data (Day / Month / Year):**
+
 ```xml
-<UserControl Height="32">
-    <StackPanel Orientation="Horizontal">
-        <TextBox Width="40" FontSize="13" MinHeight="28" />
+<!-- ✅ Auto-tamanho: o UserControl cresce conforme o filho mais alto -->
+<UserControl>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <TextBox  Width="40" FontSize="13" />
         <TextBlock Text="/" Margin="4,0" FontSize="13" />
-        <ComboBox Width="80" FontSize="13" MinHeight="28" />
+        <!-- Height>=36 para FontSize=13 nao clipar texto Fluent verticalmente -->
+        <ComboBox Width="80" FontSize="13" Height="36" />
         <TextBlock Text="/" Margin="4,0" FontSize="13" />
-        <TextBox Width="55" FontSize="13" MinHeight="28" />
+        <TextBox  Width="55" FontSize="13" />
     </StackPanel>
 </UserControl>
 ```
 
+⚠️ **Armadilha frequente:** colocar `Height="32"` no `<UserControl>` parece "padronizar" a
+altura, mas a `FontSize="13"` o `ComboBox` Fluent (WPF-UI) precisa de **~36px** para
+renderizar abreviacoes como "Jan."/"Feb."/"Mar." sem cortar o caractere final. Resultado:
+o texto fica visualmente clipado e o instinto e aumentar `Width` — que NAO resolve, porque
+o problema e altura, nao largura. Veja Anti-padrao #8 e Detalhe Critico #9.
+
+Recomendado:
+- **Nao** definir `Height` no `<UserControl>` (deixar auto-tamanho); ou
+- Definir `MinHeight` (nao `Height`) no UserControl, e/ou
+- Garantir que o filho problematico (geralmente o `ComboBox`) tenha `Height` explicito
+  suficiente para o `FontSize` em uso.
+
 Detalhes em `references/controls-sizing.md`.
+
+---
+
+### FORM-003: Espacamento entre linhas — evitar estilo implicito amplo
+
+**Problema:** Linhas de formulario "coladas". O reflexo de adicionar
+`<Style TargetType="{x:Type TextBox}">` em `<StackPanel.Resources>` ou `<Page.Resources>`
+para padronizar `Margin` quebra qualquer layout horizontal da mesma pagina (toolbars,
+StackPanel inline, UserControl horizontal) — porque estilos implicitos aplicam-se a TODOS
+os elementos do tipo no escopo.
+
+**Regra:** aplique `Margin` cirurgicamente nos inputs do formulario, ou use `Style` com
+`x:Key` + `StaticResource` explicito. Estilos implicitos so quando o escopo de Resources
+contem APENAS controles de form vertical (raro em paginas reais).
+
+**Onde colocar a margem:** no proprio input, nao no `RowDefinition`. Com `Height="Auto"` a
+altura da linha vira `max(label+margem, input)`, e se o input e mais alto que o label, a
+margem do label nao cria espaco entre linhas — os inputs vizinhos encostam.
+
+Recipe completo (errado / correto / alternativa com `x:Key`, exemplos XAML, e justificativa
+de por que `Margin` no input vence `Margin` no `RowDefinition`) em
+`references/form-design.md` na secao "Margin Cirurgico vs Estilo Implicito (FORM-003)".
 
 ---
 
@@ -556,13 +611,30 @@ de um Style dentro de DataTemplate. Use `DataTemplate.Triggers` com `Visibility`
 7. **Width fixo em ComboBox muito estreito** — ComboBox com Width=65 nao mostra "Jun."
    completo com padding. Minimo: 80px para meses abreviados.
 
-8. **Height fixo em UserControl sem MinHeight nos filhos** — o UserControl tem Height=27
-   mas os controles internos podem precisar de mais espaco. Defina MinHeight nos filhos.
+8. **`Height` fixo em UserControl que envolve controles Fluent** — o atributo `Height` no
+   `<UserControl>` limita o espaco total disponivel para os filhos. Definir `MinHeight`
+   nos filhos NAO recupera o espaco — o pai ja capou. Pior: a uma `FontSize="13"` o
+   `ComboBox`/`TextBox` Fluent (WPF-UI) precisa de ~36px para renderizar texto com
+   descenders/pontos sem clipar verticalmente, e `Height="32"` parece "padrao" mas
+   visivelmente corta caracteres como "g", "p", ".", produzindo o sintoma classico de
+   "texto cortado" — que o desenvolvedor erroneamente tenta resolver aumentando `Width`.
+   **Fix:** prefira deixar o UserControl auto-dimensionar (sem `Height`), ou use
+   `MinHeight` no proprio UserControl, ou de `Height` explicito ao filho problematico.
 
 9. **SymbolIcon/Image em Style Setter.Value dentro de DataTemplate** — UIElements em
    Setter.Value sao instanciados uma unica vez e compartilhados entre todas as linhas.
    Resultado: so a ultima linha renderizada mostra o icone. Use `DataTemplate.Triggers`
    com Visibility em vez de `Style.Triggers` com Content.
+
+10. **Estilos implicitos em `<StackPanel.Resources>` / `<Page.Resources>` para padronizar
+    Margin de inputs** — quando uma pagina mistura grids de formulario (vertical) com
+    qualquer `StackPanel Orientation="Horizontal"` (toolbar, grupo de campos inline,
+    UserControl horizontal), um estilo implicito como
+    `<Style TargetType="{x:Type TextBox}"><Setter Property="Margin" Value="0,4"/></Style>`
+    afeta TODOS os TextBoxes filhos — incluindo os horizontais, onde a margem vertical
+    extra desalinha a linha. Veja FORM-003 para o recipe correto: aplicar Margin
+    cirurgicamente nos inputs do formulario, ou usar `Style` com `x:Key` + `StaticResource`
+    explicito.
 
 ---
 
@@ -597,6 +669,26 @@ de um Style dentro de DataTemplate. Use `DataTemplate.Triggers` com `Visibility`
    que usam `await _contentDialogService.ShowSimpleDialogAsync()` devem ser `async Task`,
    nao `async void`. Excecoes em `async void` nao sao observaveis e podem crashar a app.
 
+9. **Texto clipado em controle Fluent quase sempre e altura, nao largura** — quando um
+   `ComboBox`/`TextBox` da WPF-UI mostra "Mar." sem o ponto, "Sep." sem o "p.", ou textos
+   com descender (`g`, `p`, `q`) cortados no rodape, o reflexo de aumentar `Width` esta
+   errado. Antes de mexer em largura, verificar nesta ordem:
+   1. `Height` fixo no `<UserControl>` pai (mais comum — `Height="32"` e classico).
+   2. `Height` fixo no proprio controle.
+   3. `RowDefinition Height="..."` muito apertado no `Grid` pai.
+   4. `MinHeight` < altura natural a essa `FontSize`.
+
+   **Regra pratica:** a `FontSize="13"` o `ComboBox` Fluent precisa de **~36px** de
+   altura para renderizar abreviacoes com ponto sem clip. A `FontSize="14"` (Body) precisa
+   de **~38-40px**. A `FontSize="12"` (Caption) suporta `Height="32"` na maioria dos casos.
+
+10. **Mudancas em XAML de UserControl em DLL referenciada precisam de process restart** —
+    se voce edita `MyControl.xaml` que vive em `VDAControls.csproj` (DLL referenciada por
+    `VDRDataAnalyzer.exe`), o XAML e compilado em BAML e embutido no `VDAControls.dll`. O
+    processo `VDRDataAnalyzer.exe` carregou esse DLL na memoria no startup e nao recarrega
+    automaticamente. `dotnet build` atualiza o DLL no disco mas nao afeta o processo
+    rodando. **Sempre instruir o usuario:** "feche e reabra a app para ver as mudancas".
+
 ---
 
 ## Guias de Referencia (progressive disclosure level 3)
@@ -606,7 +698,7 @@ Leia estes arquivos **somente quando necessario** no passo correspondente:
 | Arquivo | Leia quando... |
 |---------|----------------|
 | `references/layout-patterns.md` | Problemas de ScrollViewer, toolbar fixa, Grid vs StackPanel |
-| `references/form-design.md` | Espacamento entre campos, label alignment, respiro |
+| `references/form-design.md` | Espacamento entre campos, label alignment, respiro, FORM-003 (Margin cirurgico vs estilo implicito) |
 | `references/typography-colors.md` | FontSize, type ramp, cores dark theme, contraste WCAG |
 | `references/controls-sizing.md` | MinHeight/MinWidth, ComboBox, TextBox, touch targets |
 | `references/wpfui-components.md` | Card, CardExpander, InfoBar, DynamicResource brushes, ControlAppearance, DI services |

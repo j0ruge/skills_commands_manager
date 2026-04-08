@@ -75,6 +75,88 @@ consome muito espaco vertical. Um compromisso aceitavel:
 
 ---
 
+## Margin Cirurgico vs Estilo Implicito (FORM-003)
+
+**Problema:** Em uma pagina onde varias linhas de formulario aparecem "coladas" (inputs
+verticalmente encostados nos da linha seguinte), e tentador adicionar um estilo implicito
+no `<StackPanel.Resources>` ou `<Page.Resources>` para padronizar o `Margin` de todos os
+`TextBox`/`ComboBox`/`UserControl` de uma vez. **Isso quase sempre quebra outros layouts
+da mesma pagina.**
+
+### Causa raiz
+
+Estilos implicitos (`<Style TargetType="{x:Type TextBox}">` sem `x:Key`) aplicam-se a
+TODOS os elementos do tipo dentro do escopo do Resources. Paginas reais de formulario
+costumam misturar:
+
+- Grids verticais de campos rotulados (onde a margem vertical ajuda)
+- `StackPanel Orientation="Horizontal"` para grupos inline (label + 1 input + botao)
+- UserControls horizontais (data, hora) que internamente usam TextBox/ComboBox
+- Toolbar com botoes/inputs lado a lado
+
+Adicionar margem vertical em TODOS os TextBoxes/ComboBoxes da pagina desalinha tudo que
+nao e form vertical. O sintoma e: "consertei o espacamento mas o controle X esta deslocado
+agora".
+
+### Errado — estilo implicito amplo
+
+```xml
+<StackPanel Width="900">
+    <StackPanel.Resources>
+        <Style TargetType="{x:Type TextBox}">
+            <Setter Property="Margin" Value="0,4" />
+        </Style>
+        <Style TargetType="{x:Type ComboBox}">
+            <Setter Property="Margin" Value="0,4" />
+        </Style>
+    </StackPanel.Resources>
+    <!-- Afeta TextBox/ComboBox em StackPanel horizontal tambem -> desalinha -->
+</StackPanel>
+```
+
+### Correto — Margin cirurgico nos inputs do formulario
+
+```xml
+<Grid>  <!-- form vertical -->
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <TextBlock Grid.Row="0" Grid.Column="0" Text="Flag" Margin="0,8" />
+    <TextBox   Grid.Row="0" Grid.Column="1" Margin="0,4" />  <!-- explicito -->
+    <TextBlock Grid.Row="1" Grid.Column="0" Text="Tonnage" Margin="0,8" />
+    <TextBox   Grid.Row="1" Grid.Column="1" Margin="0,4" />  <!-- explicito -->
+</Grid>
+```
+
+### Alternativa — Style com `x:Key` aplicado seletivamente
+
+```xml
+<Page.Resources>
+    <Style x:Key="FormFieldInput" TargetType="TextBox">
+        <Setter Property="Margin" Value="0,4" />
+    </Style>
+</Page.Resources>
+...
+<TextBox Style="{StaticResource FormFieldInput}" />
+<!-- TextBoxes que NAO recebem o style continuam intactos -->
+```
+
+### Por que `Margin` no input e melhor que `Margin` no `RowDefinition`
+
+Com `RowDefinition Height="Auto"` a altura da linha = `max(label+margem, input)`. Quando
+o input e mais alto que o label, a margem so do label nao cria espaco entre linhas
+vizinhas — os inputs adjacentes acabam encostando. Uma `Margin="0,4"` no input garante
+4px de respiro acima e abaixo dele independente do que o label faz.
+
+### Quando o estilo implicito E aceitavel
+
+Quando voce tem certeza absoluta de que aquele escopo de Resources contem APENAS controles
+de formulario verticais e NENHUM layout misto (toolbar, StackPanel horizontal, UserControl
+horizontal). Em paginas reais, isso e raro — quase sempre a versao cirurgica e mais segura.
+
+---
+
 ## Label Placement
 
 ### Labels ao lado (horizontal) — padrao deste projeto

@@ -51,10 +51,10 @@
     {
       "name": "dotnet-wpf",
       "source": "./plugins/dotnet-wpf",
-      "version": "1.3.0",
-      "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, DataGrid icon patterns, RowHeight sizing, form spacing recipes, UserControl height clipping diagnosis), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
+      "version": "1.4.0",
+      "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, DataGrid icon patterns, RowHeight sizing, form spacing recipes, UserControl height clipping diagnosis, date control MaxYear validation trap, multi-column form layouts, complex Grid row patterns), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
-      "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows"]
+      "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows", "form-layout", "date-validation"]
     }
   ]
 }

@@ -45,7 +45,7 @@ Then install any plugin:
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.3.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections |
-| [**dotnet-wpf**](#dotnet-wpf) | 1.3.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing recipes, height clipping diagnosis), MVVM migration, E2E testing |
+| [**dotnet-wpf**](#dotnet-wpf) | 1.4.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing recipes, height clipping diagnosis, date validation traps, multi-column layouts), MVVM migration, E2E testing |
 
 ---
 
@@ -131,7 +131,7 @@ Complete development toolkit for C#/.NET WPF desktop applications — from proje
 | Skill | Description |
 |-------|-------------|
 | `/dotnet-wpf:dotnet-desktop-setup` | Configures and audits .NET desktop projects for Claude Code |
-| `/dotnet-wpf:dotnet-wpf-design` | Fluent Design guide — layout patterns, typography, 90+ WPF-UI controls catalog |
+| `/dotnet-wpf:dotnet-wpf-design` | Fluent Design guide — layout patterns, typography, 90+ WPF-UI controls catalog, date validation traps, multi-column form layouts |
 | `/dotnet-wpf:dotnet-wpf-mvvm` | WinForms → WPF MVVM migration with CommunityToolkit.Mvvm and WPF-UI |
 | `/dotnet-wpf:dotnet-wpf-e2e-testing` | FlaUI + xUnit E2E testing — Page Objects, AutomationId patterns, CI/CD setup |
 

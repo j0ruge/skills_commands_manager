@@ -28,6 +28,10 @@ e sao lidos sob demanda.
 
 ## Versao e Changelog
 
+**v1.4.0** (2026-04-09)
+- FORM-004 novo: separador sutil entre grupos de campos em Grid. Usa `Border` com `BorderThickness="0,0,0,1"` e `DividerStrokeColorDefaultBrush` em row dedicada. Anti-padrao documentado: nunca compartilhar row do separador com conteudo (causa sobreposicao).
+- Anti-padrao #11 novo: Border separador na mesma row que conteudo causa sobreposicao visual.
+
 **v1.3.0** (2026-04-08)
 - FORM-002 corrigido: exemplo do UserControl com `Height="32"` e ComboBox FontSize=13 causava clipping vertical do texto ("Mar.", "Feb." cortados). MinHeight nos filhos nao resolve.
 - FORM-003 novo (chamada curta no SKILL.md, recipe completo em `references/form-design.md`): estilos implicitos em `<StackPanel.Resources>` tem blast radius indesejado em paginas com layouts mistos (form vertical + StackPanel horizontal). Quebra alinhamento de controles fora do form.
@@ -588,6 +592,64 @@ de um Style dentro de DataTemplate. Use `DataTemplate.Triggers` com `Visibility`
 
 ---
 
+### FORM-004: Separador sutil entre grupos de campos em Grid
+
+**Problema:** Em formularios densos com muitos campos dentro de um unico `SectionBorder`,
+grupos logicos de campos (ex: dados de identificacao vs datas de validade) ficam colados
+sem distincao visual. Usar um `Border` com `BorderThickness="1"` e `CornerRadius="4"`
+(estilo "box") envolve o grupo inteiro e destoa do design flat/clean do resto do formulario.
+
+**Solucao:** Usar um `Border` fino em sua **propria RowDefinition dedicada** dentro do Grid,
+com apenas a borda bottom (`BorderThickness="0,0,0,1"`) e `Margin="0,8"` para respiro
+simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixotar".
+
+```xml
+<Grid>
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />  <!-- Row N: ultimo campo do grupo A -->
+        <RowDefinition Height="Auto" />  <!-- Row N+1: SEPARADOR (row dedicada) -->
+        <RowDefinition Height="Auto" />  <!-- Row N+2: primeiro campo do grupo B -->
+    </Grid.RowDefinitions>
+
+    <!-- ... campos do grupo A ... -->
+
+    <!-- Row N+1: Separador sutil -->
+    <Border Grid.Row="N+1" Grid.Column="0" Grid.ColumnSpan="3"
+            BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,0,0,1" Margin="0,8" />
+
+    <!-- ... campos do grupo B ... -->
+</Grid>
+```
+
+**Regras:**
+- **Sempre use row dedicada** para o separador — nunca compartilhe a row com conteudo.
+  Compartilhar causa sobreposicao porque o `Margin` do Border compete com o conteudo da
+  mesma row.
+- `Margin="0,8"` da 8px acima e abaixo da linha — respiro confortavel sem exagero.
+  Aumente para `Margin="0,12"` se precisar de mais respiro.
+- Use `DividerStrokeColorDefaultBrush` (nao `ControlStrokeColorDefaultBrush`) — e mais
+  sutil, projetado para separadores.
+- `ColumnSpan` deve cobrir todas as colunas do Grid.
+
+**Anti-padrao: Border na mesma row que conteudo**
+
+```xml
+<!-- ❌ ERRADO: Border na mesma row que o TextBlock — sobrepoe o texto -->
+<TextBlock Grid.Row="6" Grid.Column="1" Text="Descricao..." />
+<Border Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3"
+        BorderThickness="0,0,0,1" Margin="0,16,0,16" />
+<!-- O Margin do Border expande a row e o texto fica atras da linha -->
+
+<!-- ✅ CORRETO: Border em row propria -->
+<TextBlock Grid.Row="6" Grid.Column="1" Text="Descricao..." />
+<Border Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="3"
+        BorderThickness="0,0,0,1" Margin="0,8" />
+<TextBlock Grid.Row="8" Grid.Column="0" Text="Proximo campo..." />
+```
+
+---
+
 ## Anti-padroes desta Skill
 
 1. **StackPanel como container de formulario** — StackPanel da espaco infinito e impede
@@ -635,6 +697,12 @@ de um Style dentro de DataTemplate. Use `DataTemplate.Triggers` com `Visibility`
     extra desalinha a linha. Veja FORM-003 para o recipe correto: aplicar Margin
     cirurgicamente nos inputs do formulario, ou usar `Style` com `x:Key` + `StaticResource`
     explicito.
+
+11. **Border separador na mesma row que conteudo** — colocar um `Border` divisor
+    (ex: `BorderThickness="0,0,0,1"`) na mesma `Grid.Row` de um TextBlock ou controle
+    causa sobreposicao: o Margin do Border expande a row e o texto fica atras da linha.
+    **Fix:** sempre usar uma `RowDefinition Height="Auto"` dedicada para o separador,
+    sem nenhum outro elemento nessa row. Veja FORM-004.
 
 ---
 

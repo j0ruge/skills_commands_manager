@@ -1,11 +1,11 @@
 {
   "name": "codereview",
-  "description": "Code review toolkit: automated pre-PR review with severity grading, TOCTOU race condition detection, accessibility checks, data integrity analysis, and CodeRabbit PR comment resolver with GitHub conversation resolution. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
+  "description": "Code review toolkit: automated pre-PR review with severity grading, TOCTOU race condition detection, accessibility checks, data integrity analysis, and multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex) with GitHub conversation resolution and model-tier routing for token efficiency. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.4.0",
+  "version": "1.6.0",
   "category": "quality",
-  "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y"],
+  "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer"],
   "skills": "./skills"
 }

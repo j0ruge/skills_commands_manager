@@ -1,19 +1,22 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 2.0.0
+  version: 3.1.0
 description: >
-  Resolve CodeRabbit review comments on a GitHub PR. Extracts all review comments
-  from coderabbitai[bot], creates a structured checklist with checkboxes, verifies
-  each finding against current code, applies fixes when needed, runs regression
-  tests, and resolves GitHub conversations. Use this skill whenever the user
-  mentions coderabbit, wants to fix or resolve coderabbit comments, address PR
-  review feedback from CodeRabbit, handle coderabbit findings, process coderabbit
-  suggestions, or triage coderabbit bot comments — even if they say it casually
-  like "fix coderabbit" or "resolve the PR comments".
-  Triggers: "coderabbit", "coderabbit review", "fix coderabbit", "coderabbit PR",
-  "resolve coderabbit", "address coderabbit", "coderabbit comments", "fix PR review",
-  "resolver comentarios do coderabbit", "corrigir coderabbit"
+  Resolve AI review comments on a GitHub PR. Supports CodeRabbit, Copilot,
+  Gemini Code Assist, and Codex — auto-detects which reviewers are present.
+  Creates a separate checklist file per reviewer ({reviewer}-review.md),
+  verifies each finding against current code, applies fixes, runs regression
+  tests, and resolves all GitHub conversations. Uses model routing to optimize
+  token usage: lightweight models for data collection, full-power model for
+  analysis. Use this skill whenever the user mentions coderabbit, copilot review,
+  gemini review, codex review, wants to fix or resolve PR review comments,
+  address AI review feedback, handle review findings, process review suggestions,
+  or triage bot comments — even casually like "fix coderabbit", "resolve the PR
+  comments", "fix copilot comments", "address gemini feedback".
+  Triggers: "coderabbit", "copilot review", "gemini review", "codex review",
+  "fix PR review", "resolve review comments", "address review feedback",
+  "resolver comentarios", "corrigir review", "fix bot comments"
 ---
 
 ## User Input
@@ -28,30 +31,56 @@ Parse the user input before proceeding:
 - **Optional flags**:
   - `--skip-tests` — skip Phase 4 (regression testing)
   - `--dry-run` — verify only, do not apply fixes
+  - `--reviewer <name>` — process only a specific reviewer (e.g., `--reviewer coderabbit`). Default: all detected reviewers.
 
-If `$ARGUMENTS` is empty or does not contain a PR number, ask: "What is the PR number containing the CodeRabbit comments?"
+If `$ARGUMENTS` is empty or does not contain a PR number, ask: "What is the PR number?"
 
 ## Goal
 
-Extract all review comments left by CodeRabbit (`coderabbitai[bot]`) on a GitHub PR, create a structured checklist file (`coderabbit-review.md`), verify each comment against the current code, fix valid issues, run regression tests, and resolve all GitHub conversations. Every item ends resolved with a justification.
+Extract all review comments left by AI reviewers on a GitHub PR, create a structured checklist file **per reviewer** (e.g., `coderabbit-review.md`, `copilot-review.md`), verify each comment against the current code, fix valid issues, run regression tests, and resolve all GitHub conversations. Every item ends resolved with a justification.
 
-This skill is **project-agnostic** — it works with any repo that has a GitHub remote and CodeRabbit reviews.
+This skill is **project-agnostic** and **reviewer-agnostic** — it works with any repo and any supported AI reviewer.
+
+---
+
+## Model Routing Strategy
+
+This skill uses different model tiers to optimize token usage. The orchestrating model (you) stays in control and delegates mechanical work to cheaper models via Agent subagents.
+
+| Phase | Task | Model | Why |
+|-------|------|-------|-----|
+| 1.1 | GitHub API calls, repo detection | **haiku** | Pure CLI commands, no reasoning needed |
+| 1.2 | Fetch raw comments from API | **haiku** | Data retrieval, returns raw JSON |
+| 1.3 | Parse & structure comments | **sonnet** | Needs pattern matching intelligence but not deep reasoning |
+| 2 | Create checklist file | Main model | Quick write from structured data |
+| 3 | Analyze each comment (verdict) | **Main model (opus)** | Critical judgment: is the issue real? Does the spec support it? |
+| 3 | Apply code fixes | **sonnet** | Mechanical code edits based on opus verdict |
+| 4 | Run tests | Main model | Simple command execution |
+| 5 | Resolve GitHub threads | **haiku** | Mechanical GraphQL mutations |
+
+**How to delegate**: Use the `Agent` tool with the `model` parameter:
+```
+Agent({ model: "haiku", prompt: "..." })   // for data fetching
+Agent({ model: "sonnet", prompt: "..." })  // for parsing/fixing
+```
+
+**When NOT to delegate**: If the PR has fewer than 5 total comments across all reviewers, skip model routing — process everything in the main model. The overhead of spawning agents isn't worth it for small reviews.
 
 ---
 
 ## Operating Constraints
 
-**MODIFIES CODE**: This skill reads CodeRabbit comments, verifies issues, and applies fixes. It creates one tracking file (`coderabbit-review.md`) in the project root.
+**MODIFIES CODE**: This skill reads review comments, verifies issues, and applies fixes. It creates one tracking file per reviewer in the project root.
 
 **Git awareness**: All fixes are made on the current branch. The skill does NOT create commits — the user decides when to commit.
 
-**Scope discipline**: Only fix issues raised by CodeRabbit. Do not introduce unrelated refactors, improvements, or style changes.
+**Scope discipline**: Only fix issues raised by the reviewers. Do not introduce unrelated refactors, improvements, or style changes.
 
 **Error Handling**:
 
 - **`gh` CLI not available or not authenticated**: Stop with: "The `gh` CLI is not installed or authenticated. Run `gh auth login` before using this skill."
 - **PR not found**: Stop with: "PR #{n} not found or insufficient permissions."
-- **No CodeRabbit comments**: Stop with: "No CodeRabbit comments found on PR #{n}."
+- **No review comments from any bot**: Stop with: "No AI review comments found on PR #{n}."
 - **File no longer exists**: Mark as `[x] File removed — not applicable`.
 - **Line not locatable** (heavy modifications since review): Use context clues (function name, surrounding code) to locate. If truly unmappable: `[x] Not locatable in current code — requires manual review`.
 - **Test command not detected**: Ask the user which command to use. Never skip tests silently.
@@ -60,7 +89,7 @@ This skill is **project-agnostic** — it works with any repo that has a GitHub 
 
 ## Execution Steps
 
-### Phase 1: Extract CodeRabbit Comments
+### Phase 1: Detect Reviewers & Extract Comments
 
 #### 1.1 Detect Repository Context
 
@@ -78,131 +107,145 @@ gh repo view --json nameWithOwner -q '.nameWithOwner'
 
 Capture the result as `REPO` (format: `owner/repo`).
 
-#### 1.2 Fetch Review Comments
+#### 1.2 Detect Which Reviewers Are Present
 
-CodeRabbit posts comments in **two places** — both must be fetched to get the complete picture:
+**Spawn a haiku agent** to discover which AI review bots left comments:
 
-```bash
-# Source 1: Inline review comments (file-level, attached to diff lines)
-# These are the comments directly on code lines — typically 2-5 per review
-gh api "repos/{REPO}/pulls/{PR_NUMBER}/comments" --paginate \
-  --jq '.[] | select(.user.login == "coderabbitai[bot]") | {path, line: (.line // .original_line), body}'
+```
+Agent(model: "haiku", prompt: "Run these two commands and return ONLY the unique bot
+logins that appear in both outputs, one per line:
 
-# Source 2: Review-level comments (summary body with ALL findings)
-# CRITICAL: This is where CodeRabbit puts the MAJORITY of its findings.
-# The review body contains a summary with "Actionable comments posted: N"
-# followed by an "Outside diff range comments" section that lists 10-30+
-# additional findings that couldn't be posted inline.
-gh api "repos/{REPO}/pulls/{PR_NUMBER}/reviews" --paginate \
-  --jq '.[] | select(.user.login == "coderabbitai[bot]") | {state, body}'
+gh api 'repos/{REPO}/pulls/{PR}/comments' --paginate --jq '[.[].user.login] | unique[]'
+gh api 'repos/{REPO}/pulls/{PR}/reviews' --paginate --jq '[.[].user.login] | unique[]'
+")
 ```
 
-If the output is very large, use `--jq` filtering to extract only what is needed rather than loading raw JSON into context.
+Match the returned logins against the reviewer registry in `references/reviewer-registry.md`. The known bots are:
 
-#### 1.3 Parse Each Comment
+| Login | Reviewer |
+|-------|----------|
+| `coderabbitai[bot]` / `coderabbitai` | CodeRabbit |
+| `copilot-pull-request-reviewer` | Copilot |
+| `gemini-code-assist[bot]` | Gemini |
+| `github-codex[bot]` / `codex-reviewer[bot]` | Codex |
 
-**Source 1 — Inline comments**: Extract for each one:
+If `--reviewer` flag was passed, filter to only that reviewer.
 
-1. **`path`**: file path relative to repo root
-2. **`line`**: line number (use `line` or fallback to `original_line`)
-3. **Severity**: parse from comment body (see severity mapping below)
-4. **Title**: first bold text (`**...**`) or heading in the body
-5. **Summary**: first paragraph after the title, stripped of HTML comments and CodeRabbit metadata
-6. **Addressed status**: if body contains `✅ Addressed` or similar markers, set `pre_addressed: true`
-7. **Suggested fix**: if body contains a code block with `suggestion` or `diff`, extract it
+If no known reviewers are found, stop with the "no comments" error.
 
-**Source 2 — Review body (outside-diff-range comments)**:
+Report to the user: "Found reviews from: {list of reviewers}. Processing {N} reviewer(s)."
 
-This is the most important source to parse correctly. CodeRabbit's review body contains a structured summary with findings grouped by file inside `<details>` blocks. The typical structure is:
+#### 1.3 Fetch & Parse Comments Per Reviewer
 
-```text
-> ⚠️ Outside diff range comments (N)
->
-> <details>
-> <summary>packages/path/to/file.ts (2)</summary>
->
-> `42-50`: _🛠️ Refactor suggestion_ | _🟠 Major_
->
-> **Title of the finding**
->
-> Description of the issue...
->
-> `112-120`: _⚠️ Potential issue_ | _🔴 Critical_
->
-> **Another finding title**
->
-> ...
-> </details>
-```
+For each detected reviewer, **spawn a sonnet agent** to fetch and parse all comments. Launch agents **in parallel** (one per reviewer) for efficiency.
 
-Parse each finding from the review body by:
+The agent prompt should include:
+1. The reviewer's GitHub login
+2. The parsing rules from `references/reviewer-registry.md` for that specific reviewer
+3. Instructions to return a **structured numbered list** (not raw JSON) with these fields per finding:
+   - Sequential number
+   - Severity (CRITICAL/HIGH/MEDIUM/LOW)
+   - File path and line number
+   - Title (bold text or first sentence)
+   - Summary (1-2 sentences)
+   - Whether a code suggestion is included (yes/no)
+   - Source (inline/review-body/nitpick)
 
-1. **Finding file sections**: Look for `<summary>packages/path/file.ext (N)</summary>` blocks
-2. **Extracting findings within each section**: Match the pattern `` `LINES`: _CATEGORY_ | _SEVERITY_ `` followed by `**TITLE**`
-3. **Building file + line references**: The file path comes from the `<summary>` tag, lines from the backtick-quoted range
-4. **Parsing severity**: From the severity marker in the pattern (see mapping below)
+**Important — Large Output Handling**: The GitHub API can return 30-50KB+ of raw data. The sonnet agent absorbs this within its own context, parses it, and returns only the structured summary. This prevents the main (opus) context from being polluted with raw API data.
 
-**Severity Mapping** (applies to both sources):
+**Deduplication rules** the agent must apply:
+- Match by file path + line range + first 100 chars of title
+- If the same finding appears both inline and in the review body, keep the inline version (it has more precise line info)
+- If multiple findings share the same root cause (same file section, same fix), keep them as separate items but note "Related to item #N"
 
-| CodeRabbit Marker | Severity |
-|-------------------|----------|
-| `🔴` or `Critical` | CRITICAL |
-| `🟠` or `Major` | HIGH |
-| `🟡` or `Medium` | MEDIUM |
-| `🔵` or `Minor` / `Low` | LOW |
-| `Refactor suggestion` | MEDIUM |
-| `Potential issue` | Depends on paired severity emoji |
-| No marker found | MEDIUM (default) |
+**Discard**: Comments that are purely metadata (walkthrough summaries, paused review notices, "Actionable comments posted" headers, `<!-- fingerprinting:... -->` blocks).
 
-**Deduplication**: Some inline comments also appear in the review body. Deduplicate by matching file path + line range + first 100 chars of title.
-
-**Discard**: Comments that are purely metadata (walkthrough summaries, paused review notices, "Actionable comments posted" headers) — keep only actionable review findings.
-
-Store as a structured list ordered by: severity (CRITICAL first) then file path.
-
-If the total count after filtering is 0, stop with the "no comments" error.
+If the total count after filtering is 0 for a reviewer, note it — Phase 2 will still create a minimal file for audit completeness.
 
 ---
 
-### Phase 2: Create Checklist File
+### Phase 2: Create Checklist Files
 
-Generate `coderabbit-review.md` in the project root following the structure defined in `references/checklist-template.md`.
+For each reviewer with findings, generate `{reviewer}-review.md` in the project root following the structure in `references/checklist-template.md`.
 
-Key points:
+Output file names:
+- CodeRabbit → `coderabbit-review.md`
+- Copilot → `copilot-review.md`
+- Gemini → `gemini-review.md`
+- Codex → `codex-review.md`
+- Unknown → `{bot-login}-review.md`
+
+For reviewers with **zero findings** (e.g., Gemini approved without issues), generate a minimal file:
+
+```markdown
+# {Reviewer Name} Review — PR #{number}
+
+**Repository**: {owner/repo}
+**Reviewer**: {bot login}
+**Date**: {YYYY-MM-DD}
+
+No actionable findings — reviewer approved without issues.
+```
+
+For reviewers **with findings**:
 - Items ordered by severity: CRITICAL > HIGH > MEDIUM > LOW
 - Each item has a checkbox (`- [ ]`), sequential number, severity tag, file:line, and title
 - Include a summary of the issue (1-2 sentences)
-- Note items pre-addressed by CodeRabbit
-- Add a "Final Result" summary table at the bottom
+- Note items pre-addressed
+- Add a "Final Result" summary table at the bottom (initially all Pending)
 
 ---
 
 ### Phase 3: Verify and Fix Each Comment
 
-Process each checklist item. Group items by file to minimize file reads.
+Process ALL checklist items across ALL reviewer files. Group items by file to minimize reads — a single file may have findings from multiple reviewers.
 
-#### 3.1 For Each Item
+#### 3.1 Analysis (Main Model — Opus)
+
+For each item (or group of items in the same file):
 
 1. **Read the current code** at the referenced file and line (with ~30 lines of context)
-2. **Evaluate**: Does the issue described still exist in the current code?
-3. **Decide**:
+2. **Check project specs/docs** if the comment questions a design decision. Many "issues" flagged by AI reviewers are actually by-design choices documented in specs, data models, or CLAUDE.md. Before marking as "Fixed", verify the reviewer isn't wrong.
+3. **Recalibrate severity**: AI reviewers often default to MEDIUM or don't assign severity at all (Copilot, Codex). After reading the code and understanding the real impact, **reassign the severity** based on actual risk:
+   - **CRITICAL**: data loss, security vulnerability, crash in production path
+   - **HIGH**: broken feature flow, silent data corruption, regression from recent commit
+   - **MEDIUM**: incorrect behavior in edge case, inconsistency, missing validation
+   - **LOW**: style, naming, docs, nitpick
+   Update the severity tag in the checklist if it changes from the original.
+4. **Cross-reviewer check**: Before fixing, check if the same issue was already resolved in another reviewer's checklist. If so, mark as: `[x]` — "Already fixed — see {other-reviewer}-review.md #{item number}". This avoids duplicate work and creates an audit trail across reviewer files.
+5. **Evaluate**: Does the issue described still exist? Is the reviewer's concern valid?
+6. **Decide**:
 
    | Situation | Action | Checklist Status |
    |-----------|--------|-----------------|
    | Issue does not exist (already fixed or code rewritten) | None | `[x]` — "Already fixed" |
-   | Issue exists, CodeRabbit suggestion is valid | Apply the fix | `[x]` — "Fixed" |
-   | Issue exists, better fix available | Apply alternative fix | `[x]` — "Fixed (alternative approach: {reason})" |
+   | Issue fixed by another reviewer's round | None | `[x]` — "Already fixed — see {reviewer}-review.md #{N}" |
+   | Issue exists, suggestion is valid | Prepare fix description | `[x]` — "Fixed" |
+   | Issue exists, better fix available | Prepare alternative fix | `[x]` — "Fixed (alternative approach: {reason})" |
    | Issue exists but code is actually correct | None | `[x]` — "Not applicable: {reason}" |
+   | Design decision documented in spec/docs | None | `[x]` — "Not applicable — by design per {spec reference}" |
    | `--dry-run` mode | None (verify only) | `[x]` — "Verified: {needs fix / already fixed / not applicable}" |
 
-4. **Update the checklist file** after each item (incremental progress)
+#### 3.2 Fix Execution
 
-#### 3.2 Efficiency
+After the main model decides which items need fixes:
+
+- **5 or fewer fixes**: Apply them directly in the main model (the overhead of spawning agents isn't worth it).
+- **More than 5 fixes**: **Spawn sonnet agents** to apply fixes in parallel, grouped by file. Each agent receives:
+  - The file path
+  - The list of fixes to apply (with exact old_string → new_string or clear descriptions)
+  - Instructions to NOT make any changes beyond what's specified
+
+#### 3.3 Efficiency
 
 - When multiple comments reference the same file, read it once and process all together
 - Use parallel tool calls to read independent files simultaneously
 - For large files (>500 lines), read only the relevant section
-- Use Explore subagents for bulk verification when there are many items (e.g., 10+ items) to check simultaneously
+- Cross-reference items across reviewers: if CodeRabbit and Copilot flag the same line, verify once and update both checklists
+
+#### 3.4 Update Checklists
+
+After each item (or batch), update the corresponding reviewer's checklist file. Mark the checkbox and add the status line.
 
 ---
 
@@ -227,12 +270,12 @@ Skip if `--skip-tests` was passed.
 
 Execute the test command. Capture results.
 
-- **All pass**: Update checklist with "All tests passed ({n} tests)."
-- **Failures**: Check if failures are related to the applied fixes. If related, attempt to fix. If pre-existing, note in the checklist.
+- **All pass**: Update all checklist files with "All tests passed ({n} tests)."
+- **Failures**: Check if failures are related to the applied fixes. If related, attempt to fix. If pre-existing, note in all checklists.
 
 #### 4.3 Update Final Status
 
-Update the "Final Result" table in `coderabbit-review.md` with:
+Update the "Final Result" table in each `{reviewer}-review.md` with:
 - Count of items by status (Fixed, Already fixed, Not applicable, Pending)
 - Test results
 
@@ -244,12 +287,13 @@ After all items are processed and tests pass, resolve all review threads on the 
 
 #### 5.1 Fetch All Review Threads
 
-Use the GraphQL API to get all review thread IDs and their resolution status:
+**Spawn a haiku agent** to fetch all unresolved thread IDs:
 
-```bash
-gh api graphql -f query='
-{
-  repository(owner: "{OWNER}", name: "{REPO_NAME}") {
+```
+Agent(model: "haiku", prompt: "Run this GraphQL query and return the results:
+
+gh api graphql -f query='{
+  repository(owner: \"{OWNER}\", name: \"{REPO_NAME}\") {
     pullRequest(number: {PR_NUMBER}) {
       reviewThreads(first: 100) {
         nodes {
@@ -259,29 +303,39 @@ gh api graphql -f query='
             nodes {
               author { login }
               path
-              body
             }
           }
         }
       }
     }
   }
-}' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | {id, author: .comments.nodes[0].author.login, path: .comments.nodes[0].path}'
+}'
+
+Return ONLY the unresolved threads as: id, author login, path — one per line.
+")
 ```
 
 #### 5.2 Resolve Each Unresolved Thread
 
-For each unresolved thread (from any reviewer — coderabbitai, gemini-code-assist, Copilot, etc.):
+**Spawn a haiku agent** to resolve all unresolved threads in batch:
 
-```bash
-gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "{THREAD_ID}"}) { thread { isResolved } } }'
+```
+Agent(model: "haiku", prompt: "Resolve each of these GitHub review threads by running
+this GraphQL mutation for each thread ID:
+
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: \"{ID}\"}) { thread { isResolved } } }'
+
+Thread IDs: {list of IDs}
+
+Run them in parallel. Report how many succeeded.
+")
 ```
 
-Resolve threads in parallel when possible (multiple GraphQL calls).
+Resolve threads from ALL reviewers (coderabbitai, copilot, gemini, codex, etc.) — not just the ones processed in Phase 3.
 
 #### 5.3 Verify All Resolved
 
-Run the fetch query again to confirm zero unresolved threads remain. Report the count in the checklist:
+Run the fetch query again to confirm zero unresolved threads remain. Update each checklist with:
 
 ```markdown
 ### Conversations
@@ -297,17 +351,26 @@ Run the fetch query again to confirm zero unresolved threads remain. Report the 
 
 ### Fidelity
 
-- **Address every comment**: Every CodeRabbit item must end with `[x]` and a justification. Never skip or ignore.
-- **Respect original intent**: Follow CodeRabbit's suggestion unless it is demonstrably wrong. Explain alternative approaches.
+- **Address every comment**: Every item across all reviewer files must end with `[x]` and a justification. Never skip or ignore.
+- **Respect original intent**: Follow the reviewer's suggestion unless it is demonstrably wrong or contradicts project specs. Explain alternative approaches.
+- **Verify against specs**: When a reviewer questions a design decision, check the project's specs, data models, and documentation before deciding. AI reviewers don't have full project context — many "issues" are by-design choices.
 - **Preserve code style**: Match the existing project's coding conventions.
 
 ### Progress
 
-- **Incremental saves**: The checklist file is updated after each resolved item.
+- **Incremental saves**: Each checklist file is updated after each resolved item.
 - **Resumability**: If the skill is interrupted, re-running it will verify already-checked items without re-applying fixes.
 
 ### Discipline
 
-- **No scope creep**: Only fix issues raised by CodeRabbit.
+- **No scope creep**: Only fix issues raised by the reviewers.
 - **No unrelated changes**: Even if you notice other issues while reading code, do NOT fix them.
 - **No commits**: Leave committing to the user.
+
+### Token Efficiency
+
+- **Delegate data fetching** to haiku agents — they handle API calls and return summaries
+- **Delegate parsing** to sonnet agents — they absorb large outputs and return structured lists
+- **Keep analysis in opus** — judgment calls about code correctness need the strongest model
+- **Delegate mechanical fixes** to sonnet agents when there are many (>5) fixes to apply
+- **Skip agent routing** for small PRs (<5 comments) — the overhead isn't worth it

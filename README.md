@@ -41,7 +41,7 @@ Then install any plugin:
 | Plugin | Version | Category | Description |
 |--------|---------|----------|-------------|
 | [**cicd**](#cicd) | 2.3.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners |
-| [**codereview**](#codereview) | 1.4.0 | Quality | Pre-PR code review with severity grading (A-F), TOCTOU detection, accessibility, and CodeRabbit PR resolver |
+| [**codereview**](#codereview) | 1.6.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) |
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.3.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections |
@@ -67,14 +67,16 @@ Unified troubleshooting and pipeline configuration for GitHub Actions, Docker, G
 <details>
 <summary><strong>codereview</strong> — Automated Code Review</summary>
 
-Stack-agnostic pre-PR code review built on **The Zen of Python** as a universal analysis framework. Five principles — *readability*, *explicitness*, *simplicity*, *flatness*, and *error handling* — applied as analysis lenses to any codebase.
+Stack-agnostic pre-PR code review built on **The Zen of Python** as a universal analysis framework. Five principles — *readability*, *explicitness*, *simplicity*, *flatness*, and *error handling* — applied as analysis lenses to any codebase. Now with **model routing** for 76-86% Opus token savings.
 
 | Skill | Description |
 |-------|-------------|
-| `/codereview` | Full pre-PR review — diffs against base branch, severity-rated findings (CRITICAL → LOW), final grade (A-F) |
-| `/codereview:coderabbit_pr` | Resolves CodeRabbit bot comments on a GitHub PR — extracts, triages, fixes, runs regression tests, resolves GitHub conversations |
+| `/codereview` | Full pre-PR review — diffs against base branch, severity-rated findings (CRITICAL → LOW), final grade (A-F). Uses haiku for git context, sonnet for per-file analysis, opus for cross-file review and report. |
+| `/codereview:coderabbit_pr` | Resolves AI review bot comments (CodeRabbit, Copilot, Gemini, Codex) on a GitHub PR — auto-detects reviewers, creates per-reviewer checklists, triages with severity recalibration, applies fixes, runs regression tests, resolves all GitHub conversations |
 
 **Analysis layers:** Bug Detection · Security · Performance · Type Safety · Test Coverage · Documentation Sync · Race Conditions (TOCTOU) · Accessibility · Data Integrity
+
+**Model routing:** Haiku (git/CLI) → Sonnet (per-file analysis, parallel) → Opus (cross-file review, report)
 
 **Framework presets:** `react` (default) · `vue` · `angular` · `node` · `dotnet` · `generic`
 

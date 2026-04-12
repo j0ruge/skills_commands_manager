@@ -2,6 +2,52 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.6.0] - 2026-04-12
+
+### Changed (codereview v1.6.0 — model routing)
+
+- **Model routing for token efficiency**: skill now delegates work to cheaper models
+  - Haiku agent: git context, file classification, test coverage mapping (pure CLI + pattern matching)
+  - Sonnet agents (parallel): per-file analysis using detection passes (pattern matching on code)
+  - Opus (main model): cross-file review, severity recalibration, final report production
+  - Auto-skip for small PRs (≤3 CODE files) — runs everything in main model
+- **Detection passes extracted to reference file**: Steps 5-6 (~350 lines of detection patterns) moved from SKILL.md to `references/detection-passes.md`, keeping SKILL.md as a lean orchestrator (~200 lines)
+  - Sonnet agents load only the detection passes + file content in their context
+  - Opus receives only structured findings, not raw code — 76-86% less opus tokens
+- **Parallel per-file analysis**: each CODE file analyzed independently in its own sonnet agent, enabling parallel execution for faster reviews
+- **Cross-file analysis preserved in opus**: race conditions spanning multiple files, schema consistency, and import chain coherence still analyzed by the main model
+
+### Estimated token savings
+
+| PR Size | Before (all Opus) | After (mixed) | Opus Savings |
+|---------|-------------------|---------------|--------------|
+| Small (3 files) | ~85K | ~20K opus + 50K sonnet/haiku | ~76% |
+| Medium (8 files) | ~150K | ~25K opus + 128K sonnet/haiku | ~83% |
+| Large (15 files) | ~210K | ~30K opus + 212K sonnet/haiku | ~86% |
+
+## [1.5.0] - 2026-04-12
+
+### Changed (coderabbit_pr v3.0.0 → resolve_pr_reviews)
+
+- **Multi-reviewer support**: now auto-detects and processes CodeRabbit, Copilot, Gemini Code Assist, and Codex reviews on a PR
+  - Each reviewer gets its own checklist file (`coderabbit-review.md`, `copilot-review.md`, `gemini-review.md`, `codex-review.md`)
+  - Unknown reviewers are handled with a generic parser and `{bot-login}-review.md`
+  - New `--reviewer <name>` flag to process only a specific reviewer
+- **Model routing for token efficiency**: skill now delegates work to appropriate model tiers
+  - Haiku agents: GitHub API calls, data fetching, thread resolution (mechanical tasks)
+  - Sonnet agents: comment parsing, code fix execution (pattern matching tasks)
+  - Opus (main model): analysis verdicts, spec verification (judgment calls)
+  - Auto-skip routing for small PRs (<5 comments) — overhead not worth it
+- **Improved analysis quality**: verdicts now check project specs/docs before marking "not applicable"
+  - Prevents false fixes on by-design decisions documented in specs
+  - "Not applicable" entries now include spec/doc reference
+- **Better large-output handling**: sonnet agents absorb 30-50KB+ API responses in their own context and return only structured summaries, keeping the main opus context clean
+- **Deduplication improvements**: cross-reviewer dedup, root-cause linking ("Related to item #N")
+- **New `references/reviewer-registry.md`**: extensible registry of bot logins, parsing rules, and output file names
+- **Severity recalibration**: opus model reassesses reviewer-assigned severities during Phase 3 analysis based on actual code impact (e.g., Copilot defaults everything to MEDIUM but a broken feature flow is HIGH)
+- **Cross-reviewer deduplication with audit trail**: items already fixed by another reviewer's round are marked "Already fixed — see {reviewer}-review.md #{N}" instead of re-analyzing
+- **Empty reviewer handling**: reviewers with zero findings (e.g., Gemini approval-only) get a minimal `{reviewer}-review.md` for audit completeness
+
 ## [1.4.0] - 2026-04-05
 
 ### Added

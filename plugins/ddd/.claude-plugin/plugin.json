@@ -1,0 +1,11 @@
+{
+  "name": "ddd",
+  "description": "Domain-Driven Design toolkit: analisa codebases e aponta violações DDD, guia strategic design (event storming, context mapping), gera specs de conversão legacy→DDD e ensina conceitos sob demanda. Agnóstica de linguagem/framework, com progressive disclosure de referências sintetizadas de Evans (DDD Reference, Guia Rápido) e Vernon (IDDD, DDD Distilled) mais práticas contemporâneas.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "0.2.0",
+  "category": "architecture",
+  "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"],
+  "skills": "./skills"
+}

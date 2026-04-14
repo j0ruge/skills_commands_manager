@@ -55,6 +55,14 @@
       "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, DataGrid icon patterns, RowHeight sizing, form spacing recipes, UserControl height clipping diagnosis, date control MaxYear validation trap, multi-column form layouts, Grid row separators), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
       "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows", "form-layout", "date-validation"]
+    },
+    {
+      "name": "ddd",
+      "source": "./plugins/ddd",
+      "version": "0.2.0",
+      "description": "Domain-Driven Design toolkit: analisa codebases e aponta violações DDD, guia strategic design (event storming, context mapping), gera specs de conversão legacy→DDD e ensina conceitos sob demanda. Agnóstica de linguagem, progressive disclosure por tema, síntese de Evans + Vernon + práticas contemporâneas.",
+      "category": "architecture",
+      "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"]
     }
   ]
 }

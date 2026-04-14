@@ -105,6 +105,122 @@ Realidade: legacy systems frequentemente violam essa regra. Use Context Map pra 
 
 ---
 
+## Domain Vision Statement — template
+
+`[Evans Reference]`
+
+Documento de **1 página** que descreve o Core Domain e sua proposição de valor. Lido por todo stakeholder (business, tech, design). Alinhamento em 10 minutos de leitura.
+
+### Estrutura
+
+```markdown
+# <Nome do Domain>
+
+## O problema (1 parágrafo)
+Descreva o problema de negócio real que o sistema resolve. Em linguagem de negócio, sem referência a tecnologia. Quem sofre? O que dói hoje?
+
+## Quem usa (bullets)
+- <Papel 1> — o que faz com o sistema
+- <Papel 2> — ...
+
+## O que diferencia (o core)
+Em 2-4 bullets, o que este sistema faz **melhor ou diferente** do mercado. É essa parte que justifica investimento em modelagem profunda.
+- <Diferenciador 1>
+- <Diferenciador 2>
+
+## O que NÃO é escopo
+Explicitamente fora: o que outros sistemas fazem que este não fará. Evita expansão acidental do core.
+
+## Métricas de sucesso
+2-3 métricas de negócio (não técnicas) que indicam que o sistema cumpre a proposição. Evite vaidade; prefira impacto.
+```
+
+### Exemplo curto (fictício)
+
+```markdown
+# Battery Lifecycle Management — JRC
+
+## O problema
+Técnicos marítimos precisam saber, a qualquer momento, quais baterias de segurança
+(EPIRB, AIS, SART) em suas embarcações estão dentro da validade regulatória. Hoje isso
+é feito em planilhas, com erros que custam multas de GMDSS e risco à tripulação.
+
+## Quem usa
+- Técnico de campo — consulta status, registra saída de bateria pra navio
+- Gerente de estoque — acompanha vencimentos, planeja reposição
+- Auditor — rastreia histórico pra compliance SUSEP/ANTAQ
+
+## O que diferencia
+- Cálculo automático de shelf time e service time por modelo de bateria
+- Eventos publicados para integração com manutenção e compras (reposição automática)
+- Rastreabilidade completa de 20 anos (regulatório)
+
+## O que NÃO é escopo
+- Gestão de embarcações ou tripulação (é Frota)
+- Contabilidade/depreciação (é Financeiro, consome eventos)
+- Manutenção preventiva de equipamentos (é Manutenção)
+
+## Métricas de sucesso
+- 0% de baterias vencidas em operação (compliance)
+- Redução de 50% no tempo de auditoria regulatória
+- Reposição automática iniciada ≤ 30 dias antes do vencimento
+```
+
+### Antipadrões
+
+- **Versão técnica** — "usa PostgreSQL + RabbitMQ + CQRS" → errado, não fala com business
+- **Marketing** — "o melhor sistema de batteries do mundo" → vazio, não ajuda decisão
+- **Longo** — 10 páginas ninguém lê; a regra é 1 página
+- **Nunca revisado** — Domain Vision evolui com aprendizado; revisite a cada trimestre
+
+---
+
+## Abstract Core — quando os subdomínios se tocam
+
+`[Evans Reference]`
+
+Em domínios complexos, o Core se compõe de múltiplos subdomínios que **interagem** entre si. Se cada um tiver modelo próprio sem interface comum, integração explode em acoplamento.
+
+Abstract Core: extrair interfaces e classes abstratas que descrevem as interações **no nível conceitual**, ficando em módulo próprio.
+
+```
+abstract-core/              (módulo)
+  PolicyHolder              (interface abstrata)
+  Claim                     (interface abstrata)
+  Premium                   (interface abstrata)
+  events/PolicyIssued       (evento canônico)
+  events/ClaimFiled
+
+subdomain-auto/             (consome abstract-core)
+  AutoPolicy implements PolicyHolder
+  ...
+
+subdomain-life/             (consome abstract-core)
+  LifePolicy implements PolicyHolder
+  ...
+```
+
+Subdomínios comunicam-se **via interfaces do Abstract Core**, não por dependências diretas entre si. Escalável, testável, evoluível.
+
+**Quando vale:** sistemas grandes, múltiplos subdomínios Core interagindo.
+**Quando não vale:** sistema simples, 1-2 subdomínios — Abstract Core vira overengineering.
+
+---
+
+## Continuous Integration — pattern estratégico entre times
+
+`[Evans Reference]`
+
+Além do conceito técnico (CI/CD), Evans trata Continuous Integration como **pattern estratégico**: times que dividem um Bounded Context ou Shared Kernel precisam integrar mudanças continuamente, não em big-bangs trimestrais.
+
+- Mesmo contexto, múltiplos devs → merge diário no main, testes de UL passando
+- Shared Kernel entre contextos → integração contínua do kernel; cada mudança passa por ambos os times
+- Ausência → drift de modelo, merge horroroso, integração que vira projeto
+
+Ver `refactoring-and-insights.md` §8 (CI do modelo) pra práticas concretas.
+
+---
+
 ## Output típico de uma sessão de strategic design
 
 - 1 Domain Vision Statement (curto)

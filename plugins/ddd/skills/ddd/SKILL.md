@@ -1,7 +1,7 @@
 ---
 name: ddd
 metadata:
-  version: 0.2.0
+  version: 0.3.0
 description: >
   Domain-Driven Design toolkit — analisa codebases e aponta violações DDD, guia
   strategic design (event storming, context mapping, bounded contexts), gera specs
@@ -67,10 +67,12 @@ Ao receber a solicitação, identifique **qual dos 4 modos** se aplica (pode ser
 
 **Referências a carregar:**
 - `references/code-review-heuristics.md` (checklist agnóstico, com snippets bom/ruim no apêndice)
-- `references/tactical-patterns.md` (definições de referência para comparar)
+- `references/tactical-patterns.md` (definições de referência para comparar; inclui Factory, Repository, Module e Design Flexível em profundidade)
 - `references/aggregate-design-rules.md` (se suspeita de agregados mal dimensionados)
-- `references/context-mapping.md` (se há múltiplos módulos/serviços)
+- `references/context-mapping.md` (se há múltiplos módulos/serviços; inclui Notification pattern)
 - `references/domain-events-catalog.md` (se há eventos suspeitos — naming, payload, publicação)
+- `references/application-services.md` (se há suspeita de lógica vazada pra service layer, God service, fat application service)
+- `references/refactoring-and-insights.md` (sinais de drift, conceitos implícitos, integridade do modelo)
 
 **Saída:** relatório estruturado com severidade (ver template na seção "Outputs" abaixo).
 
@@ -79,11 +81,14 @@ Ao receber a solicitação, identifique **qual dos 4 modos** se aplica (pode ser
 **Quando:** usuário está começando projeto novo, quer desenhar arquitetura, quer rodar event storming, quer identificar bounded contexts, está pensando "monolito vs. microserviços".
 
 **Referências a carregar:**
-- `references/strategic-design.md` (Bounded Context, Subdomains, Core Distillation)
+- `references/strategic-design.md` (Bounded Context, Subdomains, Core Distillation, Domain Vision template, Abstract Core)
 - `references/event-storming.md` (facilitar workshop)
 - `references/context-mapping.md` (9 padrões de integração)
-- `references/architecture-styles.md` (layered / hexagonal / modular monolith / microservices)
+- `references/architecture-styles.md` (layered / hexagonal / modular monolith / microservices; DIP; inbound/outbound adapters; REST como estilo)
 - `references/modern-practices.md` (nuances contemporâneas)
+- `references/acceleration-tools.md` (SWOT, metrics-based estimation, modeling spikes/debt, timeboxed modeling)
+- `references/scenarios.md` (Given-When-Then pra validar ubiquitous language antes/durante o storming)
+- `references/refactoring-and-insights.md` (se workshop indica necessidade de refatoração profunda)
 
 **Saída:** plano de descoberta + esqueleto de context map + recomendação de estilo arquitetural.
 
@@ -95,9 +100,12 @@ Ao receber a solicitação, identifique **qual dos 4 modos** se aplica (pode ser
 - `references/project-conversion-spec.md` (template completo + template enxuto de 1 página)
 - `references/legacy-migration.md` (bubble context, strangler, ACL, faseamento)
 - `references/strategic-design.md` (identificar core vs. supporting)
-- `references/context-mapping.md` (integração entre legacy e novos contextos)
+- `references/context-mapping.md` (integração entre legacy e novos contextos; Notification pattern)
 - `references/architecture-styles.md` (decidir o alvo)
 - `references/domain-events-catalog.md` (ao propor eventos do novo modelo — naming, payload, versionamento)
+- `references/application-services.md` (modelar command handlers e camada de aplicação do alvo)
+- `references/acceleration-tools.md` (SWOT + estimativas pra fase 0 da spec)
+- `references/scenarios.md` (acceptance tests por aggregate)
 
 **Saída:** documento markdown. Escolha a variante:
 - **Enxuta (1 página)** — quando o escopo é pequeno (1-2 contextos, time pequeno), decisão inicial "vale DDD aqui?", ou comunicação executiva. Default quando em dúvida.
@@ -112,15 +120,20 @@ A decisão vem no começo do modo Spec — pergunte ao usuário ou escolha confo
 **Referências a carregar** (só o que responde a pergunta):
 - `references/glossary.md` para definições canônicas (Evans)
 - Depois a referência temática do conceito:
-  - aggregate, entity, VO, service, repository, factory, module → `tactical-patterns.md`
-  - regras detalhadas de aggregate → `aggregate-design-rules.md`
+  - aggregate, entity, VO, service, repository, factory, module, design flexível → `tactical-patterns.md`
+  - regras detalhadas de aggregate (4 regras Vernon) → `aggregate-design-rules.md`
   - domain events (naming, payload, outbox, versionamento) → `domain-events-catalog.md`
-  - CQRS, event sourcing → `cqrs-event-sourcing.md`
-  - bounded context, ubiquitous language, subdomain, core → `strategic-design.md`
-  - padrões de integração entre contextos → `context-mapping.md`
-  - hexagonal, modular monolith, microservices → `architecture-styles.md`
+  - CQRS, event sourcing, concorrência, snapshots → `cqrs-event-sourcing.md`
+  - bounded context, ubiquitous language, subdomain, core, domain vision, abstract core → `strategic-design.md`
+  - padrões de integração entre contextos, notification pattern → `context-mapping.md`
+  - hexagonal, modular monolith, microservices, DIP, ports/adapters, REST → `architecture-styles.md`
   - strangler, bubble context, migração → `legacy-migration.md`
   - distributed monolith, práticas 2024-2026 → `modern-practices.md`
+  - event storming (3 sabores, remoto) → `event-storming.md`
+  - **SWOT, metrics-based estimation, modeling spikes, timeboxing** → `acceleration-tools.md`
+  - **application services, command handlers, unit of work, saga/compensating** → `application-services.md`
+  - **deeper insight, model integrity, drift, refatoração DDD** → `refactoring-and-insights.md`
+  - **Given-When-Then, BDD, acceptance tests com UL** → `scenarios.md`
 
 **Saída:** explicação clara em pt-BR, com citação do livro, exemplo curto agnóstico e quando NÃO usar.
 

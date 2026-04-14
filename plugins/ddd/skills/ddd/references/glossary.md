@@ -10,7 +10,7 @@ Convenção: cada entrada traz **termo EN** / *termo PT-BR* — definição curt
 
 - **Domain** / *Domínio* — "O aspecto da realidade sobre o qual o software é construído; o problema específico que o software resolve." `[Evans Rápido]`
 - **Model** / *Modelo* — Abstração rigorosamente organizada e seletiva do conhecimento do domínio. Não é o diagrama; é a ideia que o diagrama transmite. `[Evans Rápido]`
-- **Ubiquitous Language** / *Linguagem Onipresente* — Linguagem comum baseada no modelo, usada consistentemente em fala, escrita, diagramas e código dentro de um Bounded Context. Mudanças na linguagem = mudanças no modelo. `[Evans Reference]`
+- **Ubiquitous Language** / *Linguagem Onipresente / Linguagem Ubíqua* — Linguagem comum baseada no modelo, usada consistentemente em fala, escrita, diagramas e código dentro de um Bounded Context. Mudanças na linguagem = mudanças no modelo. *Nota pt-BR:* "Linguagem Ubíqua" é variante mais comum na comunidade brasileira; "Linguagem Onipresente" aparece na tradução oficial do Evans Rápido. Ambas aceitas. `[Evans Reference]` `[Evans Rápido]`
 - **Bounded Context** / *Contexto Delimitado* — Limite explícito dentro do qual um modelo específico é aplicado. Dentro dele a linguagem e o modelo são coerentes. `[Evans Reference]` `[IDDD cap.2]`
 - **Context Map** / *Mapa de Contexto* — Diagrama + narrativa que mostra os Bounded Contexts existentes e as relações entre eles. Base para estratégia realista. `[Evans Reference]`
 - **Subdomain** / *Subdomínio* — Área menor do problema dentro do domínio maior. Tipos: Core / Supporting / Generic. `[Evans Reference]`
@@ -89,3 +89,13 @@ Convenção: cada entrada traz **termo EN** / *termo PT-BR* — definição curt
 - **Bubble Context** — Pequeno bounded context novo, cercado por ACL, crescendo dentro do legacy. `[Nick Tune]`
 - **Saga** — Sequência de transações locais coordenada por eventos ou orquestrador, para consistência eventual entre agregados/contextos. `[microservices.io]`
 - **Outbox Pattern** — Persistir evento junto com mudança do agregado na mesma transação; publicar depois. Evita perda de eventos. `[prática pós-2020]`
+- **Notification** — Envelope padronizado para Domain Event publicado cross-context: typeName, version, occurredOn, eventBody, metadata. Permite consumer uniforme e schema evolution. `[IDDD cap.13]`
+- **NotificationReader** — Leitor type-safe de Notification que navega por dot notation (`reader.stringValue("eventBody.orderId")`), sem exigir classe POJO espelhada do publisher. Evita acoplamento de tipos. `[IDDD cap.13]`
+- **Unit of Work (UoW)** — Padrão de Fowler: objeto que rastreia mudanças em agregados durante uma operação e commita todas numa única transação. ORMs maduros implementam implicitamente. `[Fowler PoEAA]` `[IDDD cap.14]`
+- **Snapshot** — Estado serializado de um aggregate em versão N, armazenado pra evitar replay de todos os eventos em Event Sourcing. Cache, nunca fonte de verdade. `[IDDD Apêndice A]`
+- **Modeling Spike** — Investigação timeboxed (4-8h) pra reduzir incerteza sobre parte do domínio antes de implementar. Saída = aprendizado documentado, não código. `[Distilled cap.7]`
+- **Modeling Debt** — Decisão consciente de não modelar profundamente agora, aceitando que o modelo fica raso até compensar. Tem que virar backlog explícito com nome, juros, vencimento. `[Distilled cap.7]`
+- **SWOT (em DDD)** — Strengths/Weaknesses/Opportunities/Threats aplicado ao modelo de domínio e estratégia de Core Domain. Ferramenta de priorização. `[Distilled cap.7]`
+- **Scenario (Given-When-Then)** — Exemplo concreto de comportamento do domínio em formato BDD. Valida ubiquitous language com domain expert antes de virar código. `[Distilled cap.2]`
+- **Deeper Insight** — Refatoração do modelo motivada por descoberta de conceito implícito ou mudança de entendimento do domínio — diferente de refatoração técnica (estrutura só). `[Evans DDD]`
+- **Breakthrough** — Acúmulo de insights pequenos que convergem numa mudança grande e simplificadora do modelo. Não se força; se facilita. `[Evans DDD]`

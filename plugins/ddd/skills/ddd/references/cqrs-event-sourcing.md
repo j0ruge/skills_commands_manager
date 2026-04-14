@@ -116,6 +116,115 @@ Quando um processo atravessa múltiplos agregados ou contextos, com consistênci
 
 ---
 
+## Concorrência em Event Sourcing — conflict resolution e retry
+
+`[IDDD Apêndice A]`
+
+Event Sourcing sem estratégia de concorrência é frágil em cargas paralelas. Dois writers mirando o mesmo aggregate vão conflitar eventualmente.
+
+### Optimistic concurrency check
+
+Event store guarda, por aggregate, a **versão** atual (sequence number do último evento aplicado). Ao tentar append:
+
+```
+appendEvents(aggregateId, expectedVersion, newEvents):
+  currentVersion = store.getVersion(aggregateId)
+  if currentVersion != expectedVersion:
+    throw ConcurrencyException(currentVersion, expectedVersion)
+  store.append(aggregateId, newEvents, currentVersion + len(newEvents))
+```
+
+Quem começou o comando com versão V espera commitar em V+1, V+2, ... Se outro writer commitou no meio, o segundo falha.
+
+### Conflict resolution (`ConflictsWith()` pattern)
+
+Falhar direto em toda concorrência é caro. Muitos conflitos são **inocentes** — eventos concorrentes que não interferem entre si.
+
+Vernon propõe checagem semântica: "os eventos que aconteceram desde que carreguei o aggregate **conflitam** com o que eu quero fazer?"
+
+```
+handle(cmd):
+  aggregate = store.load(cmd.aggregateId)         // carrega e aplica todos os eventos
+  versionAtLoad = aggregate.version
+  newEvents = aggregate.handle(cmd)               // domínio produz novos eventos
+
+  try:
+    store.append(cmd.aggregateId, versionAtLoad, newEvents)
+  catch ConcurrencyException:
+    eventsSinceLoad = store.eventsAfter(cmd.aggregateId, versionAtLoad)
+    if anyConflictsWith(newEvents, eventsSinceLoad):
+      throw ConflictException  // caller decide se falha ou refaz
+    else:
+      retry(cmd)  // eventos concorrentes foram compatíveis; tenta de novo
+```
+
+Cada par de eventos tem regra: `BatteryWithdrawn conflitaCom BatteryWithdrawn` (mesma battery só pode sair uma vez); `PriceChanged` + `DescriptionUpdated` é compatível (atributos diferentes).
+
+**Custo:** manter tabela de compatibilidade entre eventos. Vale em domínios com concorrência alta e regras claras; em domínios mais complexos, falhar e deixar o caller decidir é mais seguro.
+
+### Retry com exponential backoff
+
+Em conflitos genuínos, retry simples com backoff resolve muitos casos:
+
+```
+attempts = 0
+while attempts < maxAttempts:
+  try:
+    return handle(cmd)
+  catch ConcurrencyException:
+    attempts += 1
+    sleep(baseDelay * 2^attempts + jitter)
+throw MaxRetriesExceeded
+```
+
+Regras:
+- `baseDelay` ~50-100ms; `maxAttempts` 3-5; jitter aleatório ±30% pra evitar thundering herd
+- Só faça retry se o handler for idempotente semanticamente (rerodar não duplica evento indevido)
+- Log todos os retries em observabilidade — retries altos = contenção estrutural, não concorrência saudável
+
+---
+
+## Snapshots — quando e como
+
+`[IDDD Apêndice A]`
+
+Aggregate com 100k eventos leva segundos pra reconstituir por replay. Solução: snapshot periódico do estado derivado.
+
+### Estratégia comum
+
+- **A cada N eventos** (ex.: N=100). Snapshot armazenado em tabela paralela: `(aggregateId, version, serializedState)`.
+- Ao carregar: pega snapshot mais recente + eventos após a versão dele. Replay só da diferença.
+
+### Trade-offs
+
+- **Prós:** load rápido mesmo em aggregates de vida longa; memória controlada.
+- **Contras:** snapshot pode ficar inválido após refactoring do modelo (serialização ligada a classes); versionamento de snapshot obrigatório; tabela de snapshots tem own size.
+
+### Armadilhas
+
+- **Snapshot como fonte de verdade** — nunca. Eventos sempre são a verdade; snapshot é cache.
+- **Snapshot síncrono no write path** — piora latência. Faça em worker assíncrono após commit.
+- **Ignorar versão de snapshot ao refactor** — se mudou o formato serializado, invalidate snapshots antigos; domain ainda é reconstrutível via replay (mais lento até novo snapshot).
+
+---
+
+## Master/Clone replication
+
+`[IDDD Apêndice A]`
+
+Pra leitura de event store em alta escala:
+
+- **Master** aceita writes (único ponto de append com versionamento)
+- **Clones** (read replicas) recebem eventos propagados e servem queries
+- Write-through (sync): master só responde OK após N clones replicarem — consistência maior, latência maior
+- Write-behind (async): master responde OK imediato; replicação eventual — latência menor, janela de staleness
+
+**Escolha:** compliance/financeiro → write-through (zero perda). Analytics/dashboards → write-behind (staleness aceitável).
+
+Event store moderno (EventStoreDB, Kurrent, Axon Server, Marten+Postgres) oferece ambos como config.
+
+---
+
 ## Checklist antes de adotar CQRS/ES
 
 - [ ] O time entende eventual consistency e sabe comunicar isso à UX?

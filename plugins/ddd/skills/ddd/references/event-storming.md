@@ -6,6 +6,24 @@ Criado por Alberto Brandolini. Três sabores, cada um com objetivo distinto. O t
 
 ---
 
+## Por que funciona — tátil, rápido, barato
+
+`[Distilled cap.7]`
+
+Event Storming é desenhado pra **reduzir custo de erro**. Sticky note físico custa centavos; sticky digital (Miro/FigJam) custa zero. Errou? Amassa, joga fora, refaz. Isso muda a dinâmica: em vez de modelar no abstrato e descobrir o erro na produção, o erro vira visível em minutos.
+
+Três propriedades que sustentam o método:
+
+1. **Tátil** — todo mundo escreve, ninguém é só ouvinte. Domain expert, dev, PM, ops — iguais em volume de contribuição.
+2. **Rápido** — de 2 horas a 2 dias, não 2 semanas. Ciclo curto força priorização; deixa o conceito emergir, não projeta do zero.
+3. **Barato** — o material é quase grátis. O caro é a hora dos participantes, e exatamente por isso a técnica respeita o tempo deles com timebox forte.
+
+O resultado é conhecimento **distribuído**: ninguém sai da sala achando que "o outro time sabe"; todos viram co-autores do modelo.
+
+Integra bem com **scenarios** (ver `scenarios.md`) — cenários concretos antes do storming trazem vocabulário real; depois do storming validam o modelo descoberto.
+
+---
+
 ## Os três sabores
 
 | Sabor | Pergunta que responde | Escala | Duração típica |

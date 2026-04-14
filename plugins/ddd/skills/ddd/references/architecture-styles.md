@@ -165,6 +165,154 @@ Domain Events são cidadãos de primeira classe. Serviços/módulos publicam eve
 
 ---
 
+## Dependency Inversion Principle (DIP) — coração da hexagonal
+
+`[IDDD cap.4]` + Robert C. Martin
+
+DIP: **módulos de alto nível não dependem de módulos de baixo nível; ambos dependem de abstrações**. Abstrações não dependem de detalhes; detalhes dependem de abstrações.
+
+Na prática em DDD:
+
+- Domain Layer define **ports** (interfaces) — `BatteryRepository`, `EventPublisher`, `NotificationService`
+- Infrastructure Layer implementa **adapters** — `BatteryRepositoryPostgres`, `EventPublisherKafka`, `NotificationServiceTwilio`
+- Domain **não importa** nada da Infrastructure
+- Wiring (DI container, composition root) conecta nos bootstraps
+
+Sem DIP: domain depende de ORM, HTTP client, broker → testa com banco real, muda de stack é inviável.
+Com DIP: domain testa com in-memory fakes; trocar Postgres por Mongo afeta 1 arquivo (adapter).
+
+### Reforço via testes de arquitetura
+
+```
+// ArchUnit (Java)
+noClasses()
+  .that().resideInPackage("..domain..")
+  .should().dependOnClassesThat().resideInPackage("..infrastructure..")
+```
+
+Build quebra se alguém cruzar a fronteira. DIP vira contrato verificável.
+
+---
+
+## Inbound vs. Outbound Adapters — com exemplos
+
+`[IDDD cap.4]`
+
+Em hexagonal, adapters ficam nas bordas. Dois tipos:
+
+### Inbound (dirigem o domínio)
+
+Convertem input externo em chamadas ao Application Service. Exemplos:
+
+- **REST controller** — recebe HTTP POST → parseia JSON pra Command → chama App Service
+- **CLI handler** — recebe args → constrói Command → chama App Service
+- **Message listener** — recebe evento de broker → chama App Service ou saga
+- **Scheduler** — cron dispara → chama App Service
+- **WebSocket/GraphQL resolver** — resolve query/mutation → chama App Service ou Query
+
+Regra: inbound adapter é **fino**, 3-10 linhas. Nunca tem lógica de negócio.
+
+```
+// REST inbound adapter
+@Post("/orders")
+async confirmOrder(req) {
+  const cmd = new ConfirmOrderCommand(req.body.orderId, req.user.id)
+  const result = await app.confirmOrderHandler.handle(cmd)
+  return result.match(
+    ok: id => ({ status: 201, body: { orderId: id } }),
+    err: e => ({ status: 422, body: { error: e.code } })
+  )
+}
+```
+
+### Outbound (domínio dirige)
+
+Domínio declara necessidade via port; adapter cumpre. Exemplos:
+
+- **Repository adapter** — `BatteryRepository.findById(id)` implementada por SQL/Mongo/InMemory
+- **Event publisher adapter** — `EventPublisher.publish(event)` implementada por Kafka/RabbitMQ/InProcess
+- **External HTTP client adapter** — `PaymentGateway.charge(amount)` implementada por Stripe/PagSeguro/Mock
+- **Clock adapter** — `Clock.now()` implementada por SystemClock ou FakeClock (pra testes)
+- **File storage adapter** — `DocumentStore.save(doc)` implementada por S3/GCS/LocalDisk
+
+Ports vivem no domain layer; adapters na infrastructure.
+
+---
+
+## REST como estilo arquitetural — não só protocolo
+
+`[IDDD cap.4]`
+
+REST feito direito é um estilo; REST feito como "JSON over HTTP" é CRUD disfarçado. Diferenças relevantes pra DDD:
+
+### Resources orientados a caso de uso, não a aggregates
+
+Ruim:
+```
+POST /batteries          → cria Battery (expõe aggregate interno)
+PATCH /batteries/:id     → atualiza campos (CRUD, sem semântica)
+```
+
+Bom:
+```
+POST /batteries/admissions       → admite bateria no estoque
+POST /batteries/:id/withdrawal   → retira bateria (com reason)
+GET  /batteries?status=expired   → lista filtrada
+```
+
+Cada endpoint é um **caso de uso**, que internamente mapeia pra Application Service / Command Handler.
+
+### Hypermedia (HATEOAS) — opcional, pragmaticamente
+
+Resposta inclui links pra próximas ações possíveis:
+```json
+{
+  "id": "b-123",
+  "status": "valid",
+  "_links": {
+    "withdraw": "/batteries/b-123/withdrawal",
+    "history": "/batteries/b-123/events"
+  }
+}
+```
+
+Útil em API pública complexa; overkill em API interna.
+
+### Content negotiation e versioning
+
+Via `Accept`/`Content-Type` com media types próprios do domínio:
+```
+Accept: application/vnd.jrc.battery.v2+json
+```
+
+Ver `context-mapping.md` → seção Notification Pattern.
+
+### Erros como valores semânticos
+
+Não retorne stack trace. Códigos de domínio:
+```json
+HTTP 422 Unprocessable Entity
+{
+  "error": "BATTERY_ALREADY_WITHDRAWN",
+  "message": "Bateria já foi retirada do estoque em 2026-03-01",
+  "withdrawnAt": "2026-03-01T10:23:00Z"
+}
+```
+
+Client pode tomar decisão informada. Evita if/else em texto de mensagem.
+
+### REST vs. RPC vs. GraphQL vs. gRPC
+
+Escolha pragmática:
+- **REST** — interoperabilidade ampla, clients diversos, evolução em versioned media types
+- **gRPC** — serviço interno alta frequência, schema-first (protobuf), low latency
+- **GraphQL** — muitos clients com necessidades diferentes de leitura (dashboards)
+- **RPC tradicional (SOAP, etc.)** — legacy, geralmente evitar em novo
+
+REST continua default defensável em 2026 pra API pública e integrações B2B. Interno/alta perf → gRPC.
+
+---
+
 ## Recomendação default pra ERP greenfield
 
 1. **Modular Monolith + Hexagonal interno** como ponto de partida

@@ -133,6 +133,97 @@ Mermaid é OK pra Context Maps leves. ContextMapper DSL (contextmapper.org) pra 
 
 ---
 
+## Notification pattern — operacional pra integração cross-context
+
+`[IDDD cap.13]`
+
+Quando Bounded Contexts publicam Domain Events pra outros consumirem, o *formato da mensagem* importa tanto quanto os patterns de relação. Sem padrão de publicação, cada consumer reinventa deserialização.
+
+### Notification como wrapper do Event
+
+Em vez de publicar o Domain Event cru, envolva-o em **Notification** — um envelope padronizado:
+
+```
+Notification {
+  notificationId: UUID          // identidade da mensagem (pra idempotência do consumer)
+  typeName: String              // "OrderPlaced", "BatteryExpired"
+  version: Int                  // schema version do event
+  occurredOn: Instant           // timestamp do fato (não da publicação)
+  eventBody: Payload            // o Domain Event serializado
+  // metadata opcional: sourceContext, correlationId, causationId, trace
+}
+```
+
+Benefícios:
+- Consumer processa uniformemente: lê `typeName` + `version` → dispacha
+- Idempotência trivial via `notificationId`
+- Tracing distribuído fica fácil
+- Schema evolution isolada (adicionar campo ao envelope não quebra)
+
+### NotificationReader — leitura type-safe sem classes compartilhadas
+
+Consumer **não deve** depender das classes concretas do publisher (acoplamento proibido). Em vez disso, leia payload via navegação:
+
+```
+reader = NotificationReader(notificationJson)
+if reader.typeName() == "OrderPlaced" && reader.version() == 2:
+  orderId = reader.stringValue("eventBody.orderId")
+  customerId = reader.stringValue("eventBody.customerId")
+  total = reader.decimalValue("eventBody.total.amount")
+```
+
+Biblioteca (NotificationReader, JsonPath, GJSON) navega por dot notation sem exigir classe POJO/POCO espelhada. Consumer constrói seu próprio VO local com o que precisa.
+
+Vantagem: publisher evolui livremente (adiciona campos, refactora internals) sem quebrar consumers.
+
+### Custom Media Type / Published Language
+
+Defina media type próprio pro seu domínio, não confie em `application/json` genérico:
+
+```
+Content-Type: application/vnd.jrc.battery.notification.v2+json
+```
+
+Benefícios:
+- Content negotiation HTTP: consumers pedem versão que suportam (`Accept: ...v1+json` vs `...v2+json`)
+- Documentação explícita do contrato (spec do media type é a Published Language)
+- Facilita parallel evolution: publisher serve v1 e v2 simultaneamente
+
+### Estratégia v1-forward-compatible
+
+Regra de ouro: **v1 consumers nunca devem quebrar**.
+
+- **Additive changes** (novos campos, novos events): incremento de minor version; v1 clients ignoram os campos novos — ok
+- **Breaking changes** (remover campo, mudar semântica, renomear): v2 coexistindo com v1 por janela de transição (meses); eventual deprecation anunciada
+- **Deletion**: só depois que monitoring mostra zero clientes em v1
+
+Implementação típica: publisher emite eventos em dois media types simultaneamente durante transição; filtro/router de broker faz o split.
+
+### Versionamento de eventos no event store
+
+Relacionado, mas distinto: dentro do próprio contexto, events persistidos precisam sobreviver a refactors.
+
+- Adicione campo novo com default sensato
+- Nunca remova campo; marque deprecated
+- Mudança semântica → novo `typeName` + **upcaster** (função `v1 → v2` aplicada ao carregar evento antigo)
+
+### REST pull (Atom/feed-style) vs. Messaging push
+
+**REST pull (feed)** — publisher expõe endpoint `/notifications?since=X`. Consumer rastreia posição e pede batches. Vantagens: consumer controla ritmo, sem broker, idempotência natural via cursor.
+
+**Messaging push** — publisher envia pra broker (RabbitMQ, Kafka, NATS), consumer subscribe. Vantagens: latência baixa, backpressure controlado, multi-consumer trivial.
+
+Escolha:
+- Contextos internos, integração simples → pull pode bastar
+- Alta frequência, muitos consumers, auditoria → push via broker
+- Nunca ambos ao mesmo tempo sem necessidade (complexidade dobra)
+
+### Outbox obrigatório em ambos os casos
+
+Independente de pull ou push: evento não é publicado até commitar na mesma transação do aggregate save. Ver `cqrs-event-sourcing.md` → Outbox pattern.
+
+---
+
 ## Anti-padrões de context mapping
 
 - **Context Map não existe** — ninguém sabe como contextos integram. Default = BBoM.

@@ -250,6 +250,298 @@ class BacklogItem {
 
 ---
 
+## Factory — em profundidade
+
+`[IDDD cap.11]` `[Evans Reference]`
+
+Quando construção é complexa (invariantes múltiplas, dados externos necessários, tenancy), construtor público vira armadilha. Factory resolve.
+
+### Factory Method em Aggregate Root
+
+Aggregate cria outro aggregate (ou Entity interna) via método de classe, protegendo invariantes de criação.
+
+```
+class Tenant extends Entity {
+  User registerUser(username, password, email) {
+    assert isActive();
+    assert !userAlreadyRegistered(username);
+    return new User(this.tenantId, UserId.generate(), username, hashOf(password), email);
+  }
+}
+
+// Uso:
+user = tenant.registerUser("joruge", "s3cr3t", "j@jrc.com");
+```
+
+Vantagens:
+- `TenantId` automaticamente correto (sem o client esquecer)
+- Validação na origem (tenant ativo?)
+- Construtor de `User` fica package-private ou internal — ninguém cria User fora desse path
+
+### Abstract Factory em hierarquias
+
+Quando o conceito sendo criado tem múltiplas variantes com lógica de seleção:
+
+```
+abstract class NotificationFactory {
+  abstract Notification create(event)
+}
+
+class EmailNotificationFactory extends NotificationFactory { ... }
+class SmsNotificationFactory extends NotificationFactory { ... }
+class PushNotificationFactory extends NotificationFactory { ... }
+
+// Resolver no Application Service, não no domínio:
+factory = factoryRegistry.forChannel(user.preferredChannel)
+notification = factory.create(event)
+```
+
+### Domain Service como Factory
+
+Pra integração: tradução de modelos externos em objetos locais é Factory disfarçado.
+
+```
+class CustomerTranslator {  // Domain Service + Factory
+  Customer fromLegacySAP(SAPCustomerDTO raw) {
+    return new Customer(
+      CustomerId.from(raw.kunnr),
+      CustomerName.parse(raw.name1 + raw.name2),
+      new EmailAddress(raw.email.toLowerCase()),
+      // mapeia só o que importa; SAP tem 200 campos, Customer tem 15
+    );
+  }
+}
+```
+
+Isso é ACL concretizada. Ver `context-mapping.md`.
+
+### Factory vs. Constructor vs. Repository
+
+| Situação | Use |
+|----------|-----|
+| Criar aggregate novo com regras simples | Constructor |
+| Criar aggregate com regras complexas / múltiplas dependências | Factory |
+| Criar aggregate filho dentro de aggregate pai | Factory Method no pai |
+| Reconstituir aggregate existente do storage | Repository |
+| Construir VO complexo (ex.: Money com validação de currency) | Constructor + factory method (`Money.of(amount, currency)`) |
+
+### Multitenancy — caso especial
+
+Em SaaS multi-tenant, **todo** aggregate root carrega `TenantId`. Construtor público é perigoso — dev pode esquecer de setar, ou setar errado. Factory Method no `Tenant` garante.
+
+### Armadilhas
+
+- **Factory gigante** com 30 métodos — virou God Class. Quebre por tipo.
+- **Factory fazendo lógica de negócio** — só devia criar. Regra complexa vai pra Domain Service.
+- **Construtor público coexistindo com Factory** — confunde. Torne o construtor inacessível.
+
+---
+
+## Repository — queries em Ubiquitous Language
+
+`[IDDD cap.12]` `[Evans Reference]`
+
+Repository básico já foi coberto acima. Aqui, o detalhe que mais vaza linguagem: **os nomes dos métodos de query**.
+
+### Nomes bons vs. ruins
+
+| Ruim (técnico) | Bom (ubiquitous language) |
+|----------------|---------------------------|
+| `findByStatus("ACTIVE")` | `activeBatteries()` ou `findActiveBatteries()` |
+| `findAll(predicate)` | `overdueInvoicesFor(customer)` |
+| `getByCriteria(map)` | `ordersReadyForPicking()` |
+| `query("SELECT ... WHERE ...")` | `allSubscriptionsExpiringIn(period)` |
+| `findByAttribute("tenantId", id)` | `sprintsOf(tenantId)` |
+
+A regra: **o nome do método deve ser lido pelo domain expert e fazer sentido sem contexto técnico**. Se precisar de explicação, está errado.
+
+### Paginação sem quebrar UL
+
+```
+// Ruim: expõe paginação como concern técnico no nome
+repo.findByStatus(status, page, size, sort)
+
+// Bom: paginação é parâmetro opcional
+repo.activeBatteries(page: Page.of(1, 50))
+```
+
+Page / Slice como VO; default sensato (primeira página, tamanho limitado).
+
+### Quando a query é realmente complexa
+
+Sinal de CQRS: relatórios, dashboards, multi-join complexo. **Não** polua o Repository — crie read model próprio com query side dedicada. Ver `cqrs-event-sourcing.md`.
+
+### Armadilhas
+
+- **Repository de Entity interna** — só existe repo de Aggregate Root. `OrderLineRepository` é anti-padrão.
+- **40+ métodos findBy*** — query explosion. Considere Specification pattern ou CQRS.
+- **Expor tipos ORM** (`IQueryable`, `QuerySet`, `FindOptions`) — vaza persistência. Retorne `Collection<Aggregate>` ou cursor próprio.
+- **Retornar null vs. Optional vs. throw** — escolha um e seja consistente no projeto. `Optional`/`Maybe`/`Result` > null.
+
+---
+
+## Module — organização que não vira BBoM
+
+`[IDDD cap.9]` `[Evans Reference]`
+
+Module = agrupamento **conceitual** coeso. Não é só pasta; é parte do modelo.
+
+### Naming
+
+- **Pelo conceito de negócio**, nunca por camada técnica:
+  - ✅ `sales`, `inventory`, `billing`, `compliance`
+  - ❌ `services`, `models`, `controllers`, `utils`, `helpers`
+- Nome faz parte da ubiquitous language
+- Se o nome mudou no negócio, renomeie o module (refactoring semântico)
+
+### Cohesão intra-module
+
+Dentro de um module, tudo deveria ser sobre a mesma coisa. Teste: se você não consegue descrever o module em uma frase sem "e" ou "ou", ele tem dois conceitos — quebre.
+
+### Acoplamento entre modules — acíclico
+
+Modules podem depender um de outro (`billing` depende de `sales` pra saber de pedidos), mas nunca em ciclo (`sales` não pode também depender de `billing`).
+
+Ciclo = sinal de **fronteira errada** entre modules, OU conceito deveria ser extraído pra um terceiro module independente.
+
+### DDD Module vs. deployment module
+
+- **DDD module** — conceito do modelo (`billing`, `sales`)
+- **Deployment module** — unidade de build/deploy (Maven module, npm package, Go module, .NET project)
+
+Em modular monolith, idealmente **1:1**: 1 DDD module = 1 deployment module. Facilita reforço de fronteiras via build system (não compila se `billing` importa interno de `sales`).
+
+### Antipadrão: pasta por camada técnica
+
+```
+// Ruim
+src/
+  controllers/
+    OrderController.ts
+    PaymentController.ts
+    CustomerController.ts
+  services/
+    OrderService.ts
+    PaymentService.ts
+  repositories/
+    OrderRepo.ts
+    PaymentRepo.ts
+
+// Bom
+src/
+  sales/
+    application/OrderService.ts
+    domain/Order.ts
+    infrastructure/OrderRepo.ts
+    api/OrderController.ts
+  billing/
+    application/PaymentService.ts
+    domain/Invoice.ts
+    infrastructure/InvoiceRepo.ts
+    api/PaymentController.ts
+```
+
+Primeiro agrupe por **contexto de negócio**, depois por camada técnica dentro dele.
+
+### Testes de arquitetura
+
+Reforce fronteiras programaticamente:
+
+- **Java**: ArchUnit — `noClasses().that().resideInPackage("..sales..").should().dependOnClassesThat().resideInPackage("..billing..internal..")`
+- **.NET**: NetArchTest
+- **TS**: `dependency-cruiser` ou ESLint rules custom
+- **Go**: convenções de import + custom linter
+- **Python**: `import-linter`
+
+Se o teste quebra, build quebra. Fronteira vira contrato verificável.
+
+---
+
+## Design Flexível em profundidade
+
+`[Evans DDD/Reference]` — promovido do glossário pra aplicação concreta. Técnicas que tornam o modelo *supple* (aguenta evolução sem degradar).
+
+### Standalone Class
+
+Classe sem dependências conceituais externas. Redução máxima de carga cognitiva.
+
+Quando buscar:
+- VOs de domínio (Money, Email, DateRange)
+- Algoritmos puros (cálculos matemáticos, transformações)
+- Utilitários de domínio (não "utils" genérico)
+
+Sinal: você lê a classe uma vez e entende 100% sem olhar outras. Sem herança, sem injeção, sem side effect.
+
+```
+class DateRange {  // Standalone
+  readonly start: Date
+  readonly end: Date
+
+  constructor(start, end) {
+    assert start <= end
+    this.start = start; this.end = end
+  }
+
+  contains(date): Boolean = date >= start && date <= end
+  overlapsWith(other: DateRange): Boolean = start <= other.end && end >= other.start
+  daysCount(): Int = differenceInDays(end, start)
+}
+```
+
+### Closure of Operations
+
+Operações cujo argumento e retorno são do **mesmo tipo**. Permitem composição.
+
+```
+class Money {
+  Money plus(Money other) = ...      // Money + Money → Money
+  Money minus(Money other) = ...
+  Money times(decimal multiplier) = ... // Money × decimal → Money (ainda closure em dimensão)
+}
+
+// Composição natural:
+total = basePrice.plus(tax).minus(discount).times(quantity)
+```
+
+Sem closure, cada operação força conversão, verbosidade aumenta, código fica imperativo.
+
+### Declarative Design
+
+Comportamento expresso por configuração/regra, não código procedural.
+
+Exemplos:
+- **Specification pattern** — `new IsOverdue().and(new IsHighValue()).isSatisfiedBy(invoice)`
+- **Rules engine** (quando cabe — não exagere)
+- **DSL interna** — linguagem de domínio em código (Gherkin para testes, SQL pra queries)
+- **Annotations/decorators** pra validação (`@Valid`, `@NotNull` com regras de domínio)
+
+Declarative design **sem** rigor vira magia. Use quando a regra é:
+- Composição natural de condições (specifications)
+- Comportamento variável configurável sem deploy (rules engine limitado)
+- Schema expressivo do domínio (DSL)
+
+### Intention-Revealing Interface
+
+Coberto acima. Princípio: nome expressa intenção de domínio, não mecânica.
+
+### Side-Effect-Free Function
+
+Coberto acima. Princípio: funções que retornam sem mutar.
+
+### Assertions
+
+Coberto acima. Princípio: invariantes explícitas, não implícitas.
+
+### Conceptual Contour
+
+Decomposição alinhada com divisões **naturais** do domínio, não com convenção arbitrária.
+
+Sinal de contour bem achado: mudança no negócio afeta *um* lugar no código. Sinal de contour errado: mudança pequena toca muitos lugares.
+
+Como achar: refatoração iterativa, aprendizado com domain expert, paciência. Não se projeta contour no dia 1.
+
+---
+
 ## Hierarquia de uso (agnóstica)
 
 Quando modelar algo novo, pergunte nessa ordem:

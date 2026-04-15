@@ -116,6 +116,93 @@ Fonte: `[EventStorming]`, `[Distilled cap.7]`, Brandolini EventStorming Mastercl
 
 ---
 
+## Domain Message Flow Modelling
+
+`[Distilled cap.4]` `[DDD Crew — domain-message-flow-modelling]` `[prática pós-2020]`
+
+Depois do Big Picture, antes do Bounded Context Canvas. Técnica intermediária que transforma a timeline de eventos num **diagrama de mensagens cross-context**: quem envia o quê pra quem, em que ordem.
+
+### Objetivo
+
+Tornar explícitas as **interações entre candidatos a Bounded Context** antes de decidir patterns de integração (ACL, OHS, etc. — ver `context-mapping.md`). Sem esse passo, o Context Map da fase 4 vira adivinhação.
+
+### Quando fazer
+
+- Imediatamente após o Big Picture Event Storming, quando há 3+ candidatos a BC
+- Antes de preencher Bounded Context Canvas (alimenta Inbound/Outbound Communication)
+- Em retrospectiva: um fluxo específico de produção ficou confuso? Desenhe o message flow real
+
+### Notação
+
+Formato sequence-diagram (Mermaid, PlantUML, ou sticky notes em swimlanes):
+
+- **Eixo horizontal:** actors (humanos, BCs candidatos, sistemas externos) como swimlanes
+- **Eixo vertical:** tempo (de cima pra baixo)
+- **Setas:** mensagens trocadas
+  - Seta cheia = **Command** (pedido síncrono ou assíncrono com expectativa de resposta)
+  - Seta tracejada = **Domain Event** (publicação; quem escuta decide)
+  - Seta bidirecional = **Query** (menos comum cross-BC; sinal de reavaliar)
+- **Rótulo:** nome da mensagem em Ubiquitous Language
+
+### Template mínimo (Mermaid)
+
+```mermaid
+sequenceDiagram
+    actor Customer
+    participant Sales
+    participant Inventory
+    participant Payment
+    participant Shipping
+
+    Customer->>Sales: PlaceOrder (command)
+    Sales-->>Inventory: OrderPlaced (event)
+    Inventory-->>Sales: ItemsReserved (event)
+    Sales->>Payment: CapturePayment (command)
+    Payment-->>Sales: PaymentCaptured (event)
+    Sales-->>Shipping: OrderReadyForShipping (event)
+    Shipping-->>Customer: OrderShipped (event, via notification)
+```
+
+### Como rodar (90-120 min)
+
+**Participantes:** 3-8 — reduzido face ao Big Picture; foco em quem realmente entende de integração.
+
+**Passos:**
+
+1. **Escolha 2-3 cenários críticos** (15 min) — happy path + 1-2 exceções ("pagamento falha", "item fora de estoque"). Não tente desenhar tudo.
+
+2. **Identifique actors/BCs** (10 min) — swimlanes no board. Usuário humano, cada BC candidato, sistemas externos relevantes.
+
+3. **Desenhe o happy path** (30 min) — mensagem por mensagem, top-down. Force a distinção Command vs Event em cada seta. Se alguém diz "ele chama X", pergunte: é command (pedido direto) ou reação a evento publicado?
+
+4. **Desenhe cenários de exceção** (20-30 min) — o que acontece quando Inventory não tem estoque? Payment falha? A sequência de compensação aparece aqui — input pra desenhar Saga depois.
+
+5. **Identifique acoplamentos indesejados** (15 min) — setas cheias cross-BC (Commands cruzando fronteira) são sinal de acoplamento síncrono; questione se deveria ser evento.
+
+6. **Timeouts e SLAs** (10 min) — anote em mensagens-chave qual é o SLA esperado (ms, s, minutos) — alimenta decisão de síncrono vs assíncrono na fase de Context Map.
+
+### Saída
+
+- Diagrama por cenário (happy + exceções), commitado no repo de arquitetura
+- Lista de mensagens Commands/Events consolidada (input pro domain-events-catalog)
+- Hotspots: setas controversas ou ambíguas → backlog de refinamento
+- Acoplamentos síncronos a reavaliar na fase de Context Map
+
+### Integração com outras fases
+
+- **Alimenta Bounded Context Canvas** — seções Inbound/Outbound saem direto daqui (ver `bounded-context-canvas.md`)
+- **Alimenta Context Map** — toda seta cross-BC vira uma aresta com pattern a escolher (ver `context-mapping.md`)
+- **Alimenta Design Level Storming** — commands e events vão pra domain dentro de cada BC
+
+### Armadilhas
+
+- **Desenhar tudo de uma vez** — flow explode em 200 setas, ninguém acompanha. Limite-se a 2-3 cenários por sessão.
+- **Misturar síncrono/assíncrono sem marcar** — todo command cross-BC deve deixar claro: síncrono bloqueante? fire-and-forget? assíncrono com callback? Diagrama ambíguo = decisão adiada.
+- **Pular exceções** — happy path sem compensação não mostra a complexidade real.
+- **Detalhar campos do payload** — isso é do design level; aqui o nome da mensagem basta.
+
+---
+
 ## Formato remoto — realidades pós-2020
 
 `[prática pós-2020]`

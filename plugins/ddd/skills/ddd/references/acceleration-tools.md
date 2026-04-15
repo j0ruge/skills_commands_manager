@@ -145,7 +145,99 @@ Cada ciclo gera **1 ADR** (se mudou algo estrutural) + **1 atualização no glos
 
 ---
 
-## 5. Checklist de aceleração
+## 5. DDD + Agile frameworks — Scrum, Kanban, No Estimates
+
+`[Distilled cap.7]`
+
+DDD não é incompatível com Scrum/Kanban — mas a cadência padrão dos frameworks tende a **sufocar modelagem**. Ajustes necessários.
+
+### Scrum com DDD
+
+**O que funciona:**
+- Sprint planning incorpora **refinement de modelo** (não só tarefas) — reserve 30-60 min pra revisar UL nova, eventos novos, hotspots
+- Review inclui **retrospectiva do modelo** — que termo apareceu? que conceito precisa refatoração de insight?
+- Daily standup ganha 3ª pergunta: "mexi no modelo? (aggregate novo, evento novo, termo renomeado)"
+
+**Anti-padrão — Task-Board Shuffle** `[Distilled cap.7]`: stickies de tarefas movendo de "to-do" → "in-progress" → "done" sem aprofundar modelo. Time entrega features, modelo estagna, dívida de modelagem acumula invisível. Sintoma: sprint review mostra velocity alta, mas glossário não mudou em 3 meses.
+
+**Mitigação:** toda sprint entrega **1 ADR ou 1 entrada no glossário**, mesmo que pequena. Se não entregou, o sprint não foi DDD — foi CRUD acelerado.
+
+### Kanban com DDD
+
+**O que funciona:**
+- WIP limit forte pro contexto que está em modelagem ativa (1 pessoa refatorando aggregate de cada vez)
+- Cartão de "Modeling Spike" explícito, distinto de "Feature" — reforça que investigação é trabalho legítimo
+- Weekly review em vez de sprint review
+
+**Vantagem sobre Scrum:** fluxo contínuo favorece ciclos curtos de modelagem (não precisa esperar sprint terminar).
+
+### No Estimates — quando pular estimativa
+
+Movimento iniciado por Woody Zuill / Vasco Duarte. Proposta: **não estime tasks**; use throughput histórico (stickies/sprint) como preditor.
+
+**Quando faz sentido em DDD:**
+- Time maduro com histórico estável de throughput
+- Product owner aceita forecast probabilístico ("entre 8 e 14 stickies resolvidos em 3 semanas")
+- Modeling spikes têm timebox fixo (4-8h), não estimativa
+
+**Quando não funciona:**
+- Time novo (precisa calibrar com Metrics-Based Estimation primeiro — ver §2)
+- Compliance/contrato exige data fixa de entrega
+- Stakeholders exigem roadmap em datas absolutas
+
+**Meio-termo prático:** use Metrics-Based Estimation (§2) pra baseline inicial nos primeiros 3 meses; transite pra forecast por throughput quando o time estabiliza.
+
+---
+
+## 6. Knowledge Acquisition Cycles
+
+`[Distilled cap.7]`
+
+Modelagem DDD é **iterativa e cumulativa**. Cada ciclo acrescenta conhecimento; não existe "modelagem pronta". O ciclo explícito:
+
+```
+Scenario concreto → Modelagem exploratória → Refinement → Teste em código → Feedback do domain expert
+        ↑                                                                                 │
+        └─────────────────────── insight novo / refactoring ──────────────────────────────┘
+```
+
+### Formato de uma iteração
+
+**Timebox: 1-4h por scenario.**
+
+1. **Scenario concreto** (15 min) — Given-When-Then escrito em UL. Ex.: "Dado um pedido de cliente VIP com promoção ativa, quando o preço final é calculado, então desconto fidelidade aplica antes do imposto".
+2. **Modelagem exploratória** (30-60 min) — esboço de objetos/métodos. Whiteboard ou pair programming.
+3. **Refinement com domain expert** (15-30 min) — valide termo por termo. "Desconto fidelidade é sobre preço base ou preço com desconto promocional?"
+4. **Código mínimo** (30-90 min) — implementação enxuta, com testes baseados no scenario.
+5. **Feedback de domain expert** (15 min) — mostra o teste rodando. Ele aprova o vocabulário? entende o comportamento?
+
+**Entrega por iteração:**
+- 1 scenario validado virou teste passando
+- 1 atualização no glossário (se termo novo surgiu)
+- Hotspots identificados → backlog de próximas iterações
+
+### Por que "cycles" e não "fase"
+
+Modelagem em fase única ("designer entrega modelo pronto pra dev codar") **não funciona**:
+- Modelo gerado sem código é abstrato demais
+- Código sem feedback de expert drifta da UL
+- Mudanças do negócio (descobertas em produção) não realimentam o modelo
+
+Ciclos curtos mantêm o canal aberto. 2-3 ciclos por sprint é sustentável; 5+ ciclos por dia é fluxo.
+
+### Armadilhas
+
+- **Ciclo sem domain expert** — reduz a ciclo de design técnico. Sem feedback do negócio, modelo drifta.
+- **Scenario "abstrato demais"** — "usuário faz pedido" não basta. Precisa nome específico, valores concretos, regra invocada.
+- **Documentação exagerada do ciclo** — overhead mata a cadência. Ata = 1 parágrafo + 1 commit de teste.
+
+### Integração com scenarios.md
+
+Ciclos de knowledge acquisition **usam** scenarios como insumo primário. Ver `scenarios.md` para estrutura Given-When-Then e os 4 usos.
+
+---
+
+## 7. Checklist de aceleração
 
 Use no início de projeto novo e a cada 3 sprints:
 
@@ -161,7 +253,7 @@ Se 3+ respostas "não", rode uma sessão de acceleration tools antes da próxima
 
 ---
 
-## 6. Integração com outros modos da skill
+## 8. Integração com outros modos da skill
 
 - **Modo 2 (Strategic Design)** — SWOT é pré-workshop ou complemento ao Event Storming Big Picture; estimativas saem do storming consolidado.
 - **Modo 3 (Spec de conversão)** — fase 0 da spec usa SWOT + estimativas pra priorizar qual bubble context atacar primeiro.

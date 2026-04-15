@@ -542,6 +542,161 @@ Como achar: refatoração iterativa, aprendizado com domain expert, paciência. 
 
 ---
 
+## Specification Pattern
+
+`[Evans DDD cap.9]` `[IDDD cap.5, 7]` — predicado de domínio encapsulado em objeto, composável.
+
+### Definição
+
+Uma Specification encapsula um **teste de satisfação** sobre um objeto: `spec.isSatisfiedBy(candidate) → bool`. O nome expressa regra de negócio; a composição (`and`, `or`, `not`) permite construir critérios complexos sem `if` aninhado.
+
+Evans classifica 3 usos:
+1. **Validation** — o objeto satisfaz critério neste momento?
+2. **Selection** — selecionar coleção que satisfaz (repository query)
+3. **Building-to-order** — criar objeto que satisfaz especificação
+
+### Quando usar
+
+- Regra de negócio reaparece em múltiplos lugares (validation, query, UI) — evita duplicação
+- Critério tem variações combinatórias ("ativo E com saldo > X E sem débito pendente")
+- Domain expert descreve o critério com nome próprio ("elegível pra desconto fidelidade")
+
+### Sinais de má aplicação
+
+- Specification com 1 uso e 1 linha de código → overengineering; método na Entity basta
+- Specification chamando outro Domain Service → acoplamento escondido; provavelmente é Domain Service disfarçado
+- Specification mutável ou com side effect → viola a natureza do predicado
+
+### Agnóstico
+
+```
+interface Specification<T> {
+  bool isSatisfiedBy(T candidate)
+  Specification<T> and(Specification<T> other)
+  Specification<T> or(Specification<T> other)
+  Specification<T> not()
+}
+
+class OverdueInvoice implements Specification<Invoice> {
+  bool isSatisfiedBy(Invoice inv) = inv.dueDate < clock.now() && !inv.isPaid()
+}
+
+class HighValueInvoice implements Specification<Invoice> {
+  readonly Money threshold
+  bool isSatisfiedBy(Invoice inv) = inv.total >= threshold
+}
+
+// Composição natural:
+collectable = new OverdueInvoice()
+              .and(new HighValueInvoice(Money.of(10_000, BRL)))
+
+if (collectable.isSatisfiedBy(invoice)) {
+  collectionService.enqueue(invoice)
+}
+```
+
+### Specification em queries de Repository
+
+Permite queries expressivas sem "explosão de findBy*":
+
+```
+invoices = invoiceRepo.satisfying(collectable)
+// em vez de invoiceRepo.findOverdueAndHighValue(threshold)
+```
+
+Implementação pode traduzir Specification → SQL / JPQL / ORM query builder internamente (technique: double dispatch ou adapter).
+
+### Specification + Factory (building-to-order)
+
+Quando a criação precisa satisfazer critério:
+
+```
+class SubscriptionFactory {
+  Subscription create(Customer c, Plan p, PromotionSpec active) {
+    Subscription sub = new Subscription(c, p, clock.now())
+    if (active.isSatisfiedBy(c)) sub.applyPromotion(active.bonus())
+    return sub
+  }
+}
+```
+
+### Armadilhas
+
+- **Specification-mania**: nem todo predicado precisa de classe; métodos em VO/Entity continuam válidos. Use Specification quando há reuso real ou composição.
+- **Performance em Selection**: `spec.isSatisfiedBy` em loop sobre 1M de registros é desastre — mapeie pra query. Double dispatch ou Criteria API.
+- **Mock-hell em testes**: Specifications puras são fáceis de testar; fique fora de dependências externas.
+
+---
+
+## Identity Generation Strategies
+
+`[IDDD cap.5]` — como gerar o ID de uma Entity/Aggregate. Escolha afeta concorrência, integração, e compliance.
+
+### 4 estratégias principais
+
+| Estratégia | Quem gera | Quando |
+|------------|-----------|--------|
+| **User-provided** | Cliente da API ou domain expert | IDs naturais bem conhecidos (CPF, CNPJ, ISBN). Raro em sistemas modernos. |
+| **Application (UUID/ULID)** | Camada de aplicação, **antes** do persist | Default moderno. Aggregate pode ser construído off-line; IDs únicos globalmente; merge entre sistemas trivial. |
+| **Persistence (auto-increment / sequence)** | Banco, no INSERT | Legado com integer PK esperado por relatórios/FKs existentes. Bloqueia construção antes do save. |
+| **Value-generated (hash de atributos)** | Função determinística de atributos | Idempotência na criação (ex.: `hash(date+amount+customerId)` evita duplicata). Risco: attrs mutáveis quebram identidade. |
+
+### Guia de decisão
+
+**Escolha UUID/ULID por default** se:
+- Sistema novo, sem FK legada
+- Integração cross-system (microservices, message bus)
+- Cliente precisa gerar ID antes de chamar API (idempotency key)
+- Event Sourcing (evento registra ID antes do "save")
+
+**Escolha sequence/auto-increment** só se:
+- FK integer obrigatória no schema herdado
+- Ordenação por ID tem significado (raro — use timestamp explícito)
+- Restrição de 4-8 bytes crítica (IoT, embarcado)
+
+**Nunca misture** no mesmo Aggregate. IDs previsíveis em produção + UUID em teste = bug em integração.
+
+### ULID > UUID v4 quando ordenação importa
+
+ULID (Universally Unique Lexicographically Sortable) é 128-bit como UUID mas prefixado por timestamp. Vantagens:
+- Ordenação natural por criação
+- Index B-tree eficiente (inserts sequenciais)
+- Mesma garantia de unicidade
+
+UUID v7 (draft RFC) resolve o mesmo problema; verifique suporte na stack antes de adotar.
+
+### Agnóstico — factory com UUID
+
+```
+class Order {
+  readonly OrderId id          // UUID/ULID wrapper VO
+
+  static Order place(CustomerId customer, List<Item> items) {
+    assert items.nonEmpty()
+    return new Order(OrderId.generate(), customer, items, status: DRAFT)
+  }
+}
+
+class OrderId {
+  readonly String value         // "01J5R2X..."
+  static OrderId generate() = new OrderId(Ulid.random().toString())
+  static OrderId from(String raw) = new OrderId(validateUlid(raw))
+}
+```
+
+### Armadilhas
+
+- **Vazar tipo primitivo** — `long id` ou `string id` no domínio. Envelope em VO (`OrderId`) pra ter tipo próprio, validação, e impedir troca acidental (`orderRepo.findById(customerId)` não compila).
+- **ID mutável** — nunca. Se precisa "trocar de identidade", é outra Entity (ex.: `Invoice` substituindo `Draft`).
+- **UUID em tabela com bilhões de rows sem índice adequado** — UUID v4 fragmenta B-tree; use ULID ou UUID v7.
+- **Gerar ID no banco em Event Sourcing** — impossível; evento precisa do ID antes do persist.
+
+### Multitenancy
+
+Em SaaS multi-tenant, **todo** aggregate root carrega também `TenantId`. O ID principal (UUID) pode repetir entre tenants em princípio, mas a combinação `(tenantId, aggregateId)` é que identifica globalmente. Factory Method em `Tenant` (ver §Factory em profundidade) garante.
+
+---
+
 ## Hierarquia de uso (agnóstica)
 
 Quando modelar algo novo, pergunte nessa ordem:

@@ -67,7 +67,7 @@ Convenção: cada entrada traz **termo EN** / *termo PT-BR* — definição curt
 - **Closure of Operations** / *Fechamento de Operações* — Argumentos e retorno do mesmo tipo; permite composição. `[Evans Reference]`
 - **Declarative Design** / *Design Declarativo* — Comportamento expresso por configuração/anotação em vez de procedural. `[Evans Reference]`
 - **Conceptual Contour** / *Contorno Conceitual* — Decomposição alinhada com divisões naturais do domínio. `[Evans Reference]`
-- **Specification** / *Especificação* — Predicado de domínio que testa se um objeto satisfaz critério. `[Evans DDD original]` (não detalhado na Reference)
+- **Specification** / *Especificação* — Predicado de domínio que testa se um objeto satisfaz critério (`isSatisfiedBy`). Composável via `and`/`or`/`not`. Três usos (Evans): validation, selection (query), building-to-order. Detalhado em `tactical-patterns.md`. `[Evans DDD cap.9]` `[IDDD cap.5,7]`
 
 ---
 
@@ -99,3 +99,15 @@ Convenção: cada entrada traz **termo EN** / *termo PT-BR* — definição curt
 - **Scenario (Given-When-Then)** — Exemplo concreto de comportamento do domínio em formato BDD. Valida ubiquitous language com domain expert antes de virar código. `[Distilled cap.2]`
 - **Deeper Insight** — Refatoração do modelo motivada por descoberta de conceito implícito ou mudança de entendimento do domínio — diferente de refatoração técnica (estrutura só). `[Evans DDD]`
 - **Breakthrough** — Acúmulo de insights pequenos que convergem numa mudança grande e simplificadora do modelo. Não se força; se facilita. `[Evans DDD]`
+- **Bounded Context Canvas** — One-pager estruturado (DDD Crew) que define purpose, strategic classification, domain roles, ubiquitous language, business decisions, inbound/outbound, constraints de um BC. Preenche-se pós-Big Picture, antes do Design Level. Ver `bounded-context-canvas.md`. `[DDD Crew]`
+- **Domain Message Flow Modelling** — Técnica DDD Crew que desenha sequência de mensagens (Commands, Events) entre BCs candidatos em swimlanes temporais. Alimenta Context Map e Canvas. Ver `event-storming.md`. `[DDD Crew]` `[Distilled cap.4]`
+- **DDD Crew Starter Process** — Sequência canônica de 6 fases: Big Picture → Message Flow → BC Canvas → Context Map → Design Level → ADRs+implementação. Ver `ddd-crew-process.md`. `[DDD Crew]`
+- **Process Manager** — Entity persistente com estado que reage a Domain Events e emite Commands pra coordenar workflow multi-aggregate/multi-BC. Implementação comum de Saga. `[IDDD cap.8]`
+- **Saga Orchestration / Choreography** — Orquestração: componente central (Process Manager) comanda sequência. Coreografia: cada BC reage a evento anterior, sem coordenador. Escolha por explicitação de fluxo vs. acoplamento. `[microservices.io]` `[IDDD cap.4,8]`
+- **Compensating Transaction** — Novo evento de negócio que reverte logicamente efeito anterior em consistência eventual. Não é undo; é estorno com significado auditável. `[Saga literature]`
+- **Identity Generation Strategy** — Como gerar IDs de Aggregate: user-provided, application (UUID/ULID), persistence (auto-increment), value-generated (hash). Default moderno: ULID/UUID gerado na aplicação. Ver `tactical-patterns.md`. `[IDDD cap.5]`
+- **ULID** — Universally Unique Lexicographically Sortable Identifier. 128-bit, prefixo de timestamp permite ordenação natural e index B-tree eficiente. Alternativa moderna ao UUID v4 quando ordenação importa. `[prática pós-2020]`
+- **Task-Board Shuffle** — Anti-padrão: sprints entregam features (stickies movendo na board) sem avanço de modelo. Velocity alta + glossário estagnado = modeling debt invisível. Ver `acceleration-tools.md`. `[Distilled cap.7]`
+- **Knowledge Acquisition Cycle** — Iteração curta (1-4h) de scenario → modelagem → refinement com expert → código mínimo → feedback. Mantém UL e modelo alinhados continuamente. Ver `acceleration-tools.md`. `[Distilled cap.7]`
+- **Temporal Coupling** — Acoplamento de disponibilidade: RPC síncrono cross-BC faz incidente num contexto derrubar outros. Mitigação: async messaging, REST pull, cache local. `[prática pós-2020]`
+- **Wire Format** — Formato de serialização do payload na fronteira de integração: JSON, JSON Schema/OpenAPI, Protobuf, Avro, XML. Escolha afeta evolução, tamanho e tooling. Ver `context-mapping.md`. `[Distilled cap.4]`

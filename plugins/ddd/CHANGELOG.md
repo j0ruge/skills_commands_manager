@@ -2,6 +2,72 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [0.4.0] - 2026-04-15
+
+### Added — 2 novas references (fechando gaps IMPORTANTES da re-auditoria)
+
+- `references/bounded-context-canvas.md` — template completo + guia de preenchimento do BC Canvas (DDD Crew v5): purpose, strategic classification (domain type + business model + evolution stage), domain roles, ubiquitous language sample, business decisions, inbound/outbound communication, assumptions/constraints. Inclui roteiro de sessão (60-90 min) e armadilhas.
+- `references/ddd-crew-process.md` — sequência canônica de 6 fases (Big Picture → Domain Message Flow → BC Canvas → Context Map → Design Level → ADRs+implementação) com cadência realista (~4 semanas pra um ERP greenfield) e critérios de transição entre fases. `[DDD Crew]` `[Distilled cap.4-5]`
+
+### Changed — 6 expansões em references existentes
+
+- `tactical-patterns.md` — nova seção completa "Specification Pattern" (definição Evans com 3 usos: validation / selection / building-to-order; agnóstico com composição and/or/not; uso em Repository queries; Factory + Specification; armadilhas); nova seção "Identity Generation Strategies" (4 estratégias — user-provided/application/persistence/value-generated; guia de decisão UUID vs ULID vs sequence; multitenancy; armadilhas de ID primitivo) `[Evans DDD cap.9]` `[IDDD cap.5, 7]`
+- `application-services.md` — §6 completamente reescrita e expandida: Saga Orchestration vs Choreography (quando usar cada, vantagens/desvantagens detalhadas), distinção Process Manager vs Saga, 3 padrões de compensação (backward recovery / forward recovery / pivot transaction), retries com backoff + idempotency key + dead-letter, event replay e recuperação, exemplo agnóstico de Saga com estado persistente, 5 armadilhas frequentes `[IDDD cap.4, 8]` `[microservices.io]`
+- `event-storming.md` — nova seção "Domain Message Flow Modelling" (objetivo, notação sequence-diagram, template Mermaid, roteiro de 90-120 min com 6 passos, integração com BC Canvas / Context Map / Design Level, armadilhas) `[DDD Crew]` `[Distilled cap.4]`
+- `acceleration-tools.md` — nova seção "DDD + Agile frameworks" (Scrum com DDD + anti-padrão Task-Board Shuffle, Kanban com DDD, No Estimates — quando faz sentido); nova seção "Knowledge Acquisition Cycles" (iteração 1-4h: scenario → modelagem → refinement com expert → código → feedback, por que ciclos e não fase única) `[Distilled cap.7]`
+- `context-mapping.md` — expansão da seção "REST pull vs. Messaging push" com implementação detalhada (Atom feed, cursor persistido); nova seção "Wire formats — trade-offs rápidos" (JSON, JSON Schema/OpenAPI, Protobuf, Avro, XML — quando cada um); nova seção "RPC e temporal coupling" (sinais, alternativas async-first, quando RPC síncrono ainda vale) `[Distilled cap.4]`
+- `glossary.md` — Specification expandido com os 3 usos Evans; novas entradas: Bounded Context Canvas, Domain Message Flow Modelling, DDD Crew Starter Process, Process Manager, Saga Orchestration/Choreography, Compensating Transaction, Identity Generation Strategy, ULID, Task-Board Shuffle, Knowledge Acquisition Cycle, Temporal Coupling, Wire Format
+
+### Changed — SKILL.md v0.4.0
+
+- Version bump: `metadata.version: 0.4.0`
+- Mode 1 (Analysis): atualizado para mencionar Specification Pattern + Identity Generation (tactical-patterns) e Saga/compensating (application-services) e wire formats/temporal coupling (context-mapping)
+- Mode 2 (Strategic): adicionadas `ddd-crew-process.md` e `bounded-context-canvas.md` à lista carregável
+- Mode 3 (Spec): adicionadas `ddd-crew-process.md` e `bounded-context-canvas.md`
+- Mode 4 (Teaching): tabela de roteamento expandida com triggers para Specification, Identity Generation, Wire Formats, Temporal Coupling, Domain Message Flow, BC Canvas, DDD Crew Process, Scrum/Kanban+DDD, No Estimates, Knowledge Acquisition Cycles, Saga orq/coreografia, Process Manager, Compensating Transactions
+- Nova subseção "Deliberadamente fora de escopo (v0.4.0)" explicita: Wardley Maps, DDD funcional puro, ORM details, DI debate, hiring
+
+### Créditos adicionais em v0.4.0
+
+- DDD Crew (Nick Tune, Marco Heimeshoff, Krisztina Hirth, Gienah Trystan) — Bounded Context Canvas, Domain Message Flow Modelling, Starter Process
+- Woody Zuill / Vasco Duarte — movimento No Estimates (citado em acceleration-tools)
+- microservices.io (Chris Richardson) — Saga patterns / Process Manager
+
+### Motivação
+
+Re-auditoria paralela com 4 agentes (1 por markdown bruto em `~/repos/jrc-manual-rag/processed/markdown/`: Evans Referência, Evans Rápido, Vernon IDDD, Vernon Distilled) reportou convergência sobre 12 gaps residuais pós-v0.3.0:
+
+**CRÍTICO convergente (Evans Ref + Rápido + IDDD):**
+1. Specification Pattern — só mencionado em glossary, sem implementação
+
+**IMPORTANTE (múltiplos livros):**
+2. Bounded Context Canvas — mencionado em v0.3.0 sem template
+3. DDD Crew Starter Process — fluxo consolidado 6 fases ausente
+4. Domain Message Flow Modelling — lacuna entre Big Picture e Design Level
+5. Saga orquestração vs coreografia + compensating patterns detalhados — v0.3.0 tinha parágrafo único
+6. Identity Generation Strategies — ausente (IDDD cap.5 dedica capítulo)
+7. Conceptual Contour em profundidade — presente mas superficial
+8. Model Integrity 4 pilares — já coberto, reforço cross-reference
+9. DDD + Agile cadence (Scrum/Kanban + No Estimates + Task-Board Shuffle warning) — Distilled cap.7
+10. Knowledge Acquisition Cycles — ciclo iterativo formal
+
+**NICE-TO-HAVE (Distilled cap.4):**
+11. Closure of Operations exemplo concreto
+12. RPC temporal coupling + Atom Feed + Wire Formats
+
+v0.4.0 fecha os 10 IMPORTANTES/CRÍTICOS + 2 NICE-TO-HAVE. Cobertura esperada ≥ 95%.
+
+### Deliberadamente fora de escopo (v0.4.0)
+
+Consolidado também em SKILL.md:
+- **Wardley Maps** — não central aos 4 livros-fonte
+- **DDD em linguagens funcionais puras** — não abordado nos livros canônicos
+- **ORM internals (N+1, lazy proxies)** — tema de stack, não de DDD
+- **Service Locator vs Dependency Injection debate** — arquitetura geral
+- **Hiring & Team Composition** — tema RH
+
+Mantidas também as exclusões de v0.3.0: Large-Scale Structure patterns, SaaSOvation narrativo, analogias didáticas exaustivas, fallback com livros embutidos.
+
 ## [0.3.0] - 2026-04-14
 
 ### Added — 4 novas references (fechando gaps CRÍTICOS da auditoria v0.2.0)

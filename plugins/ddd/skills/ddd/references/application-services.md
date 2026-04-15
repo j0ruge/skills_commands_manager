@@ -173,44 +173,141 @@ Quando o framework não fornece UoW (pouco comum hoje), implemente `TransactionS
 
 ---
 
-## 6. Compensating Transactions e Saga (básico)
+## 6. Compensating Transactions e Saga
 
-`[IDDD cap.8]` + microservices.io `[prática pós-2020]`
+`[IDDD cap.4, 8]` `[microservices.io]` `[prática pós-2020]`
 
-Quando um use case atravessa **múltiplos agregados ou contextos** com consistência eventual, ACID clássico não serve. Duas alternativas:
+Quando um use case atravessa **múltiplos agregados ou contextos** com consistência eventual, ACID clássico não serve. Duas alternativas para coordenar: **coreografia** ou **orquestração**. A escolha define observabilidade, testabilidade e acoplamento.
 
 ### Coreografia (events encadeados)
 
-Cada aggregate reage a evento anterior e emite o próximo. Sem coordenador central.
+Cada aggregate reage ao evento anterior e emite o próximo. Sem coordenador central.
 
 ```
 OrderPlaced → [Inventory reage] ItemsReserved → [Payment reage] PaymentCaptured → [Shipping reage] ShipmentScheduled
 ```
 
-Vantagens: baixo acoplamento, fluxo emergente.
-Desvantagens: fluxo implícito (difícil depurar), difícil mudar ordem.
+**Quando usar:**
+- Fluxo linear e estável (raramente muda ordem)
+- Poucos passos (3-4)
+- Times independentes (cada BC reage sem conhecer o todo)
+
+**Vantagens:** baixo acoplamento, evolução local, nenhum SPOF.
+
+**Desvantagens:**
+- Fluxo implícito — documentação obrigatória (diagrama ou event-flow map)
+- Debug distribuído — trace distribuído é pré-requisito
+- Mudar ordem ou inserir passo novo exige coordenação entre múltiplos times
+- Difícil responder "em que passo estamos?"
 
 ### Orquestração (Process Manager / Saga)
 
-Um componente central comanda a sequência.
+Um componente central (Process Manager, Saga, Workflow) comanda a sequência. É Entity persistente com estado próprio.
 
 ```
-OrderSaga:
-  on OrderPlaced → command(ReserveItems)
-    on ItemsReserved → command(CapturePayment)
-      on PaymentCaptured → command(ScheduleShipment)
-        on ShipmentScheduled → mark saga complete
-  on any step failure → emit compensating commands (ReleaseItems, RefundPayment, CancelShipment)
+OrderSaga (estado: STARTED → ITEMS_RESERVED → PAID → SHIPPED → DONE):
+  on OrderPlaced → send(ReserveItems to Inventory)
+    on ItemsReserved → send(CapturePayment to Payment)
+      on PaymentCaptured → send(ScheduleShipment to Shipping)
+        on ShipmentScheduled → mark DONE, emit OrderFulfilled
+  on any failure at step N → trigger compensation path
 ```
 
-Vantagens: fluxo explícito, fácil visualizar/alterar.
-Desvantagens: ponto central, precisa recuperar de falhas.
+**Quando usar:**
+- Fluxo com variações/condicionais ("se é cliente VIP, pula aprovação manual")
+- 5+ passos ou convergência de múltiplos eventos
+- Auditoria regulatória exige "timeline explícita" do processo
+- Time precisa responder "em qual passo está a ordem X?" em produção
 
-### Compensating transactions
+**Vantagens:** fluxo explícito, fácil mudar, estado observável, timeout trivial.
 
-Em consistência eventual não existe rollback. Em caso de falha, **compense logicamente**: `ItemsReleased`, `PaymentRefunded`, `ShipmentCancelled` — eventos que reverte o efeito anterior.
+**Desvantagens:**
+- Componente central (mas *não* SPOF se persistido e replicável)
+- Acoplamento: Saga conhece N serviços; serviços conhecem só seus próprios eventos
 
-Não é undo — é *novo* evento de negócio, com seu próprio significado auditável.
+### Process Manager vs. Saga (nomenclatura)
+
+Na prática moderna os termos se confundem. Distinção útil:
+
+- **Saga (strict)** — sequência de transações locais + compensações. Origem: paper de Garcia-Molina 1987.
+- **Process Manager** — Entity com estado que **reage** a eventos e emite commands. Padrão do `[IDDD cap.8]`.
+
+Process Manager é a **implementação** mais comum de Saga hoje. Use "Saga" se quer ênfase em compensação; "Process Manager" se quer ênfase em fluxo.
+
+### Compensating Transactions
+
+Em consistência eventual não existe rollback. Em caso de falha no passo N, **compense logicamente** os passos 1..N-1: `ItemsReleased`, `PaymentRefunded`, `ShipmentCancelled` — eventos que revertem o efeito anterior.
+
+**Não é undo** — é *novo* evento de negócio, com seu próprio significado auditável. Na contabilidade não se apaga lançamento: emite-se estorno.
+
+### Padrões de compensação
+
+| Padrão | Quando |
+|--------|--------|
+| **Backward recovery** | Falhou no passo N → compensa 1..N-1 e reporta falha ao cliente. Default. |
+| **Forward recovery** | Falhou no passo N → retry; só compensa se retry esgotou. Uso: idempotent ops com transiente alto (rede). |
+| **Pivot transaction** | Ponto de não-retorno: depois dele, só forward recovery. Ex.: depois de `PaymentCaptured`, não compensa — retry ou escala pra humano. |
+
+### Retries, idempotência e dead-letter
+
+- **Retry com backoff exponencial** — padrão em step transiente. Teto (5-10 tentativas) + jitter pra não sobrecarregar.
+- **Idempotency key** — cada command carrega ID único; handler rejeita duplicata silenciosamente.
+- **Dead-letter queue** — após retries esgotados, mensagem vai pra DLQ + alerta operacional. Nunca "fire and forget".
+- **Timeouts explícitos no Saga** — passo sem resposta em T minutos → compensação ou escalada. Não confie só no broker.
+
+### Event Replay e recuperação
+
+Saga persiste estado. Em crash, recarrega estado do storage e retoma. Com Event Sourcing, o próprio stream de eventos do Saga reconstrói o estado.
+
+Regra: **commands do Saga são idempotentes** ou carregam idempotency key. Replay não deve duplicar efeitos.
+
+### Agnóstico — Saga mínimo
+
+```
+class OrderSaga {
+  readonly OrderSagaId id
+  OrderSagaState state = STARTED
+  OrderId orderId
+  Map<Step, StepResult> history = {}
+
+  void on(OrderPlaced ev) {
+    assert state == STARTED
+    orderId = ev.orderId
+    send(new ReserveItems(ev.orderId, ev.items), correlationId: id)
+    state = AWAITING_INVENTORY
+  }
+
+  void on(ItemsReserved ev) {
+    assert state == AWAITING_INVENTORY
+    history.put(INVENTORY, SUCCESS)
+    send(new CapturePayment(orderId, ev.total), correlationId: id)
+    state = AWAITING_PAYMENT
+  }
+
+  void on(PaymentFailed ev) {
+    assert state == AWAITING_PAYMENT
+    history.put(PAYMENT, FAILED)
+    send(new ReleaseItems(orderId), correlationId: id)  // compensação
+    state = COMPENSATING
+  }
+
+  void on(ItemsReleased ev) {
+    assert state == COMPENSATING
+    state = ABORTED
+    emit(new OrderAborted(orderId, reason: "payment failed"))
+  }
+
+  // ... timeouts, demais passos
+}
+```
+
+### Armadilhas
+
+- **Saga "distribuído se acha que ACID"** — expectativas erradas de rollback. Comunique explicitamente: consistência é eventual, compensação é novo evento.
+- **Saga síncrono (aguarda response in-process)** — vira chamada RPC encadeada. Use messaging assíncrono.
+- **Compensação impossível** — alguns efeitos não reverter (e-mail enviado). Desenhe o fluxo pra que esses passos venham **depois** do pivot.
+- **Saga God Class** — 40 estados, 80 handlers. Quebre por subworkflow ou volte pra coreografia.
+- **Sem timeout** — passo "travado" fica pra sempre. Todo estado de Saga tem TTL.
 
 ---
 

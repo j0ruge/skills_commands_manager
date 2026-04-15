@@ -209,14 +209,81 @@ Relacionado, mas distinto: dentro do próprio contexto, events persistidos preci
 
 ### REST pull (Atom/feed-style) vs. Messaging push
 
-**REST pull (feed)** — publisher expõe endpoint `/notifications?since=X`. Consumer rastreia posição e pede batches. Vantagens: consumer controla ritmo, sem broker, idempotência natural via cursor.
+**REST pull (feed)** — publisher expõe endpoint `/notifications?since=X`. Consumer rastreia posição (cursor) e pede batches.
 
-**Messaging push** — publisher envia pra broker (RabbitMQ, Kafka, NATS), consumer subscribe. Vantagens: latência baixa, backpressure controlado, multi-consumer trivial.
+Vantagens:
+- Consumer controla ritmo (backpressure natural)
+- Sem broker — reduz infra
+- Idempotência natural via cursor persistido do consumer
+- Replay trivial: consumer volta o cursor, reprocessa
+- Funciona em ambientes com acesso só de saída (firewall)
+
+Desvantagens:
+- Latência mínima = intervalo de polling (segundos a minutos)
+- Consumer precisa manter estado (cursor)
+- Scaling horizontal de consumer precisa coordenação de cursor
+
+**Implementação:**
+- Atom 1.0 feed com paginação por link (`<link rel="next">`)
+- Endpoint custom REST: `GET /notifications?afterId=N&limit=100`
+- Consumer persiste `lastSeenId` localmente, pede sempre `afterId=lastSeenId`
+- Publisher mantém events ordenados e imutáveis (event store, não tabela mutável)
+
+**Messaging push** — publisher envia pra broker (RabbitMQ, Kafka, NATS, SQS), consumer subscribe.
+
+Vantagens: latência baixa (ms), backpressure via ack, multi-consumer trivial, padrões (at-least-once, exactly-once com Kafka transactions).
+
+Desvantagens: broker é nova infra + SPOF potencial, curva de aprendizado, operação (replay, DLQ, lag monitoring).
 
 Escolha:
-- Contextos internos, integração simples → pull pode bastar
-- Alta frequência, muitos consumers, auditoria → push via broker
-- Nunca ambos ao mesmo tempo sem necessidade (complexidade dobra)
+- Contextos internos, integração simples, SLA tolerante a minutos → **pull** basta e é mais simples
+- Alta frequência, muitos consumers, auditoria regulatória, baixa latência → **push via broker**
+- Equipe sem experiência em broker → comece com pull, migre quando houver necessidade real
+- Nunca ambos ao mesmo tempo sem necessidade (complexidade dobra sem benefício)
+
+### Wire formats — trade-offs rápidos
+
+`[Distilled cap.4]`
+
+Não basta escolher "JSON" — o formato do payload afeta evolução, tamanho, e tooling.
+
+| Formato | Schema | Evolução | Tamanho | Quando |
+|---------|--------|----------|---------|--------|
+| **JSON** | Implícito (documentado externo) | Flexível — consumers toleram campos extras | Médio-grande | Default pra APIs REST, público. Legível humanamente. |
+| **JSON Schema + OpenAPI** | Explícito versionado | Additive-safe com contract tests | Médio-grande | REST com múltiplos clientes e contrato formal |
+| **Protobuf** | Explícito (.proto) | Backward/forward compat por regras fixas | Pequeno | gRPC, alto throughput interno, múltiplas linguagens |
+| **Avro** | Explícito (schema registry) | Schema evolution com resolução automática | Pequeno | Kafka + Confluent ecosystem, event streaming |
+| **XML** | DTD/XSD explícito | Flexível, tooling pesado | Grande | Legado SOAP, integrações B2B regulamentadas (NFe, EDI) |
+
+**Regras:**
+- **Interno cross-BC assíncrono:** Avro ou Protobuf (performance + schema registry)
+- **Público REST:** JSON + OpenAPI versionado (SemVer)
+- **Brazilian compliance (NFe, SPED):** XML é inescapável
+- **Nunca:** payload sem schema algum (mesmo que implícito em doc)
+
+### RPC e temporal coupling
+
+`[Distilled cap.4]`
+
+RPC síncrono (REST bloqueante, gRPC) cria **temporal coupling**: se o destino está fora, o originador também falha. Em integração cross-BC, isso contamina disponibilidade.
+
+Sinais de temporal coupling doloroso:
+- Incidente num BC derruba outros BCs
+- Latência p99 cresce com a cadeia de chamadas síncronas
+- Circuit breakers e retries viram feature obrigatória em todo cliente
+
+**Alternativas:**
+- **Async messaging** (push) — desacopla disponibilidade
+- **REST pull feed** — consumer tolera publisher fora
+- **Async command + event de resposta** — command vai, event de "done/failed" volta
+- **Cache local** — última resposta conhecida quando upstream fora
+
+**Quando RPC síncrono ainda vale:**
+- Query cross-BC que não cabe em read model local (raro; normalmente indica fronteira errada)
+- Integração externa paga por request onde o cliente precisa da resposta imediata (gateway de pagamento)
+- Ambiente legacy sem messaging disponível
+
+**Regra pós-2020:** async-first para comunicação cross-BC. Síncrono exige justificativa.
 
 ### Outbox obrigatório em ambos os casos
 

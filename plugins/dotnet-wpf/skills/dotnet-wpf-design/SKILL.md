@@ -2,15 +2,21 @@
 name: dotnet-wpf-design
 description: >
   Guia de design profissional para WPF/XAML com Fluent Design (WPF-UI). Catalogo de solucoes
-  documentadas para problemas de layout, espacamento, tipografia, sizing de controles e dark
-  theme. Use quando o usuario quiser: corrigir layout de formulario WPF; ajustar espacamento
-  entre campos; resolver toolbar/header que rola junto com conteudo; aumentar tamanho de
-  controles pequenos ou com texto cortado; melhorar respiro visual entre secoes; aplicar
-  tipografia Fluent Design; usar cores corretas de dark theme; diagnosticar problemas de
-  ScrollViewer aninhado; alinhar labels com campos; auditar qualidade visual de uma pagina
-  XAML. Tambem use quando o usuario mencionar "design WPF", "layout XAML", "campos pequenos",
-  "texto cortado", "espacamento", "respiro", "controle apertado", "formulario feio",
-  "dark theme cores", "Fluent Design tokens", "ScrollViewer problema", ou "toolbar rola".
+  documentadas para problemas de layout, espacamento, tipografia, sizing de controles, dark
+  theme e customizacao de identidade visual (brand color, theming overrides). Use quando o
+  usuario quiser: corrigir layout de formulario WPF; ajustar espacamento entre campos;
+  resolver toolbar/header que rola junto com conteudo; aumentar tamanho de controles pequenos
+  ou com texto cortado; melhorar respiro visual entre secoes; aplicar tipografia Fluent
+  Design; usar cores corretas de dark theme; diagnosticar problemas de ScrollViewer aninhado;
+  alinhar labels com campos; auditar qualidade visual de uma pagina XAML; aplicar cor da
+  marca/corporativa em botoes Appearance="Primary"; customizar cor de checkmark do CheckBox;
+  mudar cor do ProgressRing; forcar texto branco em ToggleButton checked; descobrir nomes de
+  recursos do WPF-UI para override; eliminar delay no hover de botoes brand. Tambem use
+  quando o usuario mencionar "design WPF", "layout XAML", "campos pequenos", "texto cortado",
+  "espacamento", "respiro", "controle apertado", "formulario feio", "dark theme cores",
+  "Fluent Design tokens", "ScrollViewer problema", "toolbar rola", "cor da marca",
+  "brand color", "identidade visual", "customizar tema WPF-UI", "theming override",
+  "botao com delay no hover", ou "cor do checkbox/toggle/progressring".
   NAO use para: setup inicial de projeto (use dotnet-desktop-setup), MVVM/ViewModel (use
   dotnet-wpf-mvvm), testes E2E (use dotnet-wpf-e2e-testing), logica de negocio, APIs, deploy.
 ---
@@ -28,38 +34,25 @@ e sao lidos sob demanda.
 
 ## Versao e Changelog
 
-**v1.4.0** (2026-04-09)
-- FORM-004 novo: separador sutil entre grupos de campos em Grid. Usa `Border` com `BorderThickness="0,0,0,1"` e `DividerStrokeColorDefaultBrush` em row dedicada. Anti-padrao documentado: nunca compartilhar row do separador com conteudo (causa sobreposicao).
-- Anti-padrao #11 novo: Border separador na mesma row que conteudo causa sobreposicao visual.
+Historico completo em `CHANGELOG.md` (ao lado deste arquivo). As duas versoes mais
+recentes ficam aqui para contexto rapido.
 
-**v1.3.0** (2026-04-08)
-- FORM-002 corrigido: exemplo do UserControl com `Height="32"` e ComboBox FontSize=13 causava clipping vertical do texto ("Mar.", "Feb." cortados). MinHeight nos filhos nao resolve.
-- FORM-003 novo (chamada curta no SKILL.md, recipe completo em `references/form-design.md`): estilos implicitos em `<StackPanel.Resources>` tem blast radius indesejado em paginas com layouts mistos (form vertical + StackPanel horizontal). Quebra alinhamento de controles fora do form.
-- Anti-padrao #8 reescrito: o pai UserControl com Height fixo limita o espaco total, MinHeight nos filhos nao recupera. Prefira `MinHeight` no proprio UserControl ou auto-tamanho.
-- Detalhe Critico #9 novo: texto clipado em controle Fluent quase sempre e altura, nao largura. Antes de aumentar Width, checar Height do pai e do controle.
-- Passo 3 (Verificar): nota sobre process restart para mudancas em UserControl que vive em DLL referenciada — `dotnet build` nao basta.
+**v1.5.0** (2026-04-14) — Theming overrides e branding
+- Cookbook: BRAND-001 (brand color em Primary sem delay), CTRL-004 (texto branco em
+  ToggleButton checked), CTRL-005 (cor do CheckBox), CTRL-006 (ClearButtonEnabled=False),
+  CTRL-007 (cor do ProgressRing), DRY-001 (Style compartilhado + Tag binding para abas),
+  RES-001 (como descobrir nomes de resources do WPF-UI via `strings Wpf.Ui.dll`).
+- Recipes detalhadas de BRAND-001/CTRL-004/5/6/7/RES-001 em
+  `references/wpfui-theming-overrides.md` (stubs compactos neste SKILL.md).
+- Anti-padroes: #12 (`Style` sem `BasedOn` quebra Fluent), #13 (`control.Foreground`
+  via code-behind perde para template), #14 (chutar nome de DynamicResource).
+- Detalhe Critico #11: regra canonica sobre precedencia de `ControlTemplate.Triggers`
+  com `TargetName` sobre Style externo — override de DynamicResource e a unica forma
+  confiavel de customizar estados de template.
 
-**v1.2.0** (2026-04-06)
-- LAYOUT-001 expandido: variante para paginas com DataGrid (sem ScrollViewer explicito)
-- CTRL-003 novo: SymbolIcon sharing bug em DataGrid — icons em Style.Setter.Value sao compartilhados entre linhas
-- DataGrid RowHeight recomendado atualizado: 30px para legibilidade confortavel
-- Anti-padrao #9: SymbolIcon em Setter.Value dentro de DataGridTemplateColumn
-
-**v1.1.0** (2026-04-01)
-- Deep dive no WPF-UI: catalogo completo de 90+ controles em `references/wpfui-controls-catalog.md`
-- ControlAppearance enum (Primary, Danger, Success, Caution) para semantica de cores
-- Accent color system (brushes de accent do sistema)
-- DI services: IContentDialogService, ISnackbarService pattern
-- Controles novos documentados: NumberBox, AutoSuggestBox, ToggleSwitch, ContentDialog, Snackbar, Flyout, CalendarDatePicker, PassiveScrollViewer
-- FontTypography completado: TitleLarge (40px), Display (68px)
-- SystemThemeWatcher e Window backdrop types
-- 6 URLs novas em sources.md (API reference, Gallery app, source code)
-
-**v1.0.0** (2026-04-01)
-- Criacao inicial da skill
-- Cookbook: toolbar fixa com NavigationView, Grid vs StackPanel, espacamento Fluent, sizing de controles
-- Fluent Design tokens: spacing ramp, type ramp, dark theme colors, WCAG
-- 6 referencias detalhadas (layout, form, tipografia, controls, wpfui, sources)
+**v1.4.0** (2026-04-09) — Separador sutil entre grupos
+- FORM-004: separador via `Border` com `BorderThickness="0,0,0,1"` em row dedicada.
+- Anti-padrao #11: Border na mesma row que conteudo causa sobreposicao.
 
 ---
 
@@ -592,6 +585,165 @@ de um Style dentro de DataTemplate. Use `DataTemplate.Triggers` com `Visibility`
 
 ---
 
+### BRAND-001: Aplicar brand color em botoes Primary (sem delay no hover)
+
+**Sintoma:** Botao `Appearance="Primary"` com brand color volta para cinza no hover e
+retorna ao brand so quando o mouse sai — impressao de delay.
+
+**Causa:** `ControlTemplate.Triggers` usa `DynamicResource AccentButtonBackgroundPointerOver`
+em elemento interno via `TargetName`. Style externo no Background da Button nao vence
+(veja Detalhe Critico #11).
+
+**Fix:** Override dos 7 resources `AccentButton*` em `App.xaml`. O template passa a
+aplicar brand color em todas as transicoes sem delay.
+
+Recipe completo com exemplo XAML, lista exata dos resources (Background, Foreground,
+BorderBrushPressed) e o principio "override de resources >> override de properties" em
+`references/wpfui-theming-overrides.md` secao BRAND-001.
+
+---
+
+### CTRL-004: ToggleButton com texto branco quando IsChecked=True
+
+**Sintoma:** `btnYes.Foreground = Brushes.White` via code-behind nao funciona quando o
+ToggleButton fica checked — texto continua escuro no fundo colorido.
+
+**Causa:** Template aplica `TextElement.Foreground` no ContentPresenter via
+`{DynamicResource ToggleButtonForegroundChecked}` (veja Detalhe Critico #11).
+
+**Fix:** Override local no `UserControl.Resources`:
+```xml
+<UserControl.Resources>
+    <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="White" />
+    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="White" />
+    <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="White" />
+</UserControl.Resources>
+```
+
+Recipe completo (MultiTrigger do template, escopo de override, lookup dinamico) em
+`references/wpfui-theming-overrides.md` secao CTRL-004.
+
+---
+
+### CTRL-005: CheckBox — customizar cor do checkmark e fundo
+
+**Atencao aos nomes** — WPF-UI 4.2.0 tem convencao propria, diferente de WinUI 3.
+Os resources que existem:
+
+- `CheckBoxCheckBackgroundFillChecked` (+ `PointerOver`, `Pressed`) — fundo do quadrado
+- `CheckBoxCheckGlyphForeground` — cor do ✓ (**singular**, SEM sufixo de estado!)
+
+Nomes comuns que **nao existem** (serao silenciosamente ignorados — veja Anti-padrao #14):
+`CheckBoxCheckGlyphForegroundChecked`, `CheckBoxCheckBackgroundStrokeChecked*`,
+`CheckBoxCheckBackgroundFillCheckedDisabled`.
+
+Recipe completo em `references/wpfui-theming-overrides.md` secao CTRL-005. Para descobrir
+nomes de qualquer outro controle, veja RES-001 (mesmo arquivo).
+
+---
+
+### CTRL-006: `ClearButtonEnabled="False"` em campos curtos
+
+Em `ui:TextBox` com `MaxLength=2-4` (dd, yyyy, HH, mm), o botao X da WPF-UI sobrepoe o
+digito sem agregar valor (Backspace em 2-4 chars e trivial). Setar `ClearButtonEnabled="False"`.
+
+```xml
+<ui:TextBox x:Name="txtDay" Width="40" MaxLength="2"
+            PlaceholderText="dd" ClearButtonEnabled="False" />
+```
+
+**Usar em:** campos de 1-5 chars. **NAO usar em:** campos longos (nome, comentarios, paths).
+
+---
+
+### CTRL-007: Cor customizada do ProgressRing
+
+WPF-UI 4.2.0 expoe apenas 2 resources para ProgressRing:
+
+```xml
+<!-- App.xaml -->
+<SolidColorBrush x:Key="ProgressRingForegroundThemeBrush" Color="#DF0024" />
+<SolidColorBrush x:Key="ProgressRingBackgroundThemeBrush" Color="#333333" />
+```
+
+`Foreground` = arco animado; `Background` = circulo estatico. Override global afeta todos
+os `<ui:ProgressRing />` do app.
+
+---
+
+### DRY-001: Estilo compartilhado para aba ativa (toolbars/tabs)
+
+**Problema:** Paginas com toolbar de 3-5 botoes que destacam a aba ativa acabam
+com `<ui:Button.Style>` inline duplicado. Cada botao tem 9 linhas de XAML identicas
+variando so o Binding path. Com 7 abas em 2 paginas, sao 63 linhas redundantes.
+
+```xml
+<!-- ❌ ANTES: 9 linhas de Style inline por botao, repetido 7 vezes -->
+<ui:Button Content="VDR Form" Command="{Binding ShowVDRFormCommand}">
+    <ui:Button.Style>
+        <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+            <Setter Property="Appearance" Value="Secondary" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsTestReportVisible}" Value="True">
+                    <Setter Property="Appearance" Value="Primary" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </ui:Button.Style>
+</ui:Button>
+```
+
+**Solucao:** Um Style compartilhado em `App.xaml` + `Tag` binding:
+
+```xml
+<!-- App.xaml -->
+<Style x:Key="ActiveTabButton" TargetType="ui:Button"
+       BasedOn="{StaticResource {x:Type ui:Button}}">
+    <Setter Property="Appearance" Value="Secondary" />
+    <Style.Triggers>
+        <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}"
+                     Value="True">
+            <Setter Property="Appearance" Value="Primary" />
+        </DataTrigger>
+    </Style.Triggers>
+</Style>
+```
+
+Cada botao vira uma unica linha:
+
+```xml
+<!-- ✅ DEPOIS: 1 linha por botao -->
+<ui:Button Content="VDR Form"
+           Style="{StaticResource ActiveTabButton}"
+           Tag="{Binding IsTestReportVisible}"
+           Command="{Binding ShowVDRFormCommand}" />
+```
+
+**Por que `Tag` funciona:** `Tag` e uma `DependencyProperty` herdada de
+`FrameworkElement` (tipo `object`). Bindar a uma prop bool a deixa boxed true/false.
+O `DataTrigger` sobre `Self.Tag` converte "True"/"False" string ao tipo correto via
+type coercion. Padrao WPF standard e estavel.
+
+**Funciona em qualquer DRY com N botoes compartilhando logica** — nao so abas.
+
+---
+
+### RES-001: Descobrindo nomes exatos de DynamicResource do WPF-UI
+
+Nomes errados de resources do WPF-UI sao **silenciosamente ignorados** (Anti-padrao #14).
+Antes de usar qualquer `x:Key` em override, verifique que existe no `Wpf.Ui.dll`.
+
+**Quick command (Git Bash / WSL):**
+```bash
+DLL="$HOME/.nuget/packages/wpf-ui/4.2.0/lib/net8.0-windows7.0/Wpf.Ui.dll"
+grep -a "CheckBox" "$DLL" | tr '\0' '\n' | grep -oE "CheckBox[A-Za-z]+" | sort -u
+```
+
+PowerShell equivalente, localizacao exata do DLL, exemplos por controle e catalogo
+parcial de resources descobertos em `references/wpfui-theming-overrides.md` secao RES-001.
+
+---
+
 ### FORM-004: Separador sutil entre grupos de campos em Grid
 
 **Problema:** Em formularios densos com muitos campos dentro de um unico `SectionBorder`,
@@ -704,6 +856,33 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
     **Fix:** sempre usar uma `RowDefinition Height="Auto"` dedicada para o separador,
     sem nenhum outro elemento nessa row. Veja FORM-004.
 
+12. **`<Style TargetType="ui:Button">` sem `BasedOn`** — definir um Style explicito
+    para um controle WPF-UI sem `BasedOn="{StaticResource {x:Type ui:Button}}"`
+    **substitui** o template padrao, perdendo todo o visual Fluent (padding, bordas
+    arredondadas, hover suave, icones, etc.). Sintoma: o botao fica com a aparencia
+    crua do `ButtonBase` do WPF (retangulo cinza sem estilo).
+    **Fix:** sempre incluir `BasedOn` quando criar Style para controles do WPF-UI:
+    ```xml
+    <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+        <Setter Property="Appearance" Value="Secondary" />
+    </Style>
+    ```
+
+13. **Setar `control.Foreground`/`.Background` em controle WPF-UI com template trigger
+    ativo** — atribuicao via code-behind ou Style externo nao vence quando o template
+    tem `Setter TargetName="X"` aplicando um `DynamicResource` em elemento interno.
+    Sintoma classico: hover/pressed/checked ignoram a cor setada.
+    **Ver Detalhe Critico #11 para a regra geral e recipes por controle (BRAND-001,
+    CTRL-004, CTRL-005).**
+
+14. **Chutar nomes de DynamicResource do WPF-UI** — nomes tipo `ButtonBackgroundChecked`,
+    `CheckBoxCheckGlyphForegroundChecked`, `AccentButtonBorderBrush` seguem convencao
+    WinUI/WinRT mas **nao existem** no WPF-UI 4.2.0. Overrides com nomes errados sao
+    silenciosamente ignorados (sem erro, sem warning) — voce perde tempo debugando
+    algo que nunca foi aplicado.
+    **Fix:** sempre verificar no DLL antes de usar. Veja RES-001 para o comando
+    de extracao.
+
 ---
 
 ## Detalhes Criticos (aprendidos nos testes)
@@ -757,6 +936,27 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
     automaticamente. `dotnet build` atualiza o DLL no disco mas nao afeta o processo
     rodando. **Sempre instruir o usuario:** "feche e reabra a app para ver as mudancas".
 
+11. **Hierarquia de precedencia WPF para triggers do template** — para customizar
+    aparencia de controles WPF-UI em estados (hover, pressed, checked), **sempre
+    sobrescreva os `DynamicResource` que o template consulta, NUNCA as properties
+    do controle via Style externo ou code-behind**. O `ControlTemplate.Triggers`
+    com `Setter TargetName="X" Property="Y" Value="{DynamicResource Z}"` aplica o
+    valor no elemento INTERNO do template — esse escreve tem precedencia sobre:
+    - Setters de Style externo (mesmo com `BasedOn`)
+    - Atribuicoes via code-behind (`button.Background = ...`)
+    - TemplateBinding de outras properties
+
+    **Regra pratica:** se voce tentar alterar cor e o controle "volta" no
+    hover/pressed/checked, o problema nao e seu Style — e que existe um DynamicResource
+    sendo aplicado em algum elemento interno via `TargetName`. Identifique o resource
+    via RES-001 e sobrescreva no escopo apropriado (local = UserControl.Resources,
+    global = App.xaml).
+
+    Exemplos na sessao onde este padrao apareceu:
+    - Botao Primary com brand color voltando para azul no hover → BRAND-001
+    - ToggleButton checked com texto escuro sobre fundo colorido → CTRL-004
+    - CheckBox glyph da cor errada → CTRL-005
+
 ---
 
 ## Guias de Referencia (progressive disclosure level 3)
@@ -771,4 +971,5 @@ Leia estes arquivos **somente quando necessario** no passo correspondente:
 | `references/controls-sizing.md` | MinHeight/MinWidth, ComboBox, TextBox, touch targets |
 | `references/wpfui-components.md` | Card, CardExpander, InfoBar, DynamicResource brushes, ControlAppearance, DI services |
 | `references/wpfui-controls-catalog.md` | Catalogo completo de 90+ controles WPF-UI com exemplos XAML |
+| `references/wpfui-theming-overrides.md` | Recipes detalhadas de BRAND-001, CTRL-004/5/6/7, RES-001 — customizar brand color em Primary buttons, cor de ToggleButton checked, CheckBox, ProgressRing, e descobrir nomes de resources do WPF-UI |
 | `references/sources.md` | URLs de documentacao oficial e fontes da pesquisa |

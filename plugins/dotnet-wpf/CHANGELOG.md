@@ -2,6 +2,19 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.6.0] - 2026-04-16
+
+### Added
+
+- `dotnet-wpf-design` CTRL-008: padrao "guard before mutate" para `ContentDialog`. Acoes destrutivas (Load Last Export, Reset Form, Discard Changes) confirmam ANTES de qualquer leitura de I/O ou mutacao do view-model. Handler chama o dialogo como primeira linha e faz early-return em `confirm != ContentDialogResult.Primary` — preserva o estado anterior 100% intacto se o usuario cancelar.
+- Decisao "sempre confirmar vs. dirty-tracking" documentada: dirty-tracking exige snapshot + comparacao confiavel (alto custo, alto risco de false-negatives). Quando o estado raramente esta vazio, sempre confirmar e o trade-off vencedor.
+- Regras de UX para o dialogo: texto do Primary descreve a acao ("Replace data") em vez de "OK"; `Appearance="Danger"` apenas quando irreversivel; dialog mora em `*Page.xaml.cs`, nao no ViewModel (UI decoupling).
+- Detalhe Critico #7 expandido com lista explicita de aliases para `Wpf.Ui.Controls` ↔ `System.Windows.Controls`, incluindo `ContentDialogResult` (facil de esquecer porque so aparece quando o handler evolui de "single OK" para "Primary + Close").
+
+### Changed
+
+- Plugin version bumped to 1.6.0.
+
 ## [1.5.0] - 2026-04-09
 
 ### Added

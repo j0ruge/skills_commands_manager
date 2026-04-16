@@ -1,16 +1,17 @@
 {
   "name": "dotnet-wpf",
-  "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, form spacing recipes, height clipping diagnosis, Grid row separators, multi-column layouts), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
+  "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, form spacing recipes, height clipping diagnosis, Grid row separators, multi-column layouts, ContentDialog confirmation pattern for destructive actions), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.5.0",
+  "version": "1.6.0",
   "category": "development",
   "keywords": [
     "dotnet", "csharp", "wpf", "xaml", "winforms",
     "mvvm", "communitytoolkit", "wpf-ui", "fluent-design",
     "flaui", "e2e-testing", "desktop", "windows",
-    "form-layout", "date-validation"
+    "form-layout", "date-validation",
+    "content-dialog", "destructive-action"
   ],
   "skills": "./skills"
 }

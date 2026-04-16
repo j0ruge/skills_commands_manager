@@ -37,6 +37,19 @@ e sao lidos sob demanda.
 Historico completo em `CHANGELOG.md` (ao lado deste arquivo). As duas versoes mais
 recentes ficam aqui para contexto rapido.
 
+**v1.6.0** (2026-04-16) — Confirmar antes de acoes destrutivas
+- **CTRL-008** novo: padrao "guard before mutate" para ContentDialog. Botoes que
+  sobrescrevem estado (Load Last Export, Reset, Restore, Discard) chamam o dialogo
+  como **primeira linha** do handler e fazem early-return em
+  `result != ContentDialogResult.Primary` — preserva o trabalho do usuario se ele
+  cancelar. Inclui criterio "sempre confirmar vs. dirty-tracking" (sempre vence
+  quando o estado raramente esta vazio) e regras de UX (texto do botao descreve a
+  acao, `Appearance="Danger"` so quando irreversivel, dialog mora no code-behind).
+- **Detalhe Critico #7** expandido: lista explicita de aliases comuns
+  (`ControlAppearance`, `SymbolIcon`, `SymbolRegular`, `SimpleContentDialogCreateOptions`,
+  `ContentDialogResult`). `ContentDialogResult` em particular e facil de esquecer
+  porque so aparece quando voce troca "single OK" por "Primary + Close".
+
 **v1.5.0** (2026-04-14) — Theming overrides e branding
 - Cookbook: BRAND-001 (brand color em Primary sem delay), CTRL-004 (texto branco em
   ToggleButton checked), CTRL-005 (cor do CheckBox), CTRL-006 (ClearButtonEnabled=False),
@@ -49,10 +62,6 @@ recentes ficam aqui para contexto rapido.
 - Detalhe Critico #11: regra canonica sobre precedencia de `ControlTemplate.Triggers`
   com `TargetName` sobre Style externo — override de DynamicResource e a unica forma
   confiavel de customizar estados de template.
-
-**v1.4.0** (2026-04-09) — Separador sutil entre grupos
-- FORM-004: separador via `Border` com `BorderThickness="0,0,0,1"` em row dedicada.
-- Anti-padrao #11: Border na mesma row que conteudo causa sobreposicao.
 
 ---
 
@@ -671,6 +680,72 @@ os `<ui:ProgressRing />` do app.
 
 ---
 
+### CTRL-008: ContentDialog para confirmar acoes destrutivas (guard before mutate)
+
+**Problema:** Botoes que sobrescrevem o estado da UI (Load Last Export, Reset Form,
+Restore Defaults, Discard Changes) executam direto. Um clique acidental apaga
+trabalho do usuario sem chance de desfazer — snackbar de "sucesso" depois nao ajuda.
+
+**Solucao:** Mostrar `ContentDialog` Fluent **antes** de qualquer leitura de I/O ou
+mutacao do view-model. Se o usuario cancelar, retornar imediatamente — nada e
+tocado, nada e lido. O custo e um clique extra; o ganho e que a acao vira reversivel
+por padrao.
+
+```csharp
+private async void BtnLoadLastExport_Handler()
+{
+    // Guard antes de qualquer leitura/mutacao. Cancelar => preserva o trabalho atual.
+    var confirm = await _contentDialogService.ShowSimpleDialogAsync(new SimpleContentDialogCreateOptions
+    {
+        Title = "Load Last Export",
+        Content = "This will replace the current form data with the last exported report. "
+                + "Any unsaved changes will be lost.\n\nDo you want to continue?",
+        PrimaryButtonText = "Replace data",
+        CloseButtonText = "Cancel"
+    });
+    if (confirm != ContentDialogResult.Primary) return;
+
+    // ... so agora le do disco e chama _viewModel.SetSharedData(...) etc.
+}
+```
+
+**Regras do padrao:**
+
+1. **Confirmar antes de qualquer side-effect.** A chamada do diálogo é a primeira
+   linha do handler. Não leia arquivo, nem chame service, nem mude flag — se o
+   usuário cancelar, o estado anterior tem que estar 100% intacto.
+2. **`ContentDialogResult.Primary` = confirmou; qualquer outro valor = cancelou.**
+   `Close` (botão Cancel ou tecla Esc) e `None` (clique fora, se permitido) caem no
+   mesmo `return`. Não tente diferenciar — o usuário não confirmou, ponto.
+3. **Texto do botão Primary descreve a ação, não "OK".** "Replace data", "Discard
+   changes", "Delete report" — o usuário precisa ler o botão e saber o que vai
+   acontecer. Evite "Yes/No" genérico (Fluent guidance).
+4. **Use `Appearance="Danger"` no Primary se a ação for irreversível** (delete,
+   force-overwrite de arquivo). Para overwrite de UI in-memory (caso acima), o
+   default já basta — não precisa pintar de vermelho.
+
+**Sempre confirmar vs. so quando "dirty":** dirty-tracking parece a solucao limpa,
+mas exige snapshot do estado original + comparacao confiavel a cada interacao —
+escopo grande, alto risco de false-negatives (que recriam o bug original). Se o
+estado raramente esta vazio (formulario auto-preenchido apos analise, lista
+populada por API, etc.), **sempre confirmar** e o trade-off correto: 1 clique
+extra contra trabalho perdido. Implementar dirty-tracking so se a confirmacao
+realmente cria friccao mensuravel no fluxo principal.
+
+**Onde mora:** code-behind da Page (`*Page.xaml.cs`), nao no ViewModel. Pelas
+regras de UI decoupling, dialogs vivem na camada UI — o command do ViewModel
+dispara um evento, o code-behind escuta, mostra o diálogo e só chama de volta o
+`viewModel.DoTheThing()` se confirmado.
+
+**`using` necessario:** o tipo `ContentDialogResult` mora em `Wpf.Ui.Controls` e
+quase sempre conflita com `System.Windows.Controls`. Adicione um alias seguindo o
+padrão dos outros tipos da WPF-UI no arquivo (veja Detalhe Critico #7):
+```csharp
+using ContentDialogResult = Wpf.Ui.Controls.ContentDialogResult;
+```
+
+---
+
 ### DRY-001: Estilo compartilhado para aba ativa (toolbars/tabs)
 
 **Problema:** Paginas com toolbar de 3-5 botoes que destacam a aba ativa acabam
@@ -910,7 +985,19 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
 
 7. **`using Wpf.Ui.Controls;` conflita com System.Windows.Controls** — TextBox, ComboBox,
    Page, Button existem em ambos namespaces. Usar type aliases para tipos especificos do
-   WPF-UI: `using ControlAppearance = Wpf.Ui.Controls.ControlAppearance;`
+   WPF-UI:
+   ```csharp
+   using ControlAppearance = Wpf.Ui.Controls.ControlAppearance;
+   using SymbolIcon = Wpf.Ui.Controls.SymbolIcon;
+   using SymbolRegular = Wpf.Ui.Controls.SymbolRegular;
+   using SimpleContentDialogCreateOptions = Wpf.Ui.SimpleContentDialogCreateOptions;
+   using ContentDialogResult = Wpf.Ui.Controls.ContentDialogResult;
+   ```
+   `ContentDialogResult` em particular e facil de esquecer — voce so precisa dele
+   quando troca um `ShowSimpleDialogAsync` "single OK" por um com
+   `PrimaryButtonText`+`CloseButtonText` (CTRL-008). Sem o alias, o codigo compila
+   mas resolve para o tipo errado ou da erro de ambiguidade dependendo dos outros
+   usings do arquivo.
 
 8. **`async void` so em event handlers UI** — metodos como SaveFormDataJSON, LoadFormDataJSON
    que usam `await _contentDialogService.ShowSimpleDialogAsync()` devem ser `async Task`,

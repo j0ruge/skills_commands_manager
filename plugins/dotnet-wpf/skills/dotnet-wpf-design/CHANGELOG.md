@@ -3,6 +3,28 @@
 Historico completo de versoes. A versao atual + anterior ficam no SKILL.md; versoes
 antigas sao arquivadas aqui para manter o SKILL.md compacto.
 
+## v1.6.0 (2026-04-16)
+
+- **CTRL-008** novo: padrao "guard before mutate" para `ContentDialog`. Acoes
+  destrutivas (Load Last Export, Reset Form, Discard Changes) confirmam **antes**
+  de qualquer leitura de I/O ou mutacao do view-model. O handler chama o dialogo
+  como primeira linha e faz early-return em `confirm != ContentDialogResult.Primary`.
+  Cancelar => o estado anterior fica 100% intacto, sem snackbar de "sucesso"
+  enganoso.
+- **Decisao "sempre confirmar vs. so quando dirty"** documentada em CTRL-008:
+  dirty-tracking exige snapshot + comparacao confiavel (alto custo, alto risco
+  de false-negatives que recriam o bug). Quando o estado raramente esta vazio
+  (form auto-preenchido, lista populada por API), sempre confirmar e o trade-off
+  vencedor — 1 clique extra contra trabalho perdido.
+- **Regras de UX para o dialogo** (em CTRL-008): texto do Primary descreve a
+  acao ("Replace data", "Delete report") em vez de "OK"; `Appearance="Danger"`
+  apenas quando irreversivel; dialog mora em `*Page.xaml.cs`, nao no ViewModel
+  (regras de UI decoupling).
+- **Detalhe Critico #7** expandido com lista explicita de aliases comuns para
+  resolver conflito `Wpf.Ui.Controls` ↔ `System.Windows.Controls`. Inclui
+  `ContentDialogResult` — facil de esquecer porque so aparece quando o handler
+  evolui de "single OK" para "Primary + Close" (CTRL-008).
+
 ## v1.5.0 (2026-04-14)
 
 - **BRAND-001** novo: customizar cor de botoes `Appearance="Primary"` via override de

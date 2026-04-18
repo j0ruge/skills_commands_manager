@@ -2,6 +2,19 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.4.0] - 2026-04-18
+
+### Added
+
+- **Effort level badge on Section 1 (Model name)** — status line now reads `effortLevel` from `~/.claude/settings.json` and appends it to the model display (e.g., `🤖 Opus 4.7 [high]`)
+- Value is read on every invocation, so changing `effortLevel` takes effect immediately without regenerating the script
+- Opt-in behavior: when `effortLevel` is absent, nothing is appended (no visual change for users who don't use it)
+
+### Implementation notes
+
+- Bash: uses the existing `grep -o` + `sed` pattern (no jq / no python dependency added — reuses what's already in the header)
+- PowerShell: wrapped in `try/catch` with `Test-Path` guard so a missing or malformed `settings.json` never breaks the status line
+
 ## [1.3.0] - 2026-03-25
 
 ### Breaking Change

@@ -44,7 +44,7 @@ Then install any plugin:
 | [**codereview**](#codereview) | 1.6.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) |
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
-| [**statusline**](#statusline) | 1.3.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections |
+| [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
 | [**dotnet-wpf**](#dotnet-wpf) | 1.6.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
 
 ---
@@ -120,6 +120,8 @@ Interactive wizard to configure Claude Code's status line — model info, contex
 | `/statusline:setup` | Interactive setup wizard — sections, colors, emojis, separator |
 
 **9 composable sections:** Model name · Context bar · Git branch · Project folder · Session cost · Duration · Lines changed · Token counts · Vim mode
+
+**Effort-level badge (v1.4.0):** when `effortLevel` is set in `~/.claude/settings.json`, the Model section shows it inline (e.g., `🤖 Opus 4.7 [high]`). Re-read on every invocation — no regeneration needed when you toggle the value.
 
 **Cross-platform:** Bash + PowerShell, no jq dependency, Windows/Git Bash compatible.
 

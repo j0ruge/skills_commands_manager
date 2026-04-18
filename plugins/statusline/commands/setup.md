@@ -1,7 +1,7 @@
 ---
 description: Interactive wizard to configure Claude Code status line — sections, colors, emojis, and separator. Cross-platform (Bash + PowerShell).
 metadata:
-  version: 1.3.0
+  version: 1.4.0
 ---
 
 ## Status Line Setup
@@ -67,7 +67,7 @@ By default, suggest sections 1-5 (model, context bar, git branch, folder, cost).
 
 | # | Section | JSON Fields | Emoji | Default Color |
 |---|---------|------------|-------|---------------|
-| 1 | Model name | `model.display_name` | 🤖 | Magenta |
+| 1 | Model name (+ optional effort level) | `model.display_name` + `~/.claude/settings.json#effortLevel` | 🤖 | Magenta |
 | 2 | Context bar | `context_window.used_percentage`, `.context_window_size` | 📊 | Dynamic (green < 50%, yellow < 80%, red >= 80%) |
 | 3 | Git branch | `workspace.project_dir` + `git rev-parse` | 🌿 | Green |
 | 4 | Project folder | `workspace.project_dir` (basename) | 📁 | Blue |
@@ -232,19 +232,40 @@ $eKeyboard = [char]::ConvertFromUtf32(0x2328)  # Section 9 - Vim mode
 
 Include only the blocks for the sections selected in step 3.
 
-**Section 1 — Model name:**
+**Section 1 — Model name (with optional effort level):**
+
+The model display name is augmented with the `effortLevel` value from `~/.claude/settings.json` when set (e.g., `Opus 4.7 [high]`). This is the same file Claude Code uses for per-user configuration, so the status line stays in sync with whatever effort level is active. When the field is absent, nothing is appended — no visual change for users who don't use it.
 
 Bash:
 ```bash
-# $model_name is set by the Python JSON parser in the header
+# $model_name is set by the Python JSON parser in the header.
+# Optionally append effortLevel from ~/.claude/settings.json (e.g., " [high]").
+effort=$(grep -o '"effortLevel"[[:space:]]*:[[:space:]]*"[^"]*"' ~/.claude/settings.json 2>/dev/null \
+  | head -1 | sed 's/^"effortLevel"[[:space:]]*:[[:space:]]*"//;s/"$//')
+if [ -n "$effort" ]; then
+  model_name="${model_name} [${effort}]"
+fi
 parts+=("🤖 ${MAGENTA}${model_name}${RST}")
 ```
 
 PowerShell:
 ```powershell
 $model = if ($json.model.display_name) { $json.model.display_name } else { "Unknown" }
-$parts += "$eRobot $MAGENTA$model$RST"
+
+# Optionally append effortLevel from ~/.claude/settings.json (e.g., " [high]").
+$effort = ""
+try {
+  $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
+  if (Test-Path $settingsPath) {
+    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
+    if ($settings.effortLevel) { $effort = " [$($settings.effortLevel)]" }
+  }
+} catch {}
+
+$parts += "$eRobot $MAGENTA$model$effort$RST"
 ```
+
+> **Note:** `effortLevel` is an opt-in field in `~/.claude/settings.json`. The script reads it on every invocation, so toggling the value takes effect immediately without regenerating the script.
 
 **Section 2 — Context bar:**
 

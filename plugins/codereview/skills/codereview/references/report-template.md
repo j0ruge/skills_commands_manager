@@ -19,6 +19,30 @@ Output the following Markdown report directly in the conversation:
 
 If `$ARGUMENTS` specified a focus area, note: **Focus**: {focus area}
 
+**If the Secrets Detection table below has ≥1 row**, prepend this banner to the entire report (before the H1) and do not remove it:
+
+```markdown
+> 🛑 **BLOCKED — Hardcoded secrets detected.** GitGuardian / ggshield / gitleaks would also reject this branch. Do not push as-is: remediate the rows in the Secrets Detection table first. See [GitGuardian best practices](https://blog.gitguardian.com/secrets-api-management/).
+```
+
+---
+
+### 🛑 Secrets Detection
+
+Always render this section, even when clean (this tells the user the pass ran). The `Snippet` column must show the literal with the secret value masked (`***`) — never echo the raw credential back, because this report is shared in chat history.
+
+| # | File | Line | Kind | Snippet (masked) | Severity | Remediation |
+|---|------|------|------|------------------|----------|-------------|
+| 1 | server/test/auth.test.ts | 30 | Generic Password | `password: "***"` | HIGH | 1) env var  2) rotate  3) rewrite history |
+| 2 | server/src/server.ts | 49 | Generic Password | `secret: "***"` | CRITICAL | 1) env var  2) rotate  3) rewrite history |
+
+**Status**: `PASS` (0 rows) / `BLOCKED` (≥1 row).
+
+When Status is `BLOCKED`:
+- Overall grade is forced to **F** regardless of anything else in the report.
+- Each row must appear again under "Must Fix (CRITICAL)" with the full remediation block from `references/detection-passes.md` pass 6.10 (env var + rotate + rewrite history + install ggshield pre-commit).
+- If multiple rows share the same file and kind, collapse them into a single row `Lines: 30, 53, 62, ...` and note the count.
+
 ---
 
 ### Findings Table
@@ -53,9 +77,12 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 |----------|---------|----------|------|--------|-----|
 | Bugs | {n} | {n} | {n} | {n} | {n} |
 | Security | {n} | {n} | {n} | {n} | {n} |
+| **Secrets (pass 6.10)** | {n} | {n} | {n} | 0 | 0 |
 | Performance | {n} | {n} | {n} | {n} | {n} |
 | Type Safety | {n} | {n} | {n} | {n} | {n} |
 | Documentation | {n} | {n} | {n} | {n} | {n} |
+
+> Secrets never carry MEDIUM/LOW severity. They are either CRITICAL (prod code, config, or credentialed connection strings) or HIGH (inline test-file literals). Env-var lookups are not counted at all.
 
 ---
 
@@ -115,11 +142,11 @@ Rate each criterion A through F:
 
 ## Grading Scale
 
-- **A**: No CRITICAL/HIGH findings; at most minor MEDIUM/LOW items
-- **B**: No CRITICAL; few HIGH findings that are straightforward to fix
-- **C**: No CRITICAL; multiple HIGH findings or systemic MEDIUM patterns
-- **D**: Has CRITICAL findings or pervasive HIGH issues
-- **F**: Multiple CRITICAL findings, security vulnerabilities, or fundamentally broken code
+- **A**: No CRITICAL/HIGH findings; at most minor MEDIUM/LOW items; Secrets Detection `PASS`.
+- **B**: No CRITICAL; few HIGH findings that are straightforward to fix; Secrets Detection `PASS`.
+- **C**: No CRITICAL; multiple HIGH findings or systemic MEDIUM patterns; Secrets Detection `PASS`.
+- **D**: Has CRITICAL findings or pervasive HIGH issues; Secrets Detection `PASS`.
+- **F**: Multiple CRITICAL findings, security vulnerabilities, fundamentally broken code, **or any row in the Secrets Detection table**. One leaked credential is enough — no exceptions, no "but it's only a test password".
 
 ---
 

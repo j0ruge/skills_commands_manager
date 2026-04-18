@@ -1,23 +1,25 @@
 ---
 name: codereview
 metadata:
-  version: 1.6.0
+  version: 1.7.0
 description: >
   Automated pre-PR code review. Diffs current branch against main, analyzes all
   changed files, and produces a structured report with severity-rated findings,
   test coverage assessment, documentation sync verification, and a final grade.
   Checks docstring coverage, OpenAPI/README/rules sync, race conditions (TOCTOU),
-  accessibility, data integrity, and code quality. Uses model routing to optimize
-  token usage: lightweight models for git context and file reading, full-power
-  model for cross-file analysis and final report.
+  accessibility, data integrity, hardcoded secrets (passwords, JWT, AWS/GCP/
+  GitHub tokens, PEM keys — GitGuardian-equivalent), and code quality. Uses
+  model routing to optimize token usage: lightweight models for git context and
+  file reading, full-power model for cross-file analysis and final report.
   Use this skill whenever the user asks for code review, pre-PR review, code
   analysis, quality check, documentation check, security review, accessibility
-  audit, or wants to review changes before merging — even if they don't say
-  "codereview" explicitly.
+  audit, secret scanning, or wants to review changes before merging — even if
+  they don't say "codereview" explicitly.
   Triggers: "code review", "pre-PR review", "review my code", "quality check",
   "review changes", "codereview", "check my code", "analyze code", "PR review",
   "check docs", "documentation review", "security review", "accessibility check",
-  "race condition", "toctou"
+  "race condition", "toctou", "secret detection", "hardcoded credentials",
+  "gitguardian", "ggshield", "leaked password", "api key", "check for secrets"
 ---
 
 ## User Input
@@ -118,6 +120,10 @@ Return as a structured list:
 
 Pass any `$ARGUMENTS` overrides (baseDir, fileExtensions, frameworkPatterns, etc.) to the agent.
 
+**In addition, the haiku agent runs a fast regex pre-scan of the full diff** against the canonical secret-detection regex list (see pass **6.10 Hardcoded Secrets Detection** in `references/detection-passes.md`). This runs against the raw output of `git diff {MERGE_BASE}...HEAD` — independent of file classification — so that secrets slipping into `EXCLUDED`/`DOCS`/`CONFIG` files are caught too. The agent returns candidate leaks as `{file, line, kind, snippet}` entries. These feed directly into the Secrets Detection table in Phase C.
+
+This pre-scan exists because CI-side scanners like GitGuardian will block the push: we want to surface the same findings locally *before* the secret lands on a remote branch.
+
 If CHANGED_FILES is empty, output: "No changes detected between this branch and `{BASE_BRANCH}`." and stop.
 
 If more than 15 CODE files, prioritize by change size (diff stat lines). Note deprioritized files.
@@ -144,16 +150,20 @@ detection passes and return structured findings — nothing else.
 3. Read the current file content (full file for CODE, diff-only for UI_LIB)
 4. Apply ALL applicable detection passes (or only the focused subset if a focus area was specified)
 5. For UI_LIB files, only flag CRITICAL and HIGH issues
+6. **Pass 6.10 (Hardcoded Secrets) is ALWAYS on** — apply it to this file regardless of its category (CODE / TESTS / CONFIG / UI_LIB / STYLES) and regardless of the focus area. A hardcoded password in a test file is still a leak; GitGuardian does not distinguish, and neither do we. Never whitelist a secret finding to reduce noise.
 
 ## Focus Area Mapping (if applicable)
-- security → 6.2 Security + 6.6 TOCTOU + 6.8 Data Integrity
-- performance → 6.3 Performance
-- types → 6.4 Type Safety
-- bugs → 6.1 Bug Detection + 6.6 TOCTOU
-- tests → test quality only
-- docs → 6.5 Documentation Sync
-- a11y → 6.7 Accessibility
-- race-conditions → 6.6 TOCTOU only
+- security → 6.2 Security + 6.6 TOCTOU + 6.8 Data Integrity + 6.10 Secrets
+- performance → 6.3 Performance + 6.10 Secrets
+- types → 6.4 Type Safety + 6.10 Secrets
+- bugs → 6.1 Bug Detection + 6.6 TOCTOU + 6.10 Secrets
+- tests → test quality + 6.10 Secrets
+- docs → 6.5 Documentation Sync + 6.10 Secrets
+- a11y → 6.7 Accessibility + 6.10 Secrets
+- race-conditions → 6.6 TOCTOU + 6.10 Secrets
+- secrets → 6.10 Secrets only
+
+Note: pass 6.10 appears in every focus mapping — it is the one pass that is never optional. The user cannot afford to miss a leak just because they asked for a narrow review.
 
 ## Output Format
 Return findings as a numbered list, one per issue:
@@ -179,19 +189,27 @@ For **TOCTOU/race condition** analysis that spans multiple files (e.g., service 
 After all sonnet agents return, the main model:
 
 1. **Collects all findings** from sonnet agents into a unified list
-2. **Cross-file analysis** — checks that only opus can do:
+2. **Merges the Phase A secrets pre-scan** with pass-6.10 findings from the per-file agents. Deduplicate by `{file, line}` pair. Each unique hit goes into the Secrets Detection table (see report template).
+3. **Cross-file analysis** — checks that only opus can do:
    - Race conditions spanning multiple files (e.g., check in controller, act in service)
    - Schema consistency across related endpoints
    - Import chain coherence (types match between producer and consumer)
    - If cross-file issues are found, add them to the findings list
-3. **Severity recalibration** — review each finding's severity:
+4. **Severity recalibration** — review each finding's severity:
    - Sonnet may over-flag memoization issues (React.memo, useCallback) — downgrade per the rules in detection-passes.md
    - Ambiguous TOCTOU patterns in single-user contexts — downgrade to LOW
    - Patterns that are actually project conventions (check CLAUDE.md) — remove or downgrade
-4. **Deduplication** — remove findings that overlap or repeat the same root cause
-5. **Test coverage summary** — compile from Phase A results
-6. **Documentation sync check** — verify docs files in CHANGED_FILES per 6.5.2 rules
-7. **Produce the final report** — read `references/report-template.md` and output the structured Markdown report with:
+   - **Pass 6.10 (Secrets) findings are NEVER downgraded to MEDIUM/LOW and NEVER removed.** The only allowed recalibration is CRITICAL ↔ HIGH per the test-file nuance in detection-passes.md (inline test literals are HIGH; prod code is CRITICAL; env-var lookups are not flagged at all).
+5. **Deduplication** — remove findings that overlap or repeat the same root cause (does not apply to pass 6.10 — each occurrence is reported, then aggregated if ≥3 in one file or ≥5 across PR).
+6. **Test coverage summary** — compile from Phase A results
+7. **Documentation sync check** — verify docs files in CHANGED_FILES per 6.5.2 rules
+8. **Secrets gate** — if the merged Secrets Detection list has **≥1 entry**:
+   - Set overall grade to **F** regardless of any other signal.
+   - Prepend a BLOCKED banner to the report (see report template).
+   - Add an entry under "Must Fix (CRITICAL)" per file with the remediation block from detection-passes.md pass 6.10.
+9. **Produce the final report** — read `references/report-template.md` and output the structured Markdown report with:
+   - BLOCKED banner (only if step 8 triggered)
+   - **Secrets Detection table** (always present; shows "Status: PASS" with 0 rows when clean)
    - Findings table (ordered: CRITICAL > HIGH > MEDIUM > LOW, grouped by file)
    - Zen Principles summary
    - Bug/Security/Performance/Types summary
@@ -226,6 +244,7 @@ After all sonnet agents return, the main model:
 - **NEVER modify files** — this is strictly read-only analysis
 - **NEVER hallucinate line numbers** — only reference lines actually read from the diff or file
 - **NEVER invent findings** — if the code is clean, say so. A clean report is a valid outcome.
-- **Be fair to generated code** — UI_LIB files get reduced scrutiny
+- **Be fair to generated code** — UI_LIB files get reduced scrutiny (except pass 6.10, which always runs)
+- **Never whitelist a secret finding to reduce noise** — treat test-file passwords the same as production ones; GitGuardian does. The cost of a false-positive re-read is far less than the cost of a leaked credential.
 - **Acknowledge context limits** — if a sonnet agent couldn't fully analyze a file, note it
-- **Ground findings in evidence** — quote the problematic code snippet when helpful
+- **Ground findings in evidence** — quote the problematic code snippet when helpful (for secrets, mask the value with `***` — do not echo the literal back in the report, as the report itself is copied into chat history)

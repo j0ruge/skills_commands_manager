@@ -283,6 +283,60 @@ Applies to any frontend framework that renders HTML.
 - **Inconsistent validation schemas**: Same field validated differently across endpoints. → **HIGH**
 - **Test fakes/mocks missing fields from real schema**: Fakes don't mirror all schema fields. → **MEDIUM**
 
+### 6.10 Hardcoded Secrets Detection
+
+This pass approximates what a dedicated secret scanner (GitGuardian, gitleaks, trufflehog) would flag. It exists **because CI secret scanners will block the PR on push** — catching these locally saves the user from having to rotate credentials and rewrite git history after the fact.
+
+**Critical rule: this pass applies to ALL file categories except `EXCLUDED` and `DOCS`** — that includes `CODE`, `TESTS`, `CONFIG`, `UI_LIB`, and `STYLES`. A hardcoded password in `auth.test.ts` is exactly as leaked as one in `server.ts`; GitGuardian does not distinguish, and neither should this pass. This is intentional: test fixtures are one of the most common sources of real-world leaks, because developers underestimate the risk.
+
+**Always-on**: even when a focus area is specified (e.g. `performance`), pass 6.10 still runs. Never skip it. Secrets in a diff are the one finding the user cannot afford to miss.
+
+**Patterns to flag** (each `match → CRITICAL` unless noted otherwise):
+
+| Kind | Pattern (regex-ish, conceptual) | Notes |
+|---|---|---|
+| Generic password literal | `(password\|passwd\|pwd\|senha\|secret\|api[_-]?key\|apikey\|access[_-]?token)\s*[:=]\s*["'][^"']{4,}["']` | Most common leak shape. See exceptions below. |
+| JWT / eyJ prefix | `eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+` | Real JWTs, often left in tests. |
+| Bearer token | `Bearer\s+[A-Za-z0-9_\-\.]{20,}` | Inline in fetch/axios calls or test fixtures. |
+| PEM private key block | `-----BEGIN (RSA \|OPENSSH \|EC \|DSA \|PGP )?PRIVATE KEY-----` | |
+| AWS Access Key ID | `AKIA[0-9A-Z]{16}` | |
+| AWS Secret literal | `aws_secret_access_key\s*=\s*["'][^"']{20,}["']` | |
+| Google API key | `AIza[0-9A-Za-z_\-]{35}` | |
+| Slack token | `xox[baprs]-[A-Za-z0-9\-]{10,}` | |
+| GitHub PAT / app token | `gh[pousr]_[A-Za-z0-9]{30,}` | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` |
+| Credentialed connection string | `(postgres\|postgresql\|mysql\|mongodb\|mongodb\+srv\|redis\|amqp)://[^:@/\s]+:[^@/\s]+@` | The `:password@` segment is the tell. |
+| Stripe secret key | `sk_(live\|test)_[A-Za-z0-9]{20,}` | Test keys are lower risk but still flag — rotation policy differs per org. |
+| `.env`-shaped assignment | Line matching `^(SECRET_KEY\|DATABASE_URL\|API_KEY\|JWT_SECRET\|PRIVATE_KEY\|CLIENT_SECRET\|AUTH_TOKEN)\s*=\s*\S.+` in a non-`.env.example` / non-`.env.sample` file | Treat `.env.example` / `.env.sample` / `.env.template` as allowed placeholders *only if* the value looks like a placeholder (see exceptions). |
+
+**Why regex and not a scanner**: this skill is read-only prose produced by LLM agents — it can't shell out to `ggshield`. The goal is to approximate the check the user will run in CI, not replace it. Always recommend the user also install `ggshield pre-commit` as a durable defense.
+
+**Exceptions (do not flag):**
+
+- Value is a runtime lookup: `process.env.FOO`, `import.meta.env.FOO`, `config.get("foo")`, `Deno.env.get(...)`, `os.environ[...]`, `ConfigurationManager.AppSettings[...]`.
+- Value is a well-known placeholder: `""`, `null`, `undefined`, `"CHANGE_ME"`, `"changeme"`, `"xxx"`, `"your-key-here"`, `"<...>"`, `"***"`, `"REPLACE_ME"`, `"redacted"`.
+- `.env.example` / `.env.sample` / `.env.template` where the RHS is a placeholder or empty.
+- The match is inside a comment explicitly describing the shape of a secret (e.g. `// Format: sk_live_...`) with no literal value.
+
+**Test-file nuance**:
+
+- Inline literal passwords in test body (`password: "test123"`, `expect(user.password).toBe("s3cret")`) → **HIGH**, not CRITICAL. They're less dangerous than prod keys but still rejected by GitGuardian, so still blocking.
+- Same secret pulled from `process.env.TEST_PASSWORD` or imported from a `fixtures/` module or `testFactory` helper → do not flag.
+- `.spec.ts` / `.test.ts` fixtures that use **obviously fake** values like `"password123"`, `"test"` → still flag at **HIGH**. GitGuardian's `Generic Password` detector fires on these; the review must warn the user.
+
+**Multi-occurrence signal**: if the same pattern (same regex family) fires **3+ times within one file** or **5+ times across the PR**, report a single aggregate finding with count and line ranges, and escalate severity to CRITICAL regardless of category. This is the "systemic leak" signal — one slip is a mistake, ten is a pattern.
+
+**Remediation block** (include under every pass-6.10 finding, verbatim or lightly adapted):
+
+> **Remediation** (per [GitGuardian best practices](https://blog.gitguardian.com/secrets-api-management/)):
+>
+> 1. **Understand the blast radius**: search the repo for other usages of this secret; identify which external service it authenticates to.
+> 2. **Replace with an environment variable or secret manager**. For tests, read from `process.env.TEST_<NAME>` or a fixture that resolves via env. Never commit the real value, even to a test file — CI scanners don't distinguish.
+> 3. **Rotate the secret** at the provider. Assume the value in the diff is already compromised the moment it lands on a branch that anyone else can fetch. Revoke first, rotate second.
+> 4. **Consider rewriting git history** (`git filter-repo` or BFG Repo-Cleaner) *only* if the secret hasn't been pushed yet or the repo is private and coordinated with the team — history rewrites break other contributors' clones.
+> 5. **Install `ggshield` pre-commit hook** (`pip install ggshield && ggshield install -m local`) to catch the next leak on your machine before it leaves.
+
+**Output format for pass 6.10 findings**: in addition to the standard finding format, populate the "Secrets Detection" table in the report (see `references/report-template.md`). Any ≥1 finding in this pass forces overall grade to **F** and prepends a BLOCKED banner to the report.
+
 ---
 
 ## Severity Reference

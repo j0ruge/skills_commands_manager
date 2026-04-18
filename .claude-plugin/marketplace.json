@@ -63,6 +63,14 @@
       "description": "Domain-Driven Design toolkit: analisa codebases e aponta violações DDD, guia strategic design (event storming, context mapping), gera specs de conversão legacy→DDD e ensina conceitos sob demanda. Agnóstica de linguagem, progressive disclosure por tema, síntese de Evans + Vernon + práticas contemporâneas.",
       "category": "architecture",
       "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"]
+    },
+    {
+      "name": "retrofit-skill",
+      "source": "./plugins/retrofit-skill",
+      "version": "0.1.0",
+      "description": "Captures non-obvious session lessons and applies them to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes.",
+      "category": "development",
+      "keywords": ["retrofit", "skill-maintenance", "marketplace", "changelog", "semver", "session-lessons"]
     }
   ]
 }

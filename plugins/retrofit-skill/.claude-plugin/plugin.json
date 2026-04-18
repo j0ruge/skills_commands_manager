@@ -1,0 +1,9 @@
+{
+  "name": "retrofit-skill",
+  "description": "Captures non-obvious session lessons and applies them to a target skill in the marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes.",
+  "author": { "name": "Chewiesoft" },
+  "version": "0.1.0",
+  "category": "development",
+  "keywords": ["retrofit", "skill-maintenance", "marketplace", "changelog", "semver", "session-lessons"],
+  "commands": "./commands"
+}

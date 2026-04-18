@@ -4,7 +4,7 @@
 
 *Skills and commands for Claude Code — CI/CD, code review, deployments, releases, and more.*
 
-[![Plugins](https://img.shields.io/badge/plugins-6-blue?style=flat-square)](#available-plugins)
+[![Plugins](https://img.shields.io/badge/plugins-8-blue?style=flat-square)](#available-plugins)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code-blueviolet?style=flat-square)](https://code.claude.com)
 [![License](https://img.shields.io/badge/license-Proprietary-red?style=flat-square)](#)
 
@@ -27,7 +27,7 @@ A curated plugin marketplace for [Claude Code](https://code.claude.com) by **Che
 Then install any plugin:
 
 ```bash
-/plugin install codereview    # or: cicd, deploy, release, statusline, dotnet-wpf
+/plugin install codereview    # or: cicd, deploy, release, statusline, dotnet-wpf, ddd, retrofit-skill
 ```
 
 > [!TIP]
@@ -46,6 +46,7 @@ Then install any plugin:
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
 | [**dotnet-wpf**](#dotnet-wpf) | 1.6.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
+| **retrofit-skill** | 0.1.0 | Development | Apply non-obvious session lessons to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes |
 
 ---
 

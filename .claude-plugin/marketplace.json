@@ -65,7 +65,7 @@
     {
       "name": "ddd",
       "source": "./plugins/ddd",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "description": "Domain-Driven Design toolkit: analisa codebases e aponta violações DDD, guia strategic design (event storming, context mapping), gera specs de conversão legacy→DDD e ensina conceitos sob demanda. Agnóstica de linguagem, progressive disclosure por tema, síntese de Evans + Vernon + práticas contemporâneas.",
       "category": "architecture",
       "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"],

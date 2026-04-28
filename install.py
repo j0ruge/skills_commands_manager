@@ -127,8 +127,18 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
     },
 ]
 
-# Plugins not available for Cursor (Claude Code only)
+# Plugins not available for Cursor (Claude Code only).
+# Used as a sanity check at module import: if a Claude-only plugin ever leaks into
+# CURSOR_SKILL_MAP, fail fast instead of generating a broken Cursor install.
 CLAUDE_CODE_ONLY = {"statusline"}
+
+_cursor_plugins = {entry["plugin"] for entry in CURSOR_SKILL_MAP}
+_cursor_incompatible = _cursor_plugins & CLAUDE_CODE_ONLY
+if _cursor_incompatible:
+    raise ValueError(
+        f"CURSOR_SKILL_MAP includes Claude Code-only plugins: "
+        f"{', '.join(sorted(_cursor_incompatible))}"
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Content transformation helpers
@@ -290,7 +300,7 @@ def _multiselect(prompt_text: str, options: list[str]) -> list[int]:
     if not indices:
         print("  No valid input — selecting all.")
         return list(range(len(options)))
-    return indices
+    return list(dict.fromkeys(indices))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -401,7 +411,7 @@ def _cursor_install_flow() -> None:
             _install_skill(entry, dest_base)
             print(f"  + {entry['cursor_name']}")
             installed += 1
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, shutil.Error, KeyError, ValueError) as exc:
             errors.append(f"{entry['cursor_name']}: {exc}")
             print(f"  ! {entry['cursor_name']}  ERROR: {exc}")
 
@@ -414,7 +424,7 @@ def _cursor_install_flow() -> None:
         print(f"  Errors    : {len(errors)}")
         for err in errors:
             print(f"    - {err}")
-        return
+        sys.exit(1)
 
     print(f"\n  Skills installed to: {dest_base}")
     print()

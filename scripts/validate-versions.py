@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Valida consistencia de versoes e metadados entre marketplace.json e plugin.json.
 
-Verificacoes realizadas:
+Verificacoes realizadas (na ordem em que rodam):
   1. Versao em marketplace.json == versao em plugin.json  (com --fix corrige marketplace.json)
-  2. CHANGELOG.md de cada plugin contem entrada para a versao atual
-  3. plugin.json possui campo 'platforms' com ao menos um valor valido
-  4. Campo 'platforms' em marketplace.json e plugin.json sao identicos
-  5. Plugins com 'cursor' em platforms tem ao menos uma entrada em CURSOR_SKILL_MAP (install.py)
+  2. plugin.json possui campo 'platforms' como lista nao-vazia com valores validos
+  3. Campo 'platforms' em marketplace.json e plugin.json sao identicos
+  4. Plugins com 'cursor' em platforms tem ao menos uma entrada em CURSOR_SKILL_MAP (install.py)
+  5. CHANGELOG.md de cada plugin contem entrada para a versao atual
 
 Uso:
     python scripts/validate-versions.py
@@ -74,9 +74,15 @@ def main():
 
         # Check 2: platforms field in plugin.json
         plugin_platforms = plugin_data.get('platforms')
-        if not plugin_platforms:
+        platforms_valid = False
+        if plugin_platforms is None:
             errors.append(f'  {name}: plugin.json missing "platforms" field')
-        elif not isinstance(plugin_platforms, list) or not plugin_platforms:
+        elif not isinstance(plugin_platforms, list):
+            errors.append(
+                f'  {name}: plugin.json "platforms" must be a list '
+                f'(got {type(plugin_platforms).__name__})'
+            )
+        elif not plugin_platforms:
             errors.append(f'  {name}: plugin.json "platforms" must be a non-empty array')
         else:
             invalid = set(plugin_platforms) - VALID_PLATFORMS
@@ -85,11 +91,18 @@ def main():
                     f'  {name}: plugin.json "platforms" contains invalid values: {sorted(invalid)}'
                     f' (valid: {sorted(VALID_PLATFORMS)})'
                 )
+            else:
+                platforms_valid = True
 
         # Check 3: platforms consistency between marketplace.json and plugin.json
         marketplace_platforms = entry.get('platforms')
-        if plugin_platforms and marketplace_platforms is not None:
-            if sorted(marketplace_platforms) != sorted(plugin_platforms):
+        if platforms_valid and marketplace_platforms is not None:
+            if not isinstance(marketplace_platforms, list):
+                errors.append(
+                    f'  {name}: marketplace.json "platforms" must be a list '
+                    f'(got {type(marketplace_platforms).__name__})'
+                )
+            elif sorted(marketplace_platforms) != sorted(plugin_platforms):
                 if fix_mode:
                     entry['platforms'] = plugin_platforms
                     fixes_applied += 1
@@ -102,7 +115,7 @@ def main():
                         f'  {name}: marketplace.json platforms={marketplace_platforms} '
                         f'!= plugin.json platforms={plugin_platforms}'
                     )
-        elif plugin_platforms and marketplace_platforms is None:
+        elif platforms_valid and marketplace_platforms is None:
             errors.append(
                 f'  {name}: marketplace.json missing "platforms" field '
                 f'(plugin.json has {plugin_platforms})'

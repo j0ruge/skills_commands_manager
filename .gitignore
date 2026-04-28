@@ -1,1 +1,4 @@
 __pycache__/
+
+# Local audit artifacts produced by /codereview:coderabbit_pr
+*-review.md

@@ -7,5 +7,6 @@
   "version": "1.7.0",
   "category": "quality",
   "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "secrets-detection", "gitguardian", "ggshield", "credentials", "hardcoded-secrets"],
+  "platforms": ["claude-code", "cursor"],
   "skills": "./skills"
 }

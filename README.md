@@ -2,10 +2,10 @@
 
 # Chewiesoft Marketplace
 
-*Skills and commands for Claude Code — CI/CD, code review, deployments, releases, and more.*
+*Plugin marketplace for Claude Code and Cursor — CI/CD, code review, deployments, releases, and more.*
 
 [![Plugins](https://img.shields.io/badge/plugins-8-blue?style=flat-square)](#available-plugins)
-[![Platform](https://img.shields.io/badge/platform-Claude%20Code-blueviolet?style=flat-square)](https://code.claude.com)
+[![Platform](https://img.shields.io/badge/platform-Claude%20Code%20%7C%20Cursor-blueviolet?style=flat-square)](https://code.claude.com)
 [![License](https://img.shields.io/badge/license-Proprietary-red?style=flat-square)](#)
 
 </div>
@@ -14,9 +14,24 @@
 
 ---
 
-A curated plugin marketplace for [Claude Code](https://code.claude.com) by **Chewiesoft**. Each plugin packages production-ready skills and commands that integrate directly into your Claude Code workflow — no configuration needed beyond install.
+A curated dual-platform plugin marketplace for [Claude Code](https://code.claude.com) and [Cursor](https://cursor.com) by **j0ruge**. Each plugin packages production-ready skills and commands that integrate directly into your workflow — no configuration needed beyond install.
+
+## Platform Compatibility
+
+| Plugin | Claude Code | Cursor | Notes |
+|--------|:-----------:|:------:|-------|
+| **cicd** | ✓ | ✓ | Skill — works on both platforms without changes |
+| **codereview** | ✓ | ✓ | Skills — adapted automatically by the installer |
+| **ddd** | ✓ | ✓ | Skill — works on both platforms |
+| **deploy** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
+| **dotnet-wpf** | ✓ | ✓ | Skills — works on both platforms |
+| **release** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
+| **retrofit-skill** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
+| **statusline** | ✓ | — | Claude Code only (uses the Claude Code status line API) |
 
 ## Installation
+
+### Claude Code
 
 ```bash
 # Add the marketplace (pick one)
@@ -36,6 +51,23 @@ Then install any plugin:
 > /plugin marketplace update
 > ```
 
+### Cursor
+
+Clone the repo and run the interactive installer:
+
+```bash
+git clone git@github.com:j0ruge/skills_commands_manager.git
+cd skills_commands_manager
+python install.py
+```
+
+The installer prompts for platform (Claude Code, Cursor, or Both) and where to place the Cursor skills. It automatically adapts plugin content for Cursor.
+
+> [!IMPORTANT]
+> **Cursor has no global skills directory** — only project-local `.cursor/skills/` is auto-loaded by the agent ([Cursor docs](https://cursor.com/docs/skills)). Run `python install.py` from inside each project where you want the skills available, and pick the **Project** option.
+>
+> The installer also offers a **Staging cache** option that copies the converted skills to `~/.cursor/skills/` as a master copy — handy as a source to mirror into projects, but Cursor itself will not pick those up directly.
+
 ## Available Plugins
 
 | Plugin | Version | Category | Description |
@@ -46,6 +78,7 @@ Then install any plugin:
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
 | [**dotnet-wpf**](#dotnet-wpf) | 1.6.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
+| **ddd** | 0.3.0 | Architecture | Domain-Driven Design toolkit — codebase analysis, strategic design (event storming, context mapping), legacy → DDD conversion specs |
 | **retrofit-skill** | 0.1.0 | Development | Apply non-obvious session lessons to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes |
 
 ---
@@ -156,6 +189,69 @@ export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 ## Team Distribution
 
 Projects that clone this repo get automatic marketplace discovery via `.claude/settings.json`. When team members trust the folder, Claude Code prompts them to install the marketplace — no manual setup needed.
+
+## Modo de Utilizacao
+
+### Modo Cursor
+
+Use este modo quando quiser trabalhar com as skills no Cursor (ativacao por contexto).
+
+1. Instale via `python install.py` e escolha `Cursor` ou `Both`.
+2. Escolha o destino:
+   - `~/.cursor/skills/` (uso pessoal em todos os projetos), ou
+   - `.cursor/skills/` (uso compartilhado no projeto).
+3. Abra o projeto no Cursor e descreva a tarefa em linguagem natural.
+4. O agente aplicara automaticamente a skill mais adequada.
+
+Exemplos de pedidos no chat:
+
+```text
+Faz um code review das minhas alteracoes antes do PR.
+Resolve os comentarios do CodeRabbit no PR #49.
+Deploy para staging da branch atual.
+Cria a release 2.1.0 com notas de versao.
+```
+
+Observacao: o plugin `statusline` e exclusivo do Claude Code.
+
+### Modo Claude Code
+
+Use este modo quando quiser utilizar comandos e skills diretamente no Claude Code.
+
+1. Adicione o marketplace:
+
+```bash
+/plugin marketplace add j0ruge/skills_commands_manager
+```
+
+2. Instale os plugins desejados:
+
+```bash
+/plugin install cicd
+/plugin install codereview
+/plugin install ddd
+/plugin install deploy
+/plugin install dotnet-wpf
+/plugin install release
+/plugin install retrofit-skill
+/plugin install statusline
+```
+
+3. Execute os comandos/skills no Claude Code:
+
+```text
+/deploy:staging
+/release:release 2.1.0
+/statusline:setup
+/codereview
+/codereview:coderabbit_pr 49
+```
+
+Para atualizar plugins instalados:
+
+```bash
+/plugin marketplace update
+```
 
 ## References
 

@@ -7,5 +7,6 @@
   "version": "2.3.0",
   "category": "development",
   "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment"],
+  "platforms": ["claude-code", "cursor"],
   "skills": "./skills"
 }

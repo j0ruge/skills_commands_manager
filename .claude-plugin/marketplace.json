@@ -4,7 +4,7 @@
     "name": "Chewiesoft"
   },
   "metadata": {
-    "description": "Chewiesoft's Claude Code plugin marketplace — skills and commands for development workflows",
+    "description": "Chewiesoft's plugin marketplace for Claude Code and Cursor — skills and commands for development workflows",
     "version": "0.1.0"
   },
   "plugins": [
@@ -14,7 +14,8 @@
       "version": "2.3.0",
       "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners",
       "category": "development",
-      "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment"]
+      "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment"],
+      "platforms": ["claude-code", "cursor"]
     },
     {
       "name": "deploy",
@@ -22,7 +23,8 @@
       "version": "1.4.0",
       "description": "Automated deployment commands — staging and production pipelines via CD",
       "category": "development",
-      "keywords": ["deploy", "staging", "production", "cd", "pipeline", "git-flow", "github-actions"]
+      "keywords": ["deploy", "staging", "production", "cd", "pipeline", "git-flow", "github-actions"],
+      "platforms": ["claude-code", "cursor"]
     },
     {
       "name": "codereview",
@@ -30,7 +32,8 @@
       "version": "1.7.0",
       "description": "Code review toolkit: automated pre-PR review with severity grading and model routing for token efficiency (haiku/sonnet/opus), TOCTOU race condition detection, accessibility checks, data integrity analysis, hardcoded secrets detection (passwords, JWT, AWS/GCP/GitHub tokens, PEM keys — GitGuardian-equivalent, applied to CODE/TESTS/CONFIG with BLOCKED banner + forced grade F), and multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex) with severity recalibration, cross-reviewer deduplication, and GitHub conversation resolution. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
       "category": "quality",
-      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "credentials", "hardcoded-secrets"]
+      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "credentials", "hardcoded-secrets"],
+      "platforms": ["claude-code", "cursor"]
     },
     {
       "name": "statusline",
@@ -38,7 +41,8 @@
       "version": "1.4.0",
       "description": "Interactive setup for Claude Code status line — customize model info (with optional effortLevel badge), context bar, git branch, cost tracking, and more. Cross-platform: Bash + PowerShell.",
       "category": "customization",
-      "keywords": ["statusline", "status-bar", "footer", "customization", "ui", "effort-level"]
+      "keywords": ["statusline", "status-bar", "footer", "customization", "ui", "effort-level"],
+      "platforms": ["claude-code"]
     },
     {
       "name": "release",
@@ -46,7 +50,8 @@
       "version": "1.3.0",
       "description": "Automated GitHub Release creation with categorized release notes from git history. Multi-stack (C#/.NET, Node.js, Go, Rust, Python) with --path filter for monorepo component releases. Contributor resolution via org membership cross-reference.",
       "category": "development",
-      "keywords": ["release", "release-notes", "github-release", "changelog", "git-tag", "semver", "gh-cli", "dotnet", "monorepo"]
+      "keywords": ["release", "release-notes", "github-release", "changelog", "git-tag", "semver", "gh-cli", "dotnet", "monorepo"],
+      "platforms": ["claude-code", "cursor"]
     },
     {
       "name": "dotnet-wpf",
@@ -54,7 +59,8 @@
       "version": "1.6.0",
       "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, DataGrid icon patterns, RowHeight sizing, form spacing recipes, UserControl height clipping diagnosis, date control MaxYear validation trap, multi-column form layouts, Grid row separators, ContentDialog confirmation pattern for destructive actions), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
-      "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows", "form-layout", "date-validation", "content-dialog", "destructive-action"]
+      "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows", "form-layout", "date-validation", "content-dialog", "destructive-action"],
+      "platforms": ["claude-code", "cursor"]
     },
     {
       "name": "ddd",
@@ -62,7 +68,8 @@
       "version": "0.3.0",
       "description": "Domain-Driven Design toolkit: analisa codebases e aponta violações DDD, guia strategic design (event storming, context mapping), gera specs de conversão legacy→DDD e ensina conceitos sob demanda. Agnóstica de linguagem, progressive disclosure por tema, síntese de Evans + Vernon + práticas contemporâneas.",
       "category": "architecture",
-      "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"]
+      "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"],
+      "platforms": ["claude-code", "cursor"]
     },
     {
       "name": "retrofit-skill",
@@ -70,7 +77,8 @@
       "version": "0.1.0",
       "description": "Captures non-obvious session lessons and applies them to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes.",
       "category": "development",
-      "keywords": ["retrofit", "skill-maintenance", "marketplace", "changelog", "semver", "session-lessons"]
+      "keywords": ["retrofit", "skill-maintenance", "marketplace", "changelog", "semver", "session-lessons"],
+      "platforms": ["claude-code", "cursor"]
     }
   ]
 }

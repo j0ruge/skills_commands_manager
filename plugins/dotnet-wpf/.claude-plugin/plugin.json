@@ -13,5 +13,6 @@
     "form-layout", "date-validation",
     "content-dialog", "destructive-action"
   ],
+  "platforms": ["claude-code", "cursor"],
   "skills": "./skills"
 }

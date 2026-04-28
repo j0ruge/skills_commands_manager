@@ -287,9 +287,13 @@ Applies to any frontend framework that renders HTML.
 
 This pass approximates what a dedicated secret scanner (GitGuardian, gitleaks, trufflehog) would flag. It exists **because CI secret scanners will block the PR on push** — catching these locally saves the user from having to rotate credentials and rewrite git history after the fact.
 
+**Detection is deterministic, not LLM-simulated** (since v1.8.0). The script `scripts/scan_secrets.py` (invoked via `scripts/scan_secrets.sh`) applies the regex catalog below using Python's `re` engine, plus optionally `ggshield`/`gitleaks` if installed. Phase A's haiku agent runs the script over the unified diff and the output is the **authoritative** input to the Secrets Detection table. Sonnet agents in Phase B still apply this pass for context-aware nuance (e.g. spotting a custom DSL where the keyword is non-standard) but their findings are supplemental — see Phase C merge logic in `SKILL.md`. Why deterministic: LLMs aren't regex engines, and substring shapes like `initialPassword: '...'` (where `password` appears as a suffix) are easy to miss.
+
 **Critical rule: this pass applies to ALL file categories except `EXCLUDED` and `DOCS`** — that includes `CODE`, `TESTS`, `CONFIG`, `UI_LIB`, and `STYLES`. A hardcoded password in `auth.test.ts` is exactly as leaked as one in `server.ts`; GitGuardian does not distinguish, and neither should this pass. This is intentional: test fixtures are one of the most common sources of real-world leaks, because developers underestimate the risk.
 
 **Always-on**: even when a focus area is specified (e.g. `performance`), pass 6.10 still runs. Never skip it. Secrets in a diff are the one finding the user cannot afford to miss.
+
+**Single source of truth**: the table below is the conceptual catalog. The script `scripts/scan_secrets.py` carries the executable form. **Adding/changing a pattern requires updating both** — a code-review/audit checklist for this skill should verify the two stay in sync. There is no automated guard yet (future work).
 
 **Patterns to flag** (each `match → CRITICAL` unless noted otherwise):
 
@@ -308,7 +312,7 @@ This pass approximates what a dedicated secret scanner (GitGuardian, gitleaks, t
 | Stripe secret key | `sk_(live\|test)_[A-Za-z0-9]{20,}` | Test keys are lower risk but still flag — rotation policy differs per org. |
 | `.env`-shaped assignment | Line matching `^(SECRET_KEY\|DATABASE_URL\|API_KEY\|JWT_SECRET\|PRIVATE_KEY\|CLIENT_SECRET\|AUTH_TOKEN)\s*=\s*\S.+` in a non-`.env.example` / non-`.env.sample` file | Treat `.env.example` / `.env.sample` / `.env.template` as allowed placeholders *only if* the value looks like a placeholder (see exceptions). |
 
-**Why regex and not a scanner**: this skill is read-only prose produced by LLM agents — it can't shell out to `ggshield`. The goal is to approximate the check the user will run in CI, not replace it. Always recommend the user also install `ggshield pre-commit` as a durable defense.
+**Why regex AND scanners (when available)**: the skill cannot guarantee `ggshield` or `gitleaks` is installed on the user's machine, so the script ships its own Python regex pass that always runs. When `ggshield` or `gitleaks` IS on `PATH`, the script invokes them too and merges results (dedup by `{file, line, kind}`). The skill is still read-only — `Bash` invocations from the haiku agent are pure scans (`gh`/`grep`/`ggshield secret scan`) with no mutation. Always recommend the user also install `ggshield pre-commit` as a durable defense for future commits.
 
 **Exceptions (do not flag):**
 

@@ -1,10 +1,10 @@
 {
   "name": "codereview",
-  "description": "Code review toolkit: automated pre-PR review with severity grading, TOCTOU race condition detection, accessibility checks, data integrity analysis, hardcoded secrets detection (passwords, JWT, AWS/GCP/GitHub tokens, PEM keys — GitGuardian-equivalent, applied to CODE/TESTS/CONFIG), and multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex) with GitHub conversation resolution and model-tier routing for token efficiency. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
+  "description": "Code review toolkit: automated pre-PR review with severity grading, TOCTOU race condition detection, accessibility checks, data integrity analysis, deterministic hardcoded secrets detection via shell script (passwords, JWT, AWS/GCP/GitHub tokens, PEM keys — GitGuardian-equivalent, applied to CODE/TESTS/CONFIG, with optional ggshield/gitleaks integration when installed), and multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex) with GitHub conversation resolution and model-tier routing for token efficiency. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.7.0",
+  "version": "1.8.0",
   "category": "quality",
   "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "secrets-detection", "gitguardian", "ggshield", "credentials", "hardcoded-secrets"],
   "platforms": ["claude-code", "cursor"],

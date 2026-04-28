@@ -73,7 +73,7 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | Plugin | Version | Category | Description |
 |--------|---------|----------|-------------|
 | [**cicd**](#cicd) | 2.3.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners |
-| [**codereview**](#codereview) | 1.7.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, **hardcoded secrets detection** (GitGuardian-equivalent, blocks PRs with leaked credentials), and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) |
+| [**codereview**](#codereview) | 1.8.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, **deterministic hardcoded secrets detection** via Python regex script + optional ggshield/gitleaks (GitGuardian-equivalent, blocks PRs with leaked credentials), and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) |
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
@@ -108,7 +108,7 @@ Stack-agnostic pre-PR code review built on **The Zen of Python** as a universal 
 | `/codereview` | Full pre-PR review — diffs against base branch, severity-rated findings (CRITICAL → LOW), final grade (A-F). Uses haiku for git context, sonnet for per-file analysis, opus for cross-file review and report. |
 | `/codereview:coderabbit_pr` | Resolves AI review bot comments (CodeRabbit, Copilot, Gemini, Codex) on a GitHub PR — auto-detects reviewers, creates per-reviewer checklists, triages with severity recalibration, applies fixes, runs regression tests, resolves all GitHub conversations |
 
-**Analysis layers:** Bug Detection · Security · **Secrets Detection** (GitGuardian-equivalent, always-on, blocks grade F) · Performance · Type Safety · Test Coverage · Documentation Sync · Race Conditions (TOCTOU) · Accessibility · Data Integrity
+**Analysis layers:** Bug Detection · Security · **Secrets Detection** (deterministic regex script + optional ggshield/gitleaks, always-on, blocks grade F) · Performance · Type Safety · Test Coverage · Documentation Sync · Race Conditions (TOCTOU) · Accessibility · Data Integrity
 
 **Model routing:** Haiku (git/CLI) → Sonnet (per-file analysis, parallel) → Opus (cross-file review, report)
 

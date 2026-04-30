@@ -1,0 +1,26 @@
+{
+  "name": "dev-script",
+  "description": "Generates a one-shot dev.sh / dev.ps1 launcher for any project — detects the stack (compose, monorepo, frontend, backend, IdP, mkcert), produces a single script that brings up the whole local infrastructure with colored prefixes per service, healthchecks, robust port reclaim, trap cleanup, idempotent re-runs, and (when applicable) HTTPS-on-LAN via mkcert + Caddy reverse proxy. Cross-platform: bash for Linux/macOS, PowerShell for Windows. Encodes the gotchas painfully learned in JRC projects so each new repo doesn't re-discover them.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "0.1.0",
+  "category": "development",
+  "keywords": [
+    "dev-script",
+    "dev.sh",
+    "dev.ps1",
+    "bootstrap",
+    "local-development",
+    "docker-compose",
+    "mkcert",
+    "caddy",
+    "https-lan",
+    "monorepo",
+    "scaffold",
+    "powershell",
+    "bash"
+  ],
+  "platforms": ["claude-code", "cursor"],
+  "skills": "./skills"
+}

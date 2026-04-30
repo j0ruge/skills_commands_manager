@@ -24,6 +24,7 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 | **codereview** | ✓ | ✓ | Skills — adapted automatically by the installer |
 | **ddd** | ✓ | ✓ | Skill — works on both platforms |
 | **deploy** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
+| **dev-script** | ✓ | ✓ | Skill — generates `dev.sh` (bash) + `dev.ps1` (PowerShell) per project |
 | **dotnet-wpf** | ✓ | ✓ | Skills — works on both platforms |
 | **release** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **retrofit-skill** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
@@ -79,6 +80,7 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
 | [**dotnet-wpf**](#dotnet-wpf) | 1.6.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
 | **ddd** | 0.3.0 | Architecture | Domain-Driven Design toolkit — codebase analysis, strategic design (event storming, context mapping), legacy → DDD conversion specs |
+| **dev-script** | 0.1.0 | Development | Generates `dev.sh` (bash) + `dev.ps1` (PowerShell) launchers tailored to the current project — detects compose/monorepo/IdP/mkcert, emits idempotent script with healthchecks, port reclaim, trap cleanup, HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE |
 | **retrofit-skill** | 0.1.0 | Development | Apply non-obvious session lessons to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes |
 
 ---
@@ -175,6 +177,30 @@ Complete development toolkit for C#/.NET WPF desktop applications — from proje
 
 </details>
 
+<details>
+<summary><strong>dev-script</strong> — Local Dev Stack Launcher Generator</summary>
+
+Generates a single-command development launcher for any project — `dev.sh` (bash, Linux/macOS) and `dev.ps1` (PowerShell 5.1/7+, Windows). Detects the stack (compose files, monorepo workspaces, frontend/backend dev servers, IdP, mkcert posture, existing launcher) and emits an idempotent script that brings up Postgres, the IdP, the backend(s), and the frontend with colored per-service prefixes, per-component healthchecks, robust port reclaim (`fuser` → `lsof` → `ss`), trap cleanup, and HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE.
+
+| Skill | Description |
+|-------|-------------|
+| `/dev-script` | Walks the project, confirms the plan, generates `dev.sh` and/or `dev.ps1`, updates `.gitignore`, prints onboarding for LAN clients |
+
+**What it encodes** (the gotchas painfully learned in JRC projects):
+
+- Vite ≥ 5 `allowedHosts` blocks non-localhost — wrap config without editing `vite.config.ts`
+- Node backend can't validate JWKS over self-signed HTTPS without `NODE_EXTRA_CA_CERTS`
+- Zitadel persists `externalDomain` on init — drift detection + `--reset` flag
+- Bootstrap idempotency vs `400 COMMAND-1m88i "No changes"`
+- `--tlsMode external` triad (env vars + start flag) for TLS-terminating proxies
+- `crypto.subtle` outside secure contexts → `signinRedirect` silently fails
+- Process-group cleanup (`setsid` + `kill -- -PGID`) so Ctrl+C doesn't orphan children
+- Re-derive `projectId`/`clientId` from `bootstrap.json` on every boot — never hardcode
+
+**Cross-platform:** Linux/macOS bash and Windows/cross-platform PowerShell — same flags, same semantics, idiomatic primitives in each.
+
+</details>
+
 ## Auto-updates
 
 For private repo auto-updates at startup, set a GitHub token with `repo` scope:
@@ -255,8 +281,19 @@ Para atualizar plugins instalados:
 
 ## References
 
+### Claude Code
+
 - [Plugin Marketplaces — Claude Code Docs](https://code.claude.com/docs/en/plugin-marketplaces)
 - [Plugins Reference — Claude Code Docs](https://code.claude.com/docs/en/plugins-reference)
+
+### Cursor support (used to design `install.py` and the `platforms` field)
+
+- [Skills | Cursor Docs](https://cursor.com/help/customization/skills) — official spec for `.cursor/skills/<name>/SKILL.md` and how the agent triggers skills by description
+- [Agent Skills | Cursor Docs](https://cursor.com/docs/skills) — agent-side reference, including the limitation that skills are auto-loaded only from project-local `.cursor/skills/` (no global directory)
+- [Subagents, Skills, and Image Generation — Cursor v2.4 changelog](https://cursor.com/changelog/2-4) — release that introduced native SKILL.md support in Cursor
+- [Where Are Cursor Skills Stored? Paths & Structure (2026)](https://www.agensi.io/learn/where-are-cursor-skills-stored) — confirms there is no `~/.cursor/skills/` global directory; informed the "Staging cache" rename in the installer
+- [How to Use SKILL.md Skills in Cursor (2026 Guide)](https://www.agensi.io/learn/how-to-use-skill-md-in-cursor) — practical guidance on SKILL.md frontmatter and the reload-window step
+- [Best practices for coding with agents — Cursor Blog](https://cursor.com/blog/agent-best-practices) — context for the trigger-friendly `cursor_description` strings used in command→skill conversions
 
 ---
 

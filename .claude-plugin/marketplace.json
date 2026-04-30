@@ -79,6 +79,15 @@
       "category": "development",
       "keywords": ["retrofit", "skill-maintenance", "marketplace", "changelog", "semver", "session-lessons"],
       "platforms": ["claude-code", "cursor"]
+    },
+    {
+      "name": "dev-script",
+      "source": "./plugins/dev-script",
+      "version": "0.1.0",
+      "description": "Generates a single-command local-dev launcher tailored to the current project — bash (dev.sh) for Linux/macOS and PowerShell (dev.ps1) for Windows. Detects the stack (compose, monorepo, frontend, backend, IdP, mkcert), produces idempotent scripts with colored prefixes per service, per-component healthchecks, robust port reclaim, trap cleanup, and HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE. Encodes the gotchas painfully learned in JRC projects (Vite allowedHosts, NODE_EXTRA_CA_CERTS for self-signed JWKS, Zitadel externalDomain drift, --tlsMode external triad, signinRedirect silent fail outside secure context).",
+      "category": "development",
+      "keywords": ["dev-script", "dev.sh", "dev.ps1", "bootstrap", "local-development", "docker-compose", "mkcert", "caddy", "https-lan", "monorepo", "scaffold", "powershell", "bash"],
+      "platforms": ["claude-code", "cursor"]
     }
   ]
 }

@@ -73,25 +73,63 @@ What this buys you:
 - The `--reset` flag is gated behind explicit user intent — destructive actions never happen surprise.
 - The state file is gitignored; it captures only this machine's last invocation.
 
-## Skip work that's already done
+## Skip work that's already done — carefully
 
-Some steps are expensive (bootstrap calls a remote API; cert generation calls mkcert). Skip them when the inputs match the previous successful run:
+Some steps are expensive (bootstrap calls a remote API; cert generation calls mkcert). Skipping them on no-op re-runs is great for adoption — "the script takes 4s vs. 35s every time" is the difference between "I always run it" and "I run things by hand because the script is slow."
+
+### The naive skip — and why it bit us
+
+The obvious cache key is "the externally-visible identity changed":
 
 ```bash
 SKIP_BOOTSTRAP=false
-if [[ "$PREV" == "$CURRENT" && -f "$BOOTSTRAP_JSON" ]]; then
+if [[ "$PREV_EXTERNAL" == "$CURRENT_EXTERNAL" && -f "$BOOTSTRAP_JSON" ]]; then
   SKIP_BOOTSTRAP=true
-fi
-
-if $SKIP_BOOTSTRAP; then
-  log_step "Bootstrap — skipping (already up to date for $CURRENT)"
-else
-  log_step "Bootstrap…"
-  # ...
 fi
 ```
 
-This is the difference between "the script takes 4s on a no-op re-run" and "the script takes 35s every time", which silently encourages people to skip the script and run things by hand. Speed matters for adoption.
+This works when `EXTERNAL_FULL` (scheme + domain + port) is the only thing that affects the bootstrap output. It **breaks silently** the moment any other input changes — typically the redirect / post-logout URIs, the OIDC scope list, or the login version flag. The script re-runs successfully, the user thinks the change propagated, and the IdP keeps the old config. Real-world hit: changing `OIDC_POST_LOGOUT_URIS="${WEB_BASE}/"` to `"${WEB_BASE}/login,${WEB_BASE}/"` did nothing because the cache key didn't include the URI list — every logout kept failing with `error=invalid_request post_logout_redirect_uri invalid` until someone ran `--reset` (data-destructive) or hand-edited the cache file.
+
+### The fix — pick one of two
+
+**Option A (preferred for IdP bootstraps): always run, rely on idempotency.**
+
+If the bootstrap is itself idempotent — search-then-create, treats "no changes" 4xx as no-op (Zitadel's `COMMAND-1m88i`, see `pitfalls.md`) — then **always run it**. The cost is a few seconds of API calls; the benefit is no drift class of bug ever exists. The state file becomes purely a drift detector for *destructive* changes (Zitadel volume already initialized with a different `EXTERNALDOMAIN` — re-init not allowed without volume drop), not a performance optimization.
+
+```bash
+log_step "Bootstrap (idempotent)…"
+env "${BOOTSTRAP_ENV[@]}" \
+  ZITADEL_API_URL="${ZITADEL_BASE}" \
+  OIDC_REDIRECT_URIS="${WEB_BASE}/auth/callback,${WEB_BASE}/silent-renew" \
+  OIDC_POST_LOGOUT_URIS="${WEB_BASE}/login,${WEB_BASE}/" \
+  npx tsx scripts/bootstrap-zitadel.ts
+```
+
+**Option B: hash all the inputs into the cache key.**
+
+If the bootstrap is genuinely expensive (think 30s+ of API calls) and you really want the skip, include every input the bootstrap reads into the key — not just `EXTERNAL_FULL`:
+
+```bash
+INPUT_HASH="$(printf '%s\n' \
+    "$EXTERNAL_FULL" \
+    "$OIDC_REDIRECT_URIS" \
+    "$OIDC_POST_LOGOUT_URIS" \
+    "$OIDC_SCOPES" \
+    "$LOGIN_VERSION" \
+  | sha256sum | cut -d' ' -f1)"
+
+if [[ "$PREV_INPUT_HASH" == "$INPUT_HASH" && -f "$BOOTSTRAP_JSON" ]]; then
+  SKIP_BOOTSTRAP=true
+fi
+```
+
+Persist `INPUT_HASH` alongside `EXTERNAL_FULL` in the state file. Any bootstrap input change invalidates the cache automatically.
+
+### Recommendation
+
+Default to **option A** unless you measure the bootstrap actually taking 30+ seconds. The "skip if EXTERNAL_FULL matches" optimization looks innocent but turns the bootstrap into write-only state — no signal to the user that their env change didn't take effect. Option B is fine when the cost is real, but the bug class returns the moment someone adds a new input and forgets to extend the hash.
+
+Cert generation has the same shape but a much smaller surface — the inputs are just the SAN list, and a sidecar file (`infra/certs/.names`) comparing the previous SAN list to the current one is enough.
 
 ## Idempotent updates to remote state
 

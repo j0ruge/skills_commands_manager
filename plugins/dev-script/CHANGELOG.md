@@ -1,5 +1,41 @@
 # Changelog — `dev-script`
 
+## 0.2.0 — 2026-04-30
+
+Lessons from a smoke session against the JRC `validade_bateria_estoque` LAN-HTTPS stack — three places where the v0.1.0 reference drifted from real-world behaviour.
+
+### Added
+
+- **`references/bash-patterns.md` §"Fourth fallback: `pgrep` by command line"** — the existing three-method `kill_port` (`fuser → lsof → ss`) returns empty on hardened kernels (recent Ubuntu, container hosts with `hidepid=2`, sandboxed sessions across PID namespaces), so `kill_port` becomes a silent no-op and zombie backends survive across runs. Added `kill_known_dev_servers()` as a fourth fallback that matches by command line via `pgrep -af`, plus a per-stack pattern table (Express/tsx, NestJS, Vite, dotnet, cargo) and a warning against bare `pgrep -af node`.
+
+  *Symptom prevented*: 4 zombie `tsx watch` trees survived a Ctrl+C on the JRC stack because none of `ss`, `lsof`, or `fuser` could see the PIDs from the same UID across sessions. The next `dev.sh` run failed with `EADDRINUSE` on `:3000`.
+
+- **`references/tls-https-recipe.md` §"Step 5 — Testing the LAN-HTTPS stack with Playwright"** — Playwright suites against `https://<lan-ip>.sslip.io:5443` need two moves: `PLAYWRIGHT_BASE_URL` env override + `ignoreHTTPSErrors` in **both** `use:` and the `globalSetup` browser context (the global setup creates its own context that doesn't inherit `use.ignoreHTTPSErrors`). Documents the failure mode (`net::ERR_CERT_AUTHORITY_INVALID` from the global setup, killing all specs before any body runs) and explains why `NODE_TLS_REJECT_UNAUTHORIZED=0` doesn't help. Plus a side note on logout test ordering invalidating shared `storageState`.
+
+  *Symptom prevented*: 10 minutes of debugging when the global setup fails on the first `page.goto(/login)` against the mkcert-signed Caddy proxy, with an error pointing at the wrong file.
+
+### Changed
+
+- **`references/idempotency-and-state.md` §"Skip work that's already done — carefully"** — rewrote the skip-bootstrap section. The previous version recommended skipping by `EXTERNAL_FULL` for adoption ("4s vs 35s"); this hid drift when other inputs (`OIDC_REDIRECT_URIS`, `OIDC_POST_LOGOUT_URIS`, `OIDC_SCOPES`, `LOGIN_VERSION`) changed without `EXTERNAL_FULL` changing. Now offers two explicit options: **A** always run if the bootstrap is idempotent (treats Zitadel `COMMAND-1m88i` "No changes" as no-op — preferred), or **B** hash *all* inputs into the cache key (acceptable when bootstrap genuinely costs 30s+). The state file becomes a drift detector for destructive changes, not a perf cache.
+
+  *Symptom prevented*: changing `OIDC_POST_LOGOUT_URIS="${WEB_BASE}/"` to `"${WEB_BASE}/login,${WEB_BASE}/"` did nothing because the cache key didn't include the URI list — every logout kept failing with `error=invalid_request post_logout_redirect_uri invalid` until `--reset` (data-destructive) or hand-edit of the cache file.
+
+- **`SKILL.md` metadata version 0.1.0 → 0.2.0**, **`.claude-plugin/plugin.json` 0.1.0 → 0.2.0**, **marketplace.json** description and keywords expanded with `pgrep`/`playwright`/`kill-port` and the new gotchas.
+
+### Not changed / out of scope
+
+- `assets/dev.sh.tmpl` — the new `kill_known_dev_servers` is documented in `references/bash-patterns.md` with a copy-pasteable snippet. Threading it through the template would force every consumer to maintain a stack-pattern regex even when the three-method `kill_port` works fine for them. Keep the template lean; let the references guide the case-by-case addition.
+- `references/powershell-patterns.md` — the kernel hidepid issue is Linux-specific. Windows `Get-NetTCPConnection` already returns the PID for the current user without privilege escalation. No change needed.
+
+### Verification
+
+```bash
+grep -rn "pgrep -af\|kill_known_dev_servers\|hidepid\|PLAYWRIGHT_BASE_URL\|ignoreHTTPSErrors" \
+  plugins/dev-script/skills/dev-script/references/
+```
+
+Expected: ≥1 hit per term across `bash-patterns.md`, `tls-https-recipe.md`, `idempotency-and-state.md`.
+
 ## 0.1.0 — 2026-04-30
 
 Initial release. Generates `dev.sh` (bash, Linux/macOS) and `dev.ps1` (PowerShell 5.1/7+) launchers tailored to the current project.

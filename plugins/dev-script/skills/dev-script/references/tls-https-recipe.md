@@ -209,6 +209,66 @@ curl "https://<external>:8443/oauth/v2/keys"
 
 If the first command works and the second errors on cert verification, you've confirmed it: backend is missing `NODE_EXTRA_CA_CERTS`.
 
+## Step 5 — Testing the LAN-HTTPS stack with Playwright
+
+If the project has a Playwright suite, pointing it at the LAN-HTTPS stack the dev script just brought up takes **two** moves — missing either makes the suite fail before any spec body runs.
+
+**Move 1**: accept the env var override and ignore HTTPS errors when the base URL is HTTPS:
+
+```typescript
+// playwright.config.ts
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:5173";
+const IS_HTTPS = BASE_URL.startsWith("https://");
+
+export default defineConfig({
+  use: {
+    baseURL: BASE_URL,
+    ignoreHTTPSErrors: IS_HTTPS,    // mkcert root isn't in Chromium's trust store
+    // …
+  },
+  // The auto-started webServer doesn't make sense in LAN mode (the dev script
+  // already runs Vite). Disable it when BASE_URL is HTTPS.
+  webServer: IS_HTTPS ? undefined : {
+    command: "npm run dev:e2e",
+    url: BASE_URL,
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+**Move 2**: mirror `ignoreHTTPSErrors` in the global setup. The setup creates its own browser context for the login flow, and that context **does not** inherit `use.ignoreHTTPSErrors`:
+
+```typescript
+// e2e/global-setup.ts
+async function globalSetup(config: FullConfig) {
+  const baseURL = config.projects[0]?.use.baseURL ?? "http://localhost:5173";
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: baseURL.startsWith("https://"),   // <-- mandatory for LAN HTTPS
+  });
+  const page = await context.newPage();
+  await page.goto(`${baseURL}/login`);
+  // …login + storageState save…
+}
+```
+
+Without move 2, the global setup hits `net::ERR_CERT_AUTHORITY_INVALID` on the first `page.goto` and every spec is skipped before it starts. The error message names a different file than the actual problem, so it eats 10 minutes of debugging the first time.
+
+Run the suite:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://${EXTERNAL_DOMAIN}:${WEB_PORT} \
+  E2E_LIVE=1 \
+  PLAYWRIGHT_TEST_USER_PASSWORD='…' \
+  npx playwright test
+```
+
+`NODE_TLS_REJECT_UNAUTHORIZED=0` is **not** an alternative for `ignoreHTTPSErrors` here — Playwright's browser contexts don't read it. You'd be disabling Node's TLS check while the browser-level check still rejects.
+
+### Test isolation note: logout invalidates `storageState`
+
+Specs that exercise the logout flow tear down the IdP session for the cookie stored in `storageState`. The storage state file is shared across tests in a describe; any test that runs *after* the logout test inherits a dead session and fails before reaching its assertions. Order logout-related specs **last** in the describe (or use a per-test fresh storage state) — this is a generic Playwright pitfall, not a TLS-specific one, but it surfaces hard the moment the LAN-HTTPS suite has a real logout test.
+
 ## LAN client onboarding — what to tell users
 
 LAN clients (other devs' laptops, phones, tablets) need the mkcert root CA installed once. The dev script should print onboarding instructions in the final summary:

@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "category": "development",
   "keywords": [
     "dev-script",
@@ -19,7 +19,10 @@
     "monorepo",
     "scaffold",
     "powershell",
-    "bash"
+    "bash",
+    "playwright",
+    "kill-port",
+    "pgrep"
   ],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"

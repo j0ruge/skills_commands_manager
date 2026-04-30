@@ -177,6 +177,48 @@ kill_port() {
 
 Why three methods: `ss -p` requires root on some distros to show PIDs; `fuser` may not be installed; `lsof` is the most universal but missing on minimal containers. Falling through covers the realistic environments.
 
+### Fourth fallback: `pgrep` by command line
+
+Even with all three above, there's a real failure mode: hardened kernels (recent Ubuntu, container hosts with `hidepid=2`, some sandboxed sessions) hide PIDs of processes owned by other UIDs **and** sometimes from the same UID across PID namespaces. `ss -p` then returns the listener but no `pid=` token; `lsof` returns empty; `fuser` returns empty. `kill_port` becomes a silent no-op and the next `npm run dev` fails with `EADDRINUSE`. Real-world hit count from the JRC stack: 4 zombie backend trees survived a `dev.sh` Ctrl+C because no port-based tool could see the PIDs.
+
+When the dev stack uses well-known commands (Vite, `tsx watch`, `nest start --watch`, `dotnet watch`), `pgrep -af` finds them by the command line itself — no port lookup required:
+
+```bash
+kill_known_dev_servers() {
+  # Fallback for kernels where ss/lsof can't see PIDs. Match by command line of
+  # the processes the script itself starts; tighten the patterns to your stack
+  # to avoid killing unrelated processes (a global `pgrep -af node` is too broad).
+  local pids
+  pids="$(pgrep -af 'tsx.*src/server\.ts|vite([[:space:]].*--port[[:space:]]+5173|.*\.vite\.config\.lan)' 2>/dev/null \
+            | awk '{print $1}' || true)"
+  for pid in $pids; do
+    log_warn "Stale dev process PID $pid — killing…"
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    sleep 1
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+  done
+}
+
+log_step "Reclaiming dev ports…"
+kill_port 3000
+kill_port 5173
+kill_known_dev_servers   # safety net for kernels that hide PIDs from ss/lsof
+```
+
+Run `kill_known_dev_servers` **after** `kill_port` (not instead) — the port path is the cleanest when it works, and only catches what's actually listening on those ports. The pgrep path catches detached children whose port bind already failed (e.g., the second `tsx watch` that lost the EADDRINUSE race but stayed alive holding nothing).
+
+Tune the regex to your stack:
+
+| Process | Pattern fragment |
+|---|---|
+| Express via `tsx watch` | `tsx.*src/server\.ts` |
+| NestJS dev | `nest start --watch` |
+| Vite | `vite([[:space:]].*--port[[:space:]]+<PORT>\|.*\.vite\.config\.lan)` |
+| `dotnet watch` | `dotnet[[:space:]]+watch` (be careful — kills any dotnet watch on the host) |
+| Cargo watch | `cargo-watch` |
+
+Avoid bare `pgrep -af node` or `pgrep -af npm` — they match every Node tool the user has running. Always anchor the pattern to something specific to *this script's* processes (a script path, a specific config file name, a unique CLI flag).
+
 ## Trap-based cleanup
 
 ```bash

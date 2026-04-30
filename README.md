@@ -80,7 +80,7 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
 | [**dotnet-wpf**](#dotnet-wpf) | 1.6.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
 | **ddd** | 0.3.0 | Architecture | Domain-Driven Design toolkit — codebase analysis, strategic design (event storming, context mapping), legacy → DDD conversion specs |
-| **dev-script** | 0.1.0 | Development | Generates `dev.sh` (bash) + `dev.ps1` (PowerShell) launchers tailored to the current project — detects compose/monorepo/IdP/mkcert, emits idempotent script with healthchecks, port reclaim, trap cleanup, HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE |
+| **dev-script** | 0.2.0 | Development | Generates `dev.sh` (bash) + `dev.ps1` (PowerShell) launchers tailored to the current project — detects compose/monorepo/IdP/mkcert, emits idempotent script with healthchecks, port reclaim (with `pgrep` fallback for kernels that hide PIDs from `ss`/`lsof`), trap cleanup, HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE, and Playwright LAN-HTTPS testing recipe |
 | **retrofit-skill** | 0.1.0 | Development | Apply non-obvious session lessons to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes |
 
 ---

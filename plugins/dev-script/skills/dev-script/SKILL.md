@@ -1,7 +1,7 @@
 ---
 name: dev-script
 metadata:
-  version: 0.2.0
+  version: 0.3.0
 description: >
   Generates a single-command development launcher (`dev.sh` for Linux/macOS,
   `dev.ps1` for Windows) tailored to the current project. Detects the stack
@@ -22,7 +22,7 @@ description: >
   one or more APIs, and a frontend dev server. Triggers: "dev.sh", "dev.ps1",
   "dev script", "subir tudo", "levantar a infra dev", "compartilhar dev na
   LAN", "monta o ambiente local", "script que sobe tudo", "boot the stack",
-  "local dev orchestrator", "dev launcher", "powershell dev script".
+  "local dev orchestrator", "dev launcher", "powershell dev script", "401 storm depois de --reset", "tsx watch zumbi", "env stale runtime", "runtime config drift", "bootstrap.json sanity check", "kill_known_dev_servers regex monorepo", "tsx watch não recarrega .env".
 ---
 
 # dev.script — Local Dev Stack Launcher Generator

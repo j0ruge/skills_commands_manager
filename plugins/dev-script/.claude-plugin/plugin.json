@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "category": "development",
   "keywords": [
     "dev-script",
@@ -22,7 +22,10 @@
     "bash",
     "playwright",
     "kill-port",
-    "pgrep"
+    "pgrep",
+    "sanity-check",
+    "runtime-drift",
+    "tsx-watch"
   ],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"

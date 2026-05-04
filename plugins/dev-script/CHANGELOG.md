@@ -1,5 +1,41 @@
 # Changelog — `dev-script`
 
+## 0.3.0 — 2026-05-04
+
+Lessons from a session against the JRC `validade_bateria_estoque` LAN-HTTPS stack — three places where the v0.2.0 reference still left enough rope to hang yourself, including one regression that hit four times across separate sessions before the root cause clicked.
+
+### Added
+
+- **`references/bash-patterns.md` §"Gotcha — monorepo path constraints flip the regex ordering"** — when adding monorepo path scoping to the `kill_known_dev_servers` regex, the intuitive `tsx.*packages/backend.*server\.ts` *silently never matches* because the actual cmdline is `node /repo/packages/backend/node_modules/.bin/tsx watch ... src/server.ts` — `packages/backend` appears **before** `tsx`. Recommended pattern is `packages/backend.*server\.ts` (don't anchor to `tsx`). Includes the cmdline reality-check tip: spawn a test process, run the regex against `ps -ef | grep`, only trust the kill function if it actually finds the test PID.
+
+  *Symptom prevented*: 8 zombie `tsx watch` trees from previous sessions surviving for 5 days because every run's `kill_known_dev_servers` was a silent no-op. Each `--reset-zitadel` produced a 401-storm; debugging blamed the wrong layer (mkcert / .env / bootstrap) for 4 sessions before the regex ordering became visible.
+
+- **`references/bash-patterns.md` §"Companion gotcha — `tsx watch` doesn't watch `.env`"** — when the launcher patches `.env` on every boot (the canonical fix for stale-config drift), `tsx watch` keeps the old values in memory because it only watches `src/**`. Documented two fixes: `tsx watch --include=.env` (one-line `package.json` edit, preferred) and "kill the runner before re-spawning" (belt-and-suspenders). Analogous flags listed for `nodemon`, `dotnet watch`, `cargo-watch`.
+
+  *Symptom prevented*: launcher patches `.env` correctly with the new `AUTH_AUDIENCE`, but the running backend keeps the old one in heap → every JWT 401s with no clear error from the launcher's perspective.
+
+- **`references/idempotency-and-state.md` §"Boot-time sanity check inside the app"** — defensive pattern complementing the disk-level idempotency (state file + `.env` patching). The app reads the launcher's source-of-truth file at boot and warns LOUD on divergence. Warn-only, not fail-fast, because in production the file does not exist and the check should be silent. Generic table maps the pattern to non-IdP launcher files (`.dev.script.state` `EXTERNAL_FULL`, `infra/db/connection.json`, `infra/queue/connection.json`) — not Zitadel-specific.
+
+  *Symptom prevented*: the third layer of the 401-storm defense. Disk in sync (state file) + processes in sync (`kill_known_dev_servers`) + heap in sync (this sanity check). Reduces "I edited the .env, why is it still broken?" diagnosis from 30 minutes to 5 seconds.
+
+- **`references/pitfalls.md` §"P16 — Long-lived dev sessions accumulate zombie watchers (silent)"** — index entry that ties the three patterns above together as a 3-layer defense. Includes the smoking-gun detector: `pgrep -af '<runner-pattern>' | wc -l` returning > 1 means the trap is active.
+
+  *Symptom prevented*: same recurrence (4× across 5 days) being misdiagnosed as a different bug each time. Now first-time hits should pattern-match this entry within a session.
+
+### Changed
+
+- **`SKILL.md` metadata version 0.2.0 → 0.3.0**, **`.claude-plugin/plugin.json` 0.2.0 → 0.3.0**, **marketplace.json** description and keywords expanded with `sanity-check`, `runtime-drift`, `tsx-watch`. Triggers list gained `401 storm depois de --reset`, `tsx watch zumbi`, `env stale runtime`, `runtime config drift`, `bootstrap.json sanity check`, `kill_known_dev_servers regex monorepo`, `tsx watch não recarrega .env`.
+
+### Not changed / out of scope
+
+- `assets/dev.sh.tmpl` — both gotchas (regex ordering, `.env` watch) are documented in `references/` with copy-pasteable snippets, not embedded in the template. Threading either into the template would force every consumer to either (a) maintain a stack-specific regex even when single-package projects work fine with `tsx.*src/server\.ts`, or (b) commit to `--include=.env` without considering the cost (binary file detection differs across watchers). Keep the template lean; references guide the case-by-case addition.
+- `references/powershell-patterns.md` — both gotchas are Linux/Unix runner-specific. Windows `Get-Process` already finds dev runners by `ProcessName`/`Path` without the cmdline-ordering problem; `dotnet watch` on Windows respects `--watch` flags consistently. No change needed.
+- `references/tls-https-recipe.md` — TLS termination unchanged; the new gotchas live in process-management and idempotency layers.
+
+### Verification
+
+- The 3-layer fix proven on the JRC stack: 53× `/oauth/v2/authorize` requests in a 15-second post-login window collapsed to 1× after applying (1) regex fix in `kill_known_dev_servers`, (2) launcher-side `kill` before re-spawn, (3) `auth-sanity` check at backend boot. Login storm pattern eliminated; subsequent `--reset-zitadel` runs come up clean.
+
 ## 0.2.0 — 2026-04-30
 
 Lessons from a smoke session against the JRC `validade_bateria_estoque` LAN-HTTPS stack — three places where the v0.1.0 reference drifted from real-world behaviour.

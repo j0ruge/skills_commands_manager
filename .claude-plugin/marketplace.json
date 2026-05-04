@@ -83,10 +83,10 @@
     {
       "name": "dev-script",
       "source": "./plugins/dev-script",
-      "version": "0.2.0",
-      "description": "Generates a single-command local-dev launcher tailored to the current project — bash (dev.sh) for Linux/macOS and PowerShell (dev.ps1) for Windows. Detects the stack (compose, monorepo, frontend, backend, IdP, mkcert), produces idempotent scripts with colored prefixes per service, per-component healthchecks, robust port reclaim with pgrep fallback for kernels that hide PIDs from ss/lsof, trap cleanup, and HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE. Encodes the gotchas painfully learned in JRC projects (Vite allowedHosts, NODE_EXTRA_CA_CERTS for self-signed JWKS, Zitadel externalDomain drift, --tlsMode external triad, signinRedirect silent fail outside secure context, bootstrap-skip cache that masks OIDC URI drift, Playwright contexts needing ignoreHTTPSErrors against mkcert).",
+      "version": "0.3.0",
+      "description": "Generates a single-command local-dev launcher tailored to the current project — bash (dev.sh) for Linux/macOS and PowerShell (dev.ps1) for Windows. Detects the stack (compose, monorepo, frontend, backend, IdP, mkcert), produces idempotent scripts with colored prefixes per service, per-component healthchecks, robust port reclaim with pgrep fallback for kernels that hide PIDs from ss/lsof, trap cleanup, and HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE. Encodes the gotchas painfully learned in JRC projects (Vite allowedHosts, NODE_EXTRA_CA_CERTS for self-signed JWKS, Zitadel externalDomain drift, --tlsMode external triad, signinRedirect silent fail outside secure context, bootstrap-skip cache that masks OIDC URI drift, Playwright contexts needing ignoreHTTPSErrors against mkcert, monorepo-path regex flipping kill_known_dev_servers into a silent no-op, tsx watch not picking up .env changes leaving stale runtime, and the boot-time sanity-check pattern that catches disk-vs-heap drift in 5 seconds instead of 30 minutes).",
       "category": "development",
-      "keywords": ["dev-script", "dev.sh", "dev.ps1", "bootstrap", "local-development", "docker-compose", "mkcert", "caddy", "https-lan", "monorepo", "scaffold", "powershell", "bash", "playwright", "kill-port", "pgrep"],
+      "keywords": ["dev-script", "dev.sh", "dev.ps1", "bootstrap", "local-development", "docker-compose", "mkcert", "caddy", "https-lan", "monorepo", "scaffold", "powershell", "bash", "playwright", "kill-port", "pgrep", "sanity-check", "runtime-drift", "tsx-watch"],
       "platforms": ["claude-code", "cursor"]
     }
   ]

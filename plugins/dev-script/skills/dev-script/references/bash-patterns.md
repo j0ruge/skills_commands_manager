@@ -219,6 +219,40 @@ Tune the regex to your stack:
 
 Avoid bare `pgrep -af node` or `pgrep -af npm` — they match every Node tool the user has running. Always anchor the pattern to something specific to *this script's* processes (a script path, a specific config file name, a unique CLI flag).
 
+#### Gotcha — monorepo path constraints flip the regex ordering
+
+When the dev stack lives inside a monorepo (`packages/backend`, `apps/web`, `services/api/`), the *intuitive* tightening is to add the package path to the pattern: `tsx.*packages/backend.*server\.ts`. **This silently never matches.** The actual cmdline of a `tsx` process invoked from the monorepo is:
+
+```
+node /home/u/repo/packages/backend/node_modules/.bin/tsx watch --env-file=.env src/server.ts
+```
+
+`packages/backend` appears **before** `tsx`, not after. The regex `tsx.*packages/backend.*server\.ts` requires the opposite order, never matches, and `kill_known_dev_servers` becomes a silent no-op while looking like it's working — the worst kind of bug because `pgrep -af` returning nothing reads as "nothing to kill" instead of "regex mismatch".
+
+Right pattern for monorepo scoping (don't mention `tsx` at all — pin to the package + entrypoint):
+
+```bash
+# Express via tsx watch in monorepo
+'packages/backend.*server\.ts'
+# NestJS in apps/api
+'apps/api.*nest start'
+# Vite for a specific config file
+'\.vite\.config\.lan|apps/web.*vite\.config'
+```
+
+Real-world hit count from JRC: 8 zombie `tsx watch` trees from previous sessions survived months because the regex was wrong; the next `--reset-zitadel` produced a 401-storm because those zombies had stale env+JWKS in the heap. The lesson generalizes: when tightening a pgrep pattern, sanity-check by spawning a test process and running the regex against `ps -ef | grep <test-process>` *before* trusting that `kill_known_dev_servers` does anything.
+
+#### Companion gotcha — `tsx watch` doesn't watch `.env`
+
+When the launcher patches `.env` on every boot (which `dev-script` recommends as the canonical fix for stale-config drift after a reset), **`tsx watch` does not pick up the change** — it only reloads on `src/**` changes by default. Result: `.env` on disk has the new audience/issuer/ID, but the running process keeps the old values in memory. Every API call then 401s with no clear error.
+
+Two fixes, in order of preference:
+
+1. **Make watch include `.env` on the runner**: `tsx watch --include=.env src/server.ts` (analogous flags exist for `nodemon --watch .env`, `dotnet watch --include=.env`, and `cargo-watch -w .env`). One-line fix in `package.json`'s `dev` script.
+2. **Kill the runner after patching**: have the launcher run `kill_known_dev_servers` **after** writing the new `.env` and before re-spawning. Belt-and-suspenders if the watcher's include flag is unreliable for binary changes.
+
+Without either, the disk-vs-memory drift survives every "I edited the env, why is it still broken" debugging session.
+
 ## Trap-based cleanup
 
 ```bash

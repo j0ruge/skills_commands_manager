@@ -240,3 +240,22 @@ Linux-only scripts can ignore this; cross-platform scripts must handle it.
 **Cause**: Bootstrap calls `localhost:3000` while the backend is in the middle of its own startup sequence. Race condition.
 
 **Fix in the dev script**: make the bootstrap a **one-shot script that runs before** any dev servers start, **not** an in-process step of the backend. The dev script orchestrates the order: containers up → bootstrap → dev servers up.
+
+## P16 — Long-lived dev sessions accumulate zombie watchers (silent)
+
+**Symptom**: Months into a project, `pgrep -af tsx` (or equivalent) returns 5–10 instances of the dev runner, all bound to the same port, with stale env from previous bootstraps in their heap. Next `--reset-zitadel` (or any source-of-truth change) produces a 401-storm because *one* of those zombies wins the race for an incoming request and validates JWT against ancient JWKS.
+
+**Cause** (compound, all real):
+- Closing a terminal without Ctrl+C on the dev launcher leaves the spawned `tsx watch`/`vite`/`dotnet watch` orphaned. `setsid` decouples them from the shell session, so the OS doesn't reap them.
+- The launcher's `kill_known_dev_servers` regex is wrong (the gotcha in `bash-patterns.md`), so reclamation is a silent no-op.
+- The runner process doesn't watch `.env`, so even when the launcher patches the env on the next boot, in-memory state stays old.
+
+**Fix in 3 layers** (defense in depth — none alone is sufficient):
+
+1. **Disk in sync**: launcher patches `.env` every boot from the source-of-truth file (covered in §"Skip work that's already done — carefully").
+2. **Processes in sync**: `kill_known_dev_servers` with a regex that actually matches your stack's cmdline (see `bash-patterns.md` §"Fourth fallback" + the monorepo gotcha).
+3. **Heap in sync**: app boot-time sanity check that compares runtime env to source-of-truth file and warns LOUD on divergence (see `idempotency-and-state.md` §"Boot-time sanity check inside the app").
+
+Real-world hit count from JRC: 4 sessions over 5 days, each spending 15-60 minutes diagnosing "I reset the IdP and now nothing works", every time blaming a different layer (mkcert cert? .env? bootstrap?). The 3-layer defense was the only thing that broke the cycle — any single layer continued to fail because the other two leaked state across runs.
+
+**How to detect the trap**: if your project hits the same 401-storm symptom twice across separate sessions, stop debugging the symptom and run `pgrep -af '<your-runner-pattern>' | wc -l`. Anything > 1 is the smoking gun.

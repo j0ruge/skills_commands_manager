@@ -169,3 +169,53 @@ Implementations vary, but the JRC convention:
 - **`--reset`** drops the **most volatile** stable state — the IdP volume, the cert names file, the state file. It does **not** touch the application database (Postgres data); that's a separate `--purge-db` if needed.
 - Always print what's about to be deleted **before** deleting, so the user can Ctrl+C if they didn't mean it.
 - Encourage the user to run with `--reset` only when the state-mismatch error tells them to. Don't make it the default `clean` step — accidental data loss is a real risk.
+
+## Boot-time sanity check inside the app
+
+The state file + `.env` patching together cover **disk-level** drift. There's a third layer that prevents the worst class of regression: the running app process picks up its `.env` once at boot and keeps it in memory. If the launcher patches `.env` between sessions but the process from a previous session is still alive (orphan watcher, attached terminal, `nohup`), the runtime keeps the old values. Every request fails with no clear error from the launcher's perspective — disk and source-of-truth file agree, only the heap is stale.
+
+The defensive pattern: **the app reads the launcher's source-of-truth file at boot and warns LOUD on divergence**.
+
+```typescript
+// packages/backend/src/config/sanity.ts
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/**
+ * Compares runtime env against the launcher-generated source-of-truth file.
+ * Warn-only: in production the file does not exist and the check is silent.
+ * In dev, divergence means "kill this process and re-run the launcher".
+ */
+export function checkConfigSanity(env: { AUTH_AUDIENCE: string }): void {
+  const path = resolve(process.cwd(), '../../infra/.../bootstrap.json');
+  if (!existsSync(path)) return;
+  const truth = JSON.parse(readFileSync(path, 'utf8')) as { projectId?: string };
+  if (truth.projectId && env.AUTH_AUDIENCE !== truth.projectId) {
+    console.error(
+      `[sanity] AUTH_AUDIENCE=${env.AUTH_AUDIENCE} but bootstrap.json says ${truth.projectId}. ` +
+      `Stop this process and re-run ./dev.sh — your runtime is stale.`,
+    );
+  }
+}
+```
+
+Call it once at boot, after env validation:
+
+```typescript
+const env = loadEnv();
+checkConfigSanity(env);
+const app = await compose(env);
+```
+
+**Why warn-only, not fail-fast.** In production `bootstrap.json` doesn't exist; the check is a silent no-op. In dev, fail-fast turns a transient drift into a hard outage every time the launcher runs slightly out of order. The loud log is enough — the operator sees it in the next request and knows the answer in 5 seconds instead of 30 minutes. If your team prefers fail-fast, gate it behind `NODE_ENV !== 'production'` *and* file existence.
+
+This pattern is generic — it applies to any launcher-generated source-of-truth file:
+
+| Launcher file | Runtime check |
+|---|---|
+| Zitadel `bootstrap.json` | `AUTH_AUDIENCE === projectId` |
+| `.dev.script.state` (`EXTERNAL_FULL`) | `BASE_URL === EXTERNAL_FULL` |
+| `infra/db/connection.json` | `DATABASE_URL` host:port matches |
+| `infra/queue/connection.json` | `QUEUE_URL` matches |
+
+The check pays for itself the first time someone hits "but I edited the .env and restarted the launcher, why is it still broken?" — the answer is usually "you have a stale process from a previous session", and the sanity log says so.

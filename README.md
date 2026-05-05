@@ -29,6 +29,7 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 | **release** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **retrofit-skill** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **statusline** | ✓ | — | Claude Code only (uses the Claude Code status line API) |
+| **zitadel-idp** | ✓ | ✓ | Skill — Zitadel self-hosted OIDC integration field guide (bootstrap, JWT, branding, 20+ gotchas) |
 
 ## Installation
 
@@ -82,6 +83,7 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | **ddd** | 0.3.0 | Architecture | Domain-Driven Design toolkit — codebase analysis, strategic design (event storming, context mapping), legacy → DDD conversion specs |
 | **dev-script** | 0.3.0 | Development | Generates `dev.sh` (bash) + `dev.ps1` (PowerShell) launchers tailored to the current project — detects compose/monorepo/IdP/mkcert, emits idempotent script with healthchecks, port reclaim (with `pgrep` fallback for kernels that hide PIDs from `ss`/`lsof`), trap cleanup, HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE, Playwright LAN-HTTPS testing recipe, monorepo `kill_known_dev_servers` regex gotcha (path appears before `tsx` in cmdline), `tsx watch --include=.env` so launcher-patched env actually reaches runtime, and the boot-time sanity-check pattern (app warns LOUD when runtime config diverges from launcher's source-of-truth file) |
 | **retrofit-skill** | 0.1.0 | Development | Apply non-obvious session lessons to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes |
+| **zitadel-idp** | 0.1.0 | Development | Zitadel `v4.x` self-hosted OIDC integration field guide — captures 20+ high-friction quirks (FirstInstance env placement, volume perms, v1/v2 API split, tenant→orgId mapping, JWT validation over self-signed HTTPS via `NODE_EXTRA_CA_CERTS` + JWKS, `loginV2` instance flag, silent-renew redirect URI byte-match, idempotent bootstrap `No changes` 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time `signinSilent` recursion, StrictMode closure trap, `post_logout_redirect_uri invalid`, Login UI v1 branding via `privateLabelingSetting` / `custom_login_text` / `LANG-lg4DP`, F5 with `InMemoryWebStorage`, 401 storm post `--reset-zitadel` from `tsx watch` zombies, multi-app YAML refactor regression vs dynamic env). Bundles working `docker-compose.zitadel.yml`, idempotent `bootstrap-zitadel.ts` and `reset-zitadel.sh` |
 
 ---
 
@@ -198,6 +200,33 @@ Generates a single-command development launcher for any project — `dev.sh` (ba
 - Re-derive `projectId`/`clientId` from `bootstrap.json` on every boot — never hardcode
 
 **Cross-platform:** Linux/macOS bash and Windows/cross-platform PowerShell — same flags, same semantics, idiomatic primitives in each.
+
+</details>
+
+<details>
+<summary><strong>zitadel-idp</strong> — Zitadel Self-Hosted OIDC Field Guide</summary>
+
+Captures patterns and pitfalls discovered while integrating **Zitadel `v4.x` self-hosted** as the IdP for the JRC Brasil ERP. Read this skill BEFORE drafting Zitadel compose files, writing a Management API bootstrap, validating Zitadel JWTs, customizing the Login UI v1, or wiring an SPA via OIDC PKCE — it averages 1–3 hours saved per integration.
+
+| Skill | Description |
+|-------|-------------|
+| `zitadel-idp` | Field guide with 20+ documented quirks, drill-down references, and bundled working assets |
+
+**Bundled references** (`references/`): `api-cheatsheet.md`, `branding.md`, `docker-compose-bootstrap.md`, `spa-recipes.md`, `tenant-org-mapping.md`, `token-validation.md`, `troubleshooting.md`.
+
+**Bundled assets**: `docker-compose.zitadel.yml` (working FirstInstance + volume perms), `bootstrap-zitadel.ts` (idempotent Management API bootstrap with multi-app `applications[]` and env > YAML > hardcoded precedence for dynamic dev hosts), `scripts/reset-zitadel.sh`.
+
+**Highlights of the gotchas encoded:**
+- FirstInstance env placement; v1/v2 API split; tenant → `orgId` mapping
+- JWT validation over self-signed HTTPS — `NODE_EXTRA_CA_CERTS`, `createRemoteJWKSet` traps, `tlsMode external`, `x-zitadel-orgid`
+- Silent-renew byte-match on redirect URIs; `signinSilent` boot-time recursion; StrictMode + closure `cancelled` flag locking SPA in "Verifying session…"
+- `post_logout_redirect_uri invalid`; `InMemoryWebStorage` + F5 trap; `crypto.subtle` PKCE secure-context requirement on LAN
+- Login UI v1 branding via `privateLabelingSetting`, `custom_login_text`, `LANG-lg4DP`, `405` on `/assets/v1/orgs/me/policy/label/...`
+- Idempotent bootstrap `COMMAND-1m88i "No changes"` and `Org-8nfSr "Private Label Policy has not been changed"`
+- 401 storm post `--reset-zitadel` from orphaned `tsx watch` / `nodemon` processes holding stale env+JWKS in heap
+- Multi-app YAML refactor: env vars from `dev.sh` must dominate static YAML when LAN host is dynamic (`.sslip.io`)
+
+**Scope**: Zitadel `v4.x` self-hosted, OIDC-only, Login UI v1. Out of scope: Zitadel Cloud, v3, SAML, federation IdPs, Login UI v2.
 
 </details>
 

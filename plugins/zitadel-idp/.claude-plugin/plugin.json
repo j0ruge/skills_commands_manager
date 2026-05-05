@@ -1,0 +1,30 @@
+{
+  "name": "zitadel-idp",
+  "description": "Zitadel self-hosted OIDC integration field guide. Captures the full set of high-friction quirks discovered while integrating Zitadel v4.x as the IdP for JRC Brasil ERP — FirstInstance env placement, volume permissions, v1/v2 API split, tenant→orgId mapping, JWT validation traps over self-signed HTTPS (NODE_EXTRA_CA_CERTS, JWKS over HTTPS), loginV2 instance flag, silent-renew redirect URI byte-match, JWT access token sem profile claims, idempotent bootstrap 'No changes' 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time signinSilent recursion, StrictMode + closure cancelled flag, post_logout_redirect_uri invalid, branding da Login UI v1 / privateLabelingSetting / 405 em /assets/v1, custom_login_text e LANG-lg4DP, F5 com InMemoryWebStorage, 401 storm pós --reset-zitadel por tsx-watch zumbi, e regressão multi-app YAML que sobrescreve env vars OIDC_REDIRECT_URIS dinâmicas. Bundles a working docker-compose.zitadel.yml, idempotent bootstrap-zitadel.ts and reset-zitadel.sh script. Use whenever starting Zitadel integration, debugging 4xx on Zitadel APIs, validating Zitadel JWTs in Node/TypeScript, customizing the hosted Login UI, or wiring an SPA via OIDC PKCE.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "0.1.0",
+  "category": "development",
+  "keywords": [
+    "zitadel",
+    "idp",
+    "oidc",
+    "auth",
+    "pkce",
+    "jwt",
+    "self-hosted",
+    "bootstrap",
+    "login-ui",
+    "branding",
+    "silent-renew",
+    "react-oidc-context",
+    "management-api",
+    "troubleshooting",
+    "firstinstance",
+    "jwks",
+    "private-labeling"
+  ],
+  "platforms": ["claude-code", "cursor"],
+  "skills": "./skills"
+}

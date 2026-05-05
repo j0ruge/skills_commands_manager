@@ -111,6 +111,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_dir": "plugins/dotnet-wpf/skills/dotnet-wpf-e2e-testing",
     },
     {
+        "plugin": "zitadel-idp",
+        "cursor_name": "zitadel-idp",
+        "display": "Zitadel IdP — self-hosted OIDC integration field guide (bootstrap, JWT, branding, gotchas)",
+        "source_type": "skill",
+        "source_dir": "plugins/zitadel-idp/skills/zitadel-idp",
+    },
+    {
         "plugin": "retrofit-skill",
         "cursor_name": "retrofit-skill",
         "display": "Retrofit Skill — apply session lessons to a marketplace skill (bump, CHANGELOG, push)",

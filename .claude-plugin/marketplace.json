@@ -88,6 +88,15 @@
       "category": "development",
       "keywords": ["dev-script", "dev.sh", "dev.ps1", "bootstrap", "local-development", "docker-compose", "mkcert", "caddy", "https-lan", "monorepo", "scaffold", "powershell", "bash", "playwright", "kill-port", "pgrep", "sanity-check", "runtime-drift", "tsx-watch"],
       "platforms": ["claude-code", "cursor"]
+    },
+    {
+      "name": "zitadel-idp",
+      "source": "./plugins/zitadel-idp",
+      "version": "0.1.0",
+      "description": "Zitadel self-hosted OIDC field guide — captures 20+ high-friction quirks (FirstInstance env placement, volume perms, v1/v2 API split, tenant→orgId mapping, JWT validation over self-signed HTTPS via NODE_EXTRA_CA_CERTS + JWKS, loginV2 instance flag, silent-renew redirect URI byte-match, idempotent bootstrap 'No changes' 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time signinSilent recursion, StrictMode closure trap, post_logout_redirect_uri invalid, Login UI v1 branding via privateLabelingSetting / custom_login_text / LANG-lg4DP, F5 with InMemoryWebStorage, 401 storm post --reset-zitadel from tsx-watch zombies, multi-app YAML refactor regression vs dynamic env). Bundles working docker-compose.zitadel.yml, idempotent bootstrap-zitadel.ts and reset-zitadel.sh.",
+      "category": "development",
+      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling"],
+      "platforms": ["claude-code", "cursor"]
     }
   ]
 }

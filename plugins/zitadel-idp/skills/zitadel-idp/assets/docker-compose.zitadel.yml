@@ -1,0 +1,142 @@
+# IMPORTANTE — não há env var para o instance feature flag `loginV2.required`.
+# Default em Zitadel ≥ v3 é `true`, mas a Login UI v2 (zitadel/typescript) é
+# uma app Next.js separada que precisa ser deployada à parte. Se você está
+# usando só a Login UI v1 bundled, desative o flag pós-boot via:
+#   curl -X PUT http://<external-domain>/v2/features/instance \
+#     -H "Authorization: Bearer $PAT" -d '{"loginV2":{"required":false}}'
+# Ver references/troubleshooting.md §"Hosted UI returns 404" para o diagnóstico
+# completo (sintoma: 404 `{"code":5,"message":"Not Found"}` em /ui/v2/login/).
+
+services:
+  zitadel-db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: zitadel
+      POSTGRES_PASSWORD: ${ZITADEL_DB_PASSWORD:?defina ZITADEL_DB_PASSWORD em infra/docker/.env}
+      POSTGRES_DB: zitadel
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zitadel"]
+      interval: 5s
+      timeout: 60s
+      retries: 10
+      start_period: 5s
+    networks:
+      - idp-db
+    volumes:
+      - zitadel-pgdata:/var/lib/postgresql/data:rw
+
+  zitadel-init:
+    image: ghcr.io/zitadel/zitadel:latest
+    command: 'init'
+    depends_on:
+      zitadel-db:
+        condition: service_healthy
+    environment:
+      ZITADEL_EXTERNALDOMAIN: 127.0.0.1.sslip.io
+      ZITADEL_EXTERNALPORT: 8080
+      ZITADEL_EXTERNALSECURE: false
+      ZITADEL_TLS_ENABLED: false
+      ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: true
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+    networks:
+      - idp-db
+    volumes:
+      - ./zitadel/local:/current-dir:rw
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:latest
+    restart: always
+    # TLS modes:
+    #   --tlsMode disabled  → plain HTTP, current dev default (matches EXTERNALSECURE/TLS_ENABLED below).
+    #   --tlsMode external  → HTTP internally, with TLS terminated by a reverse proxy (Caddy/NGINX/Traefik).
+    #                         When you switch to external, also flip ZITADEL_EXTERNALSECURE=true and set
+    #                         ZITADEL_EXTERNALPORT to the *public HTTPS port* the proxy serves on. All three
+    #                         settings move together — see references/docker-compose-bootstrap.md §7.
+    #   --tlsMode enabled   → Zitadel handles its own TLS (needs cert paths in env). Rare in dev.
+    command: >-
+      start-from-init
+      --masterkey ${ZITADEL_MASTERKEY:?defina ZITADEL_MASTERKEY (32 chars exatos) em infra/docker/.env}
+      --tlsMode disabled
+    depends_on:
+      zitadel-db:
+        condition: service_healthy
+      zitadel-init:
+        condition: service_completed_successfully
+    environment:
+      ZITADEL_EXTERNALDOMAIN: 127.0.0.1.sslip.io
+      ZITADEL_EXTERNALPORT: 8080
+      ZITADEL_EXTERNALSECURE: false
+      ZITADEL_TLS_ENABLED: false
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      # FIRSTINSTANCE bootstrap — escreve o PAT do service account IAM_OWNER
+      # em /current-dir/admin.pat. Org.Machine = service account com role IAM_OWNER
+      # (capaz de chamar Management API), distinto de Org.LoginClient (que é só
+      # para a Login UI). Setup roda no comando start-from-init, então estes envs
+      # precisam estar no serviço zitadel — não no zitadel-init (apenas schema).
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /current-dir/admin.pat
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: admin-sa
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: JRC Admin Service Account
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-12-31T23:59:59Z"
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "8080:8080"
+    networks:
+      - idp-db
+      - app
+    volumes:
+      - ./zitadel/local:/current-dir:rw
+
+  zitadel-bootstrap:
+    image: node:20-alpine
+    profiles: ["bootstrap"]
+    working_dir: /workspace/packages/idp
+    depends_on:
+      zitadel:
+        condition: service_healthy
+    environment:
+      ZITADEL_API_URL: http://zitadel:8080
+      ZITADEL_PAT_FILE: /current-dir/login-client.pat
+      ZITADEL_CONFIG_FILE: /workspace/specs/002-idp-oidc/contracts/zitadel-config.yaml
+    networks:
+      - app
+    volumes:
+      - ../../:/workspace:rw
+      - ./zitadel/local:/current-dir:ro
+    command: sh -c "npm install --prefix /workspace/packages/idp && npx tsx scripts/bootstrap-zitadel.ts"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - app
+
+networks:
+  idp-db:
+  app:
+
+volumes:
+  zitadel-pgdata:

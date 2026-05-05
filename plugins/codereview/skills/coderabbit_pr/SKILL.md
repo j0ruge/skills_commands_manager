@@ -1,7 +1,7 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.1.0
+  version: 3.2.0
 description: >
   Resolve AI review comments on a GitHub PR. Supports CodeRabbit, Copilot,
   Gemini Code Assist, and Codex — auto-detects which reviewers are present.
@@ -253,6 +253,27 @@ After each item (or batch), update the corresponding reviewer's checklist file. 
 
 Skip if `--skip-tests` was passed.
 
+#### 4.0 Capture Pre-Fix Baseline
+
+**Run the project's test command BEFORE applying any review fixes.** Save the pass/fail counts and the list of failing test names. This is your **baseline** of pre-existing latent failures.
+
+Why this matters: when CI is broken by an early-step failure (lint syntax error, missing config, broken `npm exec`), GitHub never reaches the test step — so failing tests in the test step are invisible until the early step is fixed. After your fixes unblock CI, those latent failures **appear as if they were caused by your edits**, but they were always there.
+
+Without a baseline, Phase 4.2 cannot tell "regression caused by my fix" from "pre-existing latent unmasked by my fix" — and the skill ends up trying to fix unrelated bugs, expanding scope uncontrollably.
+
+**Save the baseline as:**
+
+```
+baseline_pass: <number>
+baseline_fail: <number>
+baseline_failing_tests:
+  - <test 1 name>
+  - <test 2 name>
+  ...
+```
+
+If the baseline already shows N>0 failures, document them in each `{reviewer}-review.md` checklist (a "Pre-existing latent failures" subsection) BEFORE applying any fixes. They are out of scope for this run.
+
 #### 4.1 Detect Test Command
 
 | Priority | Detection | Command |
@@ -266,12 +287,17 @@ Skip if `--skip-tests` was passed.
 | 7 | `Makefile` has `test` target | `make test` |
 | 8 | None detected | Ask the user |
 
-#### 4.2 Run and Report
+#### 4.2 Run and Compare Against Baseline
 
-Execute the test command. Capture results.
+Execute the test command after applying fixes. Compare against the Phase 4.0 baseline:
 
-- **All pass**: Update all checklist files with "All tests passed ({n} tests)."
-- **Failures**: Check if failures are related to the applied fixes. If related, attempt to fix. If pre-existing, note in all checklists.
+- **All pass and baseline was 0**: update all checklists with "All tests passed ({n} tests)."
+- **Same failures as baseline (no new fails, no fewer fails)**: pre-existing latent — note in checklists, **do NOT attempt to fix in this PR**. Open a follow-up issue with the error signature and a link to this PR. Scope discipline is the priority.
+- **New failures (failing tests not in baseline)**: caused by your fixes — diagnose and correct. These ARE regressions.
+- **Fewer failures than baseline**: your fixes accidentally fixed something. Note it but don't claim credit; the fix may be incidental and could regress later.
+- **Mixed (some pre-existing + some new)**: separate the two lists. Fix only the new failures in this PR. Pre-existing go to the follow-up issue.
+
+**Do not silence failing tests** (e.g., `it.skip`, `if: false` on the workflow step, `continue-on-error: true`) to make CI green. Document and defer.
 
 #### 4.3 Update Final Status
 
@@ -365,6 +391,7 @@ Run the fetch query again to confirm zero unresolved threads remain. Update each
 
 - **No scope creep**: Only fix issues raised by the reviewers.
 - **No unrelated changes**: Even if you notice other issues while reading code, do NOT fix them.
+- **Don't expand scope to fix latent bugs**: pre-existing test failures unmasked by your fixes (see Phase 4.0 baseline) are NOT yours to fix. Document and open follow-up issue.
 - **No commits**: Leave committing to the user.
 
 ### Token Efficiency

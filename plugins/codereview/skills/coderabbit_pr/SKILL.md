@@ -1,7 +1,7 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.2.0
+  version: 3.3.0
 description: >
   Resolve AI review comments on a GitHub PR. Supports CodeRabbit, Copilot,
   Gemini Code Assist, and Codex — auto-detects which reviewers are present.
@@ -205,6 +205,7 @@ Process ALL checklist items across ALL reviewer files. Group items by file to mi
 For each item (or group of items in the same file):
 
 1. **Read the current code** at the referenced file and line (with ~30 lines of context)
+1.5. **Verify referenced state** — if the reviewer cites a file path, line number, runtime behavior, or references an external artifact ("as documented in X", "see previous session", a cached plan, an old issue, "this was fixed in commit Y"), confirm against the current state BEFORE accepting the diagnosis. PR diff and live code are authoritative; reviewer comments may have been written against a snapshot that is now obsolete (force-pushed, rebased, or simply old). If the cited file/line/behavior no longer matches what the reviewer described, mark the item as `[x]` — "Reviewer claim no longer applies: <what changed>" and move on. This is the same anti-silencing principle from Phase 4.0 baseline applied in another direction: do not propagate a reviewer's diagnosis without primary evidence that it still holds.
 2. **Check project specs/docs** if the comment questions a design decision. Many "issues" flagged by AI reviewers are actually by-design choices documented in specs, data models, or CLAUDE.md. Before marking as "Fixed", verify the reviewer isn't wrong.
 3. **Recalibrate severity**: AI reviewers often default to MEDIUM or don't assign severity at all (Copilot, Codex). After reading the code and understanding the real impact, **reassign the severity** based on actual risk:
    - **CRITICAL**: data loss, security vulnerability, crash in production path
@@ -299,6 +300,8 @@ Execute the test command after applying fixes. Compare against the Phase 4.0 bas
 
 **Do not silence failing tests** (e.g., `it.skip`, `if: false` on the workflow step, `continue-on-error: true`) to make CI green. Document and defer.
 
+**Cascade-aware rerun**: if your fixes uncovered new failures (the "new failures" branch above), consider rerunning the baseline AGAIN after addressing them — fail-fast cascades can have more than 2 levels (bug 1 masks bug 2 masks bug 3). The second bug surfaced is not necessarily the last; sibling cicd skill v2.5.0 documents a real 3-level cascade in PR #6 of `validade_bateria_estoque`. After each layer of fixes, capture a fresh baseline before declaring victory.
+
 #### 4.3 Update Final Status
 
 Update the "Final Result" table in each `{reviewer}-review.md` with:
@@ -392,6 +395,7 @@ Run the fetch query again to confirm zero unresolved threads remain. Update each
 - **No scope creep**: Only fix issues raised by the reviewers.
 - **No unrelated changes**: Even if you notice other issues while reading code, do NOT fix them.
 - **Don't expand scope to fix latent bugs**: pre-existing test failures unmasked by your fixes (see Phase 4.0 baseline) are NOT yours to fix. Document and open follow-up issue.
+- **Verify before trust**: reviewer claims about files, line numbers, runtime behavior, prior-session diagnoses, or external artifacts ("as documented in X", cached plans, old issues) are hypotheses to validate against the live PR diff and current code, not facts. Same anti-silencing principle from Phase 4.0 applied in another direction: don't propagate a reviewer's diagnosis without primary evidence that it still holds. Phase 3.1 step 1.5 enforces this per-item.
 - **No commits**: Leave committing to the user.
 
 ### Token Efficiency

@@ -2,6 +2,30 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.10.0] - 2026-05-05
+
+### Changed (coderabbit_pr v3.2.0 → v3.3.0 — verify-before-trust)
+
+- **Phase 3.1 ganhou novo passo "Verify referenced state"** antes de aplicar QUALQUER fix: quando o reviewer cita arquivo, linha, comportamento runtime, ou referencia artefato externo (cached plan, doc, "as documented in X", "see previous session"), confirmar contra estado atual. PR diff e código vivo são autoritários; reviewer pode estar comentando em snapshot obsoleto desde o último push.
+- **Operating Principle "Discipline" novo bullet "Verify before trust"**: reviewer claims sobre arquivos, linhas, comportamento ou artefatos externos são hipóteses a validar contra o código vivo, não fatos. Mesmo princípio do anti-silencing do v1.9.0 aplicado em outra direção.
+- **Phase 4.2 nota refinada sobre cascade em fixes**: se o primeiro fix revelar pre-existing failures (cenário do v1.9.0 baseline), considere rerun baseline porque MAIS fixes podem revelar MAIS bugs latentes. Cascade fail-fast pode ter múltiplos níveis — não presuma que o segundo bug é o último.
+
+### Why
+
+Sessão de debug do PR #6 do `validade_bateria_estoque`: cached plan da sessão anterior documentava `TypeError: RequestInit signal AbortSignal` (msw v2 + jsdom + undici) como bug ativo bloqueando 44 testes. Verificação primária via `gh run view --log-failed` mostrou que o erro REAL do CI era completamente diferente: `Cannot find package 'jsdom' imported from /node_modules/vitest/...`. Os dois bugs existiam, mas o do cached plan estava mascarado pelo primeiro. Se eu tivesse aceitado o cached plan sem validar, teria proposto fix para o bug errado.
+
+Generaliza para `coderabbit_pr`: reviewers (CodeRabbit, Copilot, Gemini, Codex) podem citar arquivo, linha ou comportamento que mudou desde o snapshot do review. Sem validar contra código vivo, o skill aplica fix em código que já mudou ou propaga diagnóstico incorreto. O princípio é o mesmo do anti-silencing do v1.9.0 (evidência primária antes de qualquer ação) — só que aplicado em outra direção: v1.9.0 dizia "não esconder failures"; v1.10.0 diz "não trustar referências sem validar".
+
+A nota refinada da Phase 4.2 vem do mesmo PR #6: cicd v2.4.0 já documentava cascade fail-fast (bug 1 mascara bug 2). Aprendemos no PR #6 que pode ter MAIS de 2 níveis (bug 1 → bug 2 → bug 3). Após primeiro fix, considere rerun baseline em vez de assumir que o segundo bug é o último.
+
+### Migration notes
+
+- Sem breaking changes. Skill continua resolvendo PR comments end-to-end.
+- Novo passo "Verify referenced state" adiciona ~5-30s por item de review (1 leitura extra de arquivo via Read tool). Para PRs com 50+ items, ainda dentro do orçamento (model routing haiku/sonnet do v1.6.0 já estava em vigor).
+- Para itens onde o reviewer cita comportamento runtime que não se reproduz contra estado atual, marcar como `[x]` — "Não verificado: reviewer cita comportamento runtime que não consegui reproduzir contra código atual; PR submitter precisa confirmar antes do fix".
+
+---
+
 ## [1.9.0] - 2026-05-05
 
 ### Changed (coderabbit_pr v3.1.0 → v3.2.0 — baseline-aware regression testing)

@@ -1,7 +1,7 @@
 ---
 name: cicd
 metadata:
-  version: 2.3.0
+  version: 2.5.0
 description: |
   Troubleshooting and configuration of CI/CD pipelines with GitHub Actions, Docker, GHCR, and self-hosted runners.
   Unified skill — automatically detects backend (Prisma) or frontend (Vite) and routes to specific references.
@@ -100,6 +100,8 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | `[F]` | Container nginx returns 403                            | dist/ empty or not copied                            | Check `npm run build` and `COPY --from=build` in Dockerfile                           |
 | `[S]` | `Missing script: "exec"` ao rodar tsc/playwright/openapi-typescript em workspace | Sintaxe inválida `npm run -w <ws> exec -- <cmd>` (não existe script `exec`; `exec` é subcomando de `npm`, não script de `package.json`) | Substituir por `npm exec -w <ws> -- <cmd>` |
 | `[S]` | `ESLint couldn't find an eslint.config.(js\|mjs\|cjs) file` em workspace de monorepo | ESLint v9 removeu auto-detect de `.eslintrc.*`; flat config existe em outro workspace e **não** se propaga | Criar `eslint.config.js` por workspace que rode `eslint`. Pacotes Node-only: `globals.node`, sem `eslint-plugin-react-hooks` / `react-refresh` |
+| `[S]` | `Cannot find package 'X' imported from /node_modules/<other-pkg>` em monorepo | devDep tem subtree em versões antigas que conflita com a raiz → npm aninha em `packages/<ws>/node_modules/X`; outras deps hoisted não acham via Node ESM resolution | Trocar por dep com subtree compatível (ex.: jsdom→happy-dom), OU declarar a dep no `package.json` raiz para forçar hoist, OU `overrides` para dedup das transitive deps conflitantes |
+| `[F]` | Vitest pré-test fail (`Cannot find package 'jsdom'`) ou `TypeError: signal AbortSignal` em msw v2 | jsdom@20 não hoista em monorepo (subtree pesado) + injeta `AbortController` próprio incompatível com undici nativo do Node usado pelo msw v2 | Trocar para `happy-dom`: `npm i -D happy-dom -w <ws>` e `environment: 'happy-dom'` em `vitest.config.ts`. Subtree leve hoista limpo + AbortController nativo |
 
 ---
 
@@ -152,6 +154,8 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | 29 | `[B]` | `docker run` does not auto-pull if the tag exists locally on self-hosted runners | Always `docker pull <image>` before `docker run <image>` in migration steps — stale cache causes "no pending migrations" while the app expects new schema |
 | 30 | `[S]` | `npm run -w <ws> exec --` é sintaxe inválida em monorepo npm | `exec` não é script de `package.json`; usar `npm exec -w <ws> -- <cmd>`. Falha cedo (`Missing script: "exec"`) e mascara steps subsequentes |
 | 31 | `[S]` | ESLint v9 flat config é per-workspace, não herda | Cada workspace que rode `eslint` precisa do próprio `eslint.config.{js,mjs,cjs}` — bump pra v9 num workspace não dá config aos siblings |
+| 32 | `[S]` | devDep com subtree em versões antigas não hoista em monorepo npm | npm aninha o subtree em `packages/<ws>/node_modules/X`, fora do alcance da resolução Node ESM partindo de outra dep hoisted. Diagnóstico: comparar `node_modules/X` (raiz) vs `packages/<ws>/node_modules/X` no lock |
+| 33 | `[F]` | vitest 3 + msw v2 + jsdom esconde 2 bugs latentes | Hoisting (jsdom@20 não hoista) + AbortSignal mismatch (jsdom injeta primitivas próprias incompatíveis com undici nativo). `happy-dom` resolve ambos: subtree leve hoista limpo + AbortController nativo do Node |
 
 ---
 

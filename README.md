@@ -74,8 +74,8 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 
 | Plugin | Version | Category | Description |
 |--------|---------|----------|-------------|
-| [**cicd**](#cicd) | 2.4.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners |
-| [**codereview**](#codereview) | 1.9.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, **deterministic hardcoded secrets detection** via Python regex script + optional ggshield/gitleaks (GitGuardian-equivalent, blocks PRs with leaked credentials), and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) with baseline-aware regression testing |
+| [**cicd**](#cicd) | 2.5.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners — now with monorepo workspace hoisting diagnosis and vitest jsdom→happy-dom recipe for msw v2 setups |
+| [**codereview**](#codereview) | 1.10.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, **deterministic hardcoded secrets detection** via Python regex script + optional ggshield/gitleaks (GitGuardian-equivalent, blocks PRs with leaked credentials), and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) with baseline-aware regression testing and **verify-before-trust** validation of reviewer-cited references |
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |

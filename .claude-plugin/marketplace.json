@@ -11,7 +11,7 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners",
       "category": "development",
       "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment"],
@@ -29,7 +29,7 @@
     {
       "name": "codereview",
       "source": "./plugins/codereview",
-      "version": "1.9.0",
+      "version": "1.10.0",
       "description": "Code review toolkit: automated pre-PR review with severity grading and model routing for token efficiency (haiku/sonnet/opus), TOCTOU race condition detection, accessibility checks, data integrity analysis, deterministic hardcoded secrets detection via Python regex script (passwords, JWT, AWS/GCP/GitHub tokens, PEM keys — GitGuardian-equivalent, applied to CODE/TESTS/CONFIG with BLOCKED banner + forced grade F, plus optional ggshield/gitleaks integration when installed), and multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex) with severity recalibration, cross-reviewer deduplication, and GitHub conversation resolution. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
       "category": "quality",
       "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "gitleaks", "credentials", "hardcoded-secrets", "deterministic-scan"],

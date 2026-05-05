@@ -185,6 +185,8 @@ npm error workspace @<org>/<pkg>@<ver>
 
 **Why this is dangerous beyond the obvious:** o erro é **fail-fast** — todos os steps subsequentes do job (test, build, etc.) não rodam. Falhas latentes nos steps escondidos (test broken, codegen drift, type errors em test files) **só aparecem depois** que esse fix é aplicado. Ao consertar a sintaxe, antecipe que outros vermelhos podem surgir — não são regressões, eram pré-existentes mascarados.
 
+**Cascade pode ter múltiplos níveis:** o segundo bug que aparece após o fix pode, por sua vez, estar mascarando um terceiro. No PR #6 que motivou este cenário, a cadeia foi: `Missing script: "exec"` (bug 1) mascarava `Cannot find package 'jsdom'` (bug 2) que mascarava `TypeError: signal AbortSignal` da interop msw v2 + undici (bug 3). Cada fix revelava o próximo. **Após cada fix, rode a suite localmente** antes de declarar vitória — não presuma que o segundo bug é o último.
+
 **Verificação local:**
 
 ```bash
@@ -247,3 +249,71 @@ export default tseslint.config(
 ```bash
 npm run lint -w <ws>   # deve sair com exit 0 (warnings ok)
 ```
+
+---
+
+## 8. `Cannot find package 'X' imported from /node_modules/<other-pkg>` em monorepo workspace
+
+**Symptom:** CI ou execução local de uma ferramenta hoisted (vitest, eslint, tsc, qualquer binário na raiz do monorepo) falha com:
+
+```text
+Error: Cannot find package 'X' imported from
+  <repo>/node_modules/<other-pkg>/dist/chunks/...
+
+Test Files (N)  Tests no tests  Errors N errors
+```
+
+`X` é uma devDep declarada em `packages/<ws>/package.json` mas que falha resolver via Node ESM partindo de outra dep que está hoisted na raiz.
+
+**Cause:** npm workspaces faz hoist de devDeps por padrão para `/node_modules/<pkg>` — mas só quando o subtree de transitive deps é compatível com a raiz. Quando `X` traz deps em versões antigas (ex.: `agent-base@6`, `cssstyle@2`, `tough-cookie@4`) que conflitam com versões já resolvidas na raiz, npm aninha o subtree inteiro em `packages/<ws>/node_modules/X` para evitar conflito.
+
+A consequência: outra dep que está hoisted (ex.: vitest na raiz) faz `import 'X'` partindo de `/node_modules/<other-pkg>/...`. Resolução Node ESM sobe a árvore: `/node_modules/<other-pkg>/node_modules/X` ❌ → `/node_modules/X` ❌ → fail. **Nunca olha em `packages/<ws>/node_modules/`**, porque isso não está no caminho do importador.
+
+**Diagnosis:**
+
+```bash
+# Confirma que X está aninhado, não hoisted
+node -e "const l=require('./package-lock.json').packages; \
+  console.log('node_modules/X (raiz):', !!l['node_modules/X']); \
+  console.log('packages/<ws>/node_modules/X:', !!l['packages/<ws>/node_modules/X']);"
+
+# Output esperado em caso do bug:
+# node_modules/X (raiz): false
+# packages/<ws>/node_modules/X: true
+
+# Confirma que <other-pkg> está hoisted (importador)
+node -e "console.log(require.resolve('<other-pkg>'))"
+# Deve printar /node_modules/<other-pkg>/...
+```
+
+**Fixes (em ordem de preferência):**
+
+1. **Trocar `X` por uma dep com subtree compatível** — mais limpo, resolve a causa raiz. Exemplo do PR que motivou esta entrada: trocar `jsdom@20` (subtree pesado) por `happy-dom@20` (subtree leve, dedupa) num monorepo com vitest. Ver `troubleshooting-frontend.md` cenário 8.
+
+2. **Declarar `X` como devDep na raiz** — força hoist para `/node_modules/X`. Útil quando trocar a dep não é viável. Cuidado: muda a árvore de instalação — rode `npm install` e revise o diff do `package-lock.json`.
+
+3. **`overrides` no package.json raiz** — força versões específicas das transitive deps que estão conflitando, permitindo dedup. Mais cirúrgico mas frágil:
+
+   ```json
+   {
+     "overrides": {
+       "agent-base": "^7.0.0",
+       "cssstyle": "^4.0.0"
+     }
+   }
+   ```
+
+4. **Polyfill no setup do importador** — última opção, frágil. Por exemplo, se o importador é vitest e `X` é jsdom, polifilar o que jsdom traria em `setup.ts`. Resolve o sintoma, não a causa.
+
+**Verificação pós-fix:**
+
+```bash
+npm install
+npm ls X
+# Esperado: X aparece deduped na raiz, não em packages/<ws>/
+
+# E o comando que falhava agora roda:
+npm run test -w <ws>
+```
+
+**Por que isso é dangeroso de diagnosticar:** o erro `Cannot find package 'X'` aponta para `<other-pkg>` no stack trace, não para a workspace que declarou `X`. Sem o passo de comparar `node_modules/X` vs `packages/<ws>/node_modules/X` no lock, parece bug do `<other-pkg>` ou versão errada de `X`. A causa real (hoisting frustrado) só aparece via inspeção do lock.

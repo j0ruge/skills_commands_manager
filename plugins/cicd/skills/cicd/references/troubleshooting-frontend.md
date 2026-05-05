@@ -147,6 +147,73 @@ docker exec service_report_web ls -la /usr/share/nginx/html/
 
 ---
 
+### 8. Vitest com `environment: 'jsdom'` falha pré-test ou em `signal AbortSignal`
+
+**Symptom A — pré-test fail (CI / monorepo):**
+
+```text
+Error: Cannot find package 'jsdom' imported from
+  /home/runner/work/.../node_modules/vitest/dist/chunks/index.<hash>.js
+
+Test Files (N)  Tests no tests  Errors N errors
+```
+
+Nenhum teste roda. Vitest aborta no setup do environment.
+
+**Symptom B — falha em runtime durante testes (qualquer ambiente):**
+
+```text
+TypeError: RequestInit: Expected signal ("AbortSignal {}") to be an instance of AbortSignal.
+  at @mswjs/interceptors/src/utils/fetchUtils.ts:<line>
+  at <YourApiClient>.request (src/lib/api/client.ts:<line>)
+```
+
+Acontece em testes que usam `fetch(..., { signal })` mockado por msw v2.
+
+**Cause (dois bugs em um setup):**
+
+1. **Hoisting (Symptom A):** `jsdom@20` traz subtree de deps em versões antigas (`agent-base@6`, `cssstyle@2`, `tough-cookie@4`) que conflitam com a raiz do monorepo. npm aninha o subtree todo em `packages/<ws>/node_modules/jsdom`, não em `/node_modules/jsdom`. vitest hoisted na raiz não consegue encontrar — resolução Node ESM partindo de `/node_modules/vitest/...` nunca olha em `packages/<ws>/node_modules/`. Ver `troubleshooting-shared.md` cenário 8 para o mecanismo geral.
+2. **AbortSignal mismatch (Symptom B):** jsdom injeta seu próprio `AbortController`/`AbortSignal` em `globalThis`. msw v2 (`@mswjs/interceptors`) intercepta `fetch` e usa undici nativo do Node para construir o `Request`. undici valida `signal instanceof AbortSignal` contra a global do **Node nativo**, não do jsdom → `TypeError`.
+
+**Fix canônico (resolve as duas causas com uma troca):**
+
+Substituir `jsdom` por `happy-dom`. happy-dom (a) tem subtree leve sem deps em versões antigas → hoista limpo para `/node_modules/happy-dom` → vitest acha; (b) **não substitui** primitivas globais — usa `AbortController`/`AbortSignal` nativos do Node → undici aceita o signal.
+
+```bash
+# 1. Trocar dep
+npm uninstall -w <ws> jsdom
+npm install -D -w <ws> happy-dom
+
+# 2. Editar vitest.config.ts no workspace
+#    environment: "jsdom"  →  environment: "happy-dom"
+
+# 3. Regenerar lock + verificar
+npm install
+npm run test -w <ws>
+```
+
+**Compatibilidade:** happy-dom suporta `window`, `document`, `matchMedia`, eventos DOM, MutationObserver, e a API básica que `@testing-library/react`, `@testing-library/jest-dom` e a maioria dos testes React precisa. Diverge do jsdom em algumas APIs raras de layout/rendering (canvas, getComputedStyle complexo, Range/Selection, document.fonts) — **antes de trocar**, grep nos testes:
+
+```bash
+grep -rE 'document\.fonts|getComputedStyle|scrollIntoView|HTMLCanvas|createRange|Selection|MutationObserver|IntersectionObserver|ResizeObserver' src/**/*.test.*
+```
+
+Se nenhum match (caso típico em apps React com Testing Library), troca é segura. Se houver match, ajuste o teste ou polifila a API antes de trocar.
+
+**Verificação local pós-troca:**
+
+```bash
+npm exec -w <ws> -- vitest run --coverage
+# Esperado:
+# - sem "Cannot find package 'jsdom'"
+# - sem "TypeError: signal AbortSignal"
+# - todos os testes passando (ou só os esperados falhando)
+```
+
+**Quando NÃO trocar:** se a base de testes depende fortemente de APIs jsdom-only (canvas image diff, layout testing, complexa medição de DOM), avaliar polyfill em `setup.ts` substituindo `globalThis.AbortController` pelo nativo do Node antes do msw carregar — resolve só o Symptom B, não o A. Para Symptom A nesse caso: declarar `jsdom` como devDep da raiz para forçar hoist.
+
+---
+
 ## Diagnosis Flow — Frontend
 
 ```text

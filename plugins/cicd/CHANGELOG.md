@@ -2,6 +2,28 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.5.0] - 2026-05-05
+
+### Adicionado
+
+- Quick Troubleshooting: nova entrada `[S]` para `Cannot find package 'X' imported from /node_modules/<other-pkg>` em monorepo workspace npm
+- Quick Troubleshooting: nova entrada `[F]` para vitest com `environment: 'jsdom'` que falha pré-test (`Cannot find package 'jsdom'`) ou em `TypeError: signal AbortSignal` em msw v2 — fix canônico é trocar para `happy-dom`
+- Lição #32: devDeps com subtree em versões antigas que conflitam com a raiz não hoistam — npm aninha em `packages/<ws>/node_modules/`, fora do alcance da resolução Node ESM partindo de outras deps hoisted
+- Lição #33: vitest 3 + msw v2 + jsdom tem dois bugs latentes (hoisting + `AbortSignal` mismatch); happy-dom resolve ambos
+- `troubleshooting-shared.md` cenário 8: hoisting de devDeps com subtree pesado — sintoma `Cannot find package`, diagnóstico via grep no lock (`node_modules/<pkg>` na raiz vs `packages/<ws>/node_modules/<pkg>`), três fixes possíveis (trocar dep, declarar na raiz, regenerar lock)
+- `troubleshooting-frontend.md` cenário 8: vitest jsdom → happy-dom como receita para projetos com msw v2 + monorepo workspaces
+- `troubleshooting-shared.md` cenário 6: nota refinada sobre cascade fail-fast **multi-nível** — após o primeiro fix revelar bug 2, pode haver bug 3 mascarado por bug 2; recomenda rerun local após cada camada em vez de presumir que o segundo bug é o último
+
+### Motivação
+
+PR #6 do `validade_bateria_estoque`, pós-fix do v2.4.0 (`Missing script: "exec"`), revelou um bug previamente mascarado: `Cannot find package 'jsdom' imported from /node_modules/vitest/...`. Causa não era jsdom faltando — `packages/frontend/package.json` declarava `jsdom@^20.0.3`. O lockfile instalava em `packages/frontend/node_modules/jsdom`, não em `/node_modules/jsdom`, porque jsdom@20 trazia subtree de deps em versões antigas (`agent-base@6`, `cssstyle@2`, `tough-cookie@4`) conflitando com a raiz. vitest hoisted na raiz fazia `import 'jsdom'` partindo de `/node_modules/vitest/...`, subia a árvore via Node ESM resolution, não achava — porque a resolução nunca olha em `packages/<ws>/node_modules/`.
+
+Solução canônica: trocar `jsdom` por `happy-dom`. Subtree leve hoista limpo + happy-dom usa `AbortController` nativo do Node, resolvendo de quebra um segundo bug latente que jsdom escondia (msw v2 + undici nativo validam `signal instanceof AbortSignal` contra a global do Node, não do jsdom). Fix único, dois bugs resolvidos: `npm i -D happy-dom -w <ws>`, `environment: 'happy-dom'` em `vitest.config.ts`. Nesta sessão: 57 pacotes removidos, 5 adicionados, 118/118 testes passando, CI verde em ~1m30s.
+
+Lição cascade multi-nível: v2.4.0 documentava `npm exec` mascarando 44 testes msw/jsdom. Aprendemos agora que esses 44 eram, por sua vez, mascarados POR `jsdom not found`. Cascade em 3 níveis. Refinamos o cenário 6 para sugerir rerun local após cada fix em vez de presumir que o segundo bug revelado é o último.
+
+---
+
 ## [2.4.0] - 2026-05-05
 
 ### Adicionado

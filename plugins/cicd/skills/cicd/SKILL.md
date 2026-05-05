@@ -98,6 +98,8 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | `[B]` | Biome 2.x config error (`unknown key "ignore"`)       | Biome 2.x removed `ignore` in favor of `includes`   | Use `files.includes` instead of `files.ignore` in `biome.jsonc`                       |
 | `[B]` | Migration reports "No pending migrations" but app crashes with missing column | Stale Docker image cache on self-hosted runner (`docker run` does not pull if tag exists locally) | `docker pull` the image before `docker run` in the migration step |
 | `[F]` | Container nginx returns 403                            | dist/ empty or not copied                            | Check `npm run build` and `COPY --from=build` in Dockerfile                           |
+| `[S]` | `Missing script: "exec"` ao rodar tsc/playwright/openapi-typescript em workspace | Sintaxe inválida `npm run -w <ws> exec -- <cmd>` (não existe script `exec`; `exec` é subcomando de `npm`, não script de `package.json`) | Substituir por `npm exec -w <ws> -- <cmd>` |
+| `[S]` | `ESLint couldn't find an eslint.config.(js\|mjs\|cjs) file` em workspace de monorepo | ESLint v9 removeu auto-detect de `.eslintrc.*`; flat config existe em outro workspace e **não** se propaga | Criar `eslint.config.js` por workspace que rode `eslint`. Pacotes Node-only: `globals.node`, sem `eslint-plugin-react-hooks` / `react-refresh` |
 
 ---
 
@@ -148,6 +150,8 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | 27 | `[B]` | Biome checks all files by default | Use `files.includes` in `biome.jsonc` to limit scope to `src/` or fix config files |
 | 28 | `[S]` | First deploy requires workflows on `develop` branch | CD Staging triggers on push to `develop` — workflows must be on that branch before the first push |
 | 29 | `[B]` | `docker run` does not auto-pull if the tag exists locally on self-hosted runners | Always `docker pull <image>` before `docker run <image>` in migration steps — stale cache causes "no pending migrations" while the app expects new schema |
+| 30 | `[S]` | `npm run -w <ws> exec --` é sintaxe inválida em monorepo npm | `exec` não é script de `package.json`; usar `npm exec -w <ws> -- <cmd>`. Falha cedo (`Missing script: "exec"`) e mascara steps subsequentes |
+| 31 | `[S]` | ESLint v9 flat config é per-workspace, não herda | Cada workspace que rode `eslint` precisa do próprio `eslint.config.{js,mjs,cjs}` — bump pra v9 num workspace não dá config aos siblings |
 
 ---
 

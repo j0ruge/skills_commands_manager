@@ -2,6 +2,25 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.4.0] - 2026-05-05
+
+### Adicionado
+
+- Quick Troubleshooting: nova entrada `[S]` para `Missing script: "exec"` ao invocar binário em workspace de monorepo npm
+- Quick Troubleshooting: nova entrada `[S]` para `ESLint couldn't find an eslint.config.(js|mjs|cjs) file` em workspace que migrou pra ESLint v9
+- Lição #30: `npm run -w <ws> exec --` é sintaxe inválida — `exec` é subcomando do `npm`, não script de `package.json`
+- Lição #31: ESLint v9 flat config é per-workspace, não herda de siblings
+- `troubleshooting-shared.md` cenário 6: causa, occurrences comuns (tsc/playwright/openapi-typescript), fix e nota explícita sobre fail-fast mascarando steps subsequentes
+- `troubleshooting-shared.md` cenário 7: snippet de flat config Node-only, diferenças vs config React, e nota sobre hoisting de devDeps em monorepo
+
+### Motivação
+
+PR #6 (`feat(005-production-deploy)`) tinha **8 jobs vermelhos** no CI. Investigando: 6 dos 8 vinham de uma única causa — sintaxe `npm run -w <ws> exec -- <cmd>` em 3 workflows (`ci.yml`, `cd-production.yml`, `frontend-ci.yml`). `npm run exec` busca um script chamado "exec" em `package.json`; não existindo, aborta com `Missing script: "exec"`. A sintaxe correta é `npm exec -w <ws> -- <cmd>` (sem `run`). Os outros 2 jobs falhavam por `ESLint couldn't find an eslint.config.(js|mjs|cjs) file` — workspaces `@validade-bateria/backend` e `@jrc/idp` declaravam `eslint ^9.0.0` sem `eslint.config.js` próprio, contando incorretamente com herança do flat config existente em `packages/frontend/`.
+
+Bonus lição: o `Missing script: "exec"` é **fail-fast** — abortava em segundos no step de Typecheck, **mascarando** falhas pré-existentes nos steps subsequentes (44 testes frontend quebrados por interop msw/jsdom, type errors latentes em `auth-sanity.test.ts`, openapi codegen drift). Ao consertar a sintaxe, esses fails apareceram e foram inicialmente confundidos com regressões. Documentado no cenário 6.
+
+---
+
 ## [2.3.0] - 2026-03-25
 
 ### Adicionado

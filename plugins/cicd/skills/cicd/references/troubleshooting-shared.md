@@ -151,3 +151,99 @@ gh run cancel <run-id>
 ```
 
 **Prevention:** Monitor via `gh run list` before triggering new deploys.
+
+---
+
+## 6. `Missing script: "exec"` em workspace de monorepo npm
+
+**Symptom:** Step de CI que invoca um binário hoisted/devDep de um workspace falha em segundos com:
+
+```text
+npm error Missing script: "exec"
+npm error workspace @<org>/<pkg>@<ver>
+##[error]Process completed with exit code 1.
+```
+
+**Cause:** Sintaxe `npm run -w <ws> exec -- <cmd>` está errada. `npm run` só executa scripts declarados em `package.json` do workspace. Como nenhum workspace define `"exec"`, o npm aborta antes de qualquer outra coisa. `exec` é **subcomando** do `npm` (`npm exec`), não um script.
+
+**Common occurrences:**
+
+- `npm run -w @pkg/frontend exec -- tsc --noEmit`
+- `npm run -w @pkg/frontend exec -- openapi-typescript ...`
+- `npm run -w @pkg/frontend exec -- playwright install --with-deps chromium`
+- `npm run -w @pkg/backend exec -- tsc --noEmit`
+
+**Fix:** Trocar `npm run -w <ws> exec --` por `npm exec -w <ws> --`:
+
+```yaml
+# ❌ Antes (Missing script: "exec")
+- run: npm run -w @pkg/frontend exec -- tsc --noEmit
+
+# ✅ Depois
+- run: npm exec -w @pkg/frontend -- tsc --noEmit
+```
+
+**Why this is dangerous beyond the obvious:** o erro é **fail-fast** — todos os steps subsequentes do job (test, build, etc.) não rodam. Falhas latentes nos steps escondidos (test broken, codegen drift, type errors em test files) **só aparecem depois** que esse fix é aplicado. Ao consertar a sintaxe, antecipe que outros vermelhos podem surgir — não são regressões, eram pré-existentes mascarados.
+
+**Verificação local:**
+
+```bash
+npm exec -w <ws> -- tsc --version
+npm exec -w <ws> -- playwright --version
+```
+
+---
+
+## 7. `ESLint couldn't find an eslint.config.(js|mjs|cjs) file`
+
+**Symptom:** Step `Lint` de um workspace falha com:
+
+```text
+Oops! Something went wrong! :(
+ESLint: 9.x.x
+ESLint couldn't find an eslint.config.(js|mjs|cjs) file.
+```
+
+**Cause:** ESLint v9 removeu o auto-detect de `.eslintrc.*` (legacy config). Em monorepo, ter `eslint.config.js` em **um** workspace (ex.: `packages/frontend`) **não** propaga aos siblings (`packages/backend`, `packages/idp`). Cada workspace que rode `eslint` precisa do próprio flat config.
+
+**Anti-pattern comum:** equipe migra um pacote pra ESLint v9, esquece dos outros. CI passa naquele e quebra silenciosamente nos demais até alguém olhar logs.
+
+**Fix:** criar `eslint.config.js` em cada workspace. Pacotes Node-only (backend, IdP, scripts) usam variante sem React:
+
+```js
+// packages/<node-pkg>/eslint.config.js
+import js from "@eslint/js";
+import globals from "globals";
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  { ignores: ["dist", "src/**/_generated/**", "node_modules"] },
+  {
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    files: ["**/*.ts"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.node },
+    },
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
+);
+```
+
+**Diferenças vs config de frontend (React):**
+
+- Sem `eslint-plugin-react-hooks` / `eslint-plugin-react-refresh`.
+- `globals.node` em vez de `globals.browser`.
+- `files: ["**/*.ts"]` em vez de `**/*.{ts,tsx}`.
+
+**Hoisting:** `@eslint/js`, `globals`, `typescript-eslint` instalados como devDeps em **um** workspace ficam hoisted no `node_modules` da raiz e resolvem nos siblings sem reinstalar. Para extração futura para repo próprio, declare explicitamente: `npm install -D @eslint/js globals typescript-eslint -w <ws>`.
+
+**Verificação local:**
+
+```bash
+npm run lint -w <ws>   # deve sair com exit 0 (warnings ok)
+```

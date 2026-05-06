@@ -158,6 +158,19 @@ The bootstrap script that worked against v2.66 should work unchanged against v4 
 
 If you see `[app] created` instead of `[app] reuse`, something deleted the app during migration — investigate before proceeding (likely a corrupted events table; restore from snapshot). If you see `[label-policy] sem mudanças (no-op)` (or your equivalent), the branding survived the upgrade — Quirk 19/20 territory.
 
+### 3.6.1. ⚠️ Login UI v2 deploy in v4.15.0 — auto-provisioning is broken
+
+If you're picking Path A (deploy `zitadel-login` container as the default authn UI), be aware of the bug captured in Quirk 28 before designing your compose:
+
+- The "happy path" envs `ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME` + `_NAME` + `..._PAT_EXPIRATIONDATE` would tell FirstInstance to provision the `IAM_LOGIN_CLIENT` service user and write its PAT to the path you set with `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH`. **In v4.15.0 those envs trigger zitadel/zitadel#8910 / #9293** — the `03_default_instance` migration tries to reserve the instance domain twice and fails with `unique_constraints_pkey` duplicate. The container enters a restart loop that doesn't recover. PR #10518 is the upstream fix; verify against your patch before assuming it works.
+- Setting only `LOGINCLIENTPATPATH` without the `MACHINE_*`/`PAT_EXPIRATIONDATE` envs is a no-op — no service user gets created, the PAT is never written, and `zitadel-login` loops forever on `Awaiting file and reading token`. `/ui/v2/login` returns 404 indefinitely.
+
+If your patch has the fix, great — use the full env set. If not, **default to Path B** (`PUT /v2/features/instance {"loginV2":{"required":false}}`) for this upgrade and revisit Login UI v2 promotion once upstream stabilizes. Login UI v1 with branding via label policy (Quirks 19-22) is a fully supported configuration in v4.
+
+The `zitadel-login` container can be deployed regardless of which path you take — under Path B it stays idle (looping benignly waiting for a PAT) and is a single config flip away from being usable when you're ready. There's no harm in keeping it deployed as long as the routing you add to `/ui/v2/login` doesn't accidentally become the default flow before the PAT exists.
+
+→ `troubleshooting.md` entries `"zitadel-login: Awaiting file"` and `"03_default_instance unique_constraints_pkey"`.
+
 ### 3.7. App-level smoke
 
 - Backend: re-derive `AUTH_AUDIENCE` (= projectId) and `OIDC_ISSUER` from the bootstrap output (`api-cheatsheet.md §"Re-reading bootstrap output"`). Restart so `createRemoteJWKSet` re-fetches against the new instance keys (Quirk 12 / 13).
@@ -175,6 +188,12 @@ If you see `[app] created` instead of `[app] reuse`, something deleted the app d
 | `aud` mismatch on every JWT | `AUTH_AUDIENCE` cached from v2.66 doesn't match v4-regenerated `projectId` | Re-derive from `bootstrap.json` (`api-cheatsheet.md §"Re-reading bootstrap output"`) |
 | Old branding lost | LabelPolicy schema unchanged but asset URL path may have shifted | Re-run Quirk 21 fix (`branding.md`) |
 | `permission denied` on `/current-dir/login-client.pat` (Path A) | New PAT not provisioned because `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` env wasn't set before first boot | Stop, set the env, `docker compose down -v` (DESTRUCTIVE — use only if you have the snapshot from §3.1), boot again |
+| `zitadel-login` container loops on `Awaiting file and reading token` (Path A) | Quirk 28: only `LOGINCLIENTPATPATH` set; no service user created, PAT never written | Adopt Path B (`loginV2.required=false`) for this upgrade; treat Login UI v2 promotion as a separate task |
+| `03_default_instance` migration fails with `unique_constraints_pkey` / `Errors.Instance.Domain.AlreadyExists` | Quirk 28: `LOGINCLIENT_MACHINE_*` envs added on top of the Human admin defaults trigger zitadel/zitadel#8910 / #9293 | Remove the `LOGINCLIENT_MACHINE_*` envs, `down -v`, retry; track PR #10518 |
+| Bootstrap fails with `Errors.<resource>.AlreadyExisting` on second run | Idempotency matcher only checks `'AlreadyExists'` (no `ing`) | Extend matcher to cover `AlreadyExisting` too — see `api-v1-to-v2-mapping.md §5` |
+| `findApp` / `findProject` returns null even though resource exists | Wrong response field name — code reads `result[]` but v2 uses `applications[]` / `projects[]` | See `api-v1-to-v2-mapping.md §2.1` for the per-service response field table |
+| `400 invalid_argument: CreateApplicationRequest.ApplicationType: value is required` | OIDC config sent under `oidc` instead of `oidcConfiguration`, OR wrapped in `applicationType: { oidc: ... }` | Top-level `oidcConfiguration: {...}` (no wrapper). Inner field is `applicationType` (not `appType`); `developmentMode` (not `devMode`). See `api-v1-to-v2-mapping.md §"CreateApplication"` |
+| `CreateAuthorizationRequest.OrganizationId: value length must be between 1 and 200 runes` | Forgot the body field `organizationId` (REQUIRED in v4 — proto validate.rules) | Add `organizationId: orgIdThatOwnsProject` to the body. Update/Delete take field `id`, not `authorizationId`. |
 | `panic: No master key provided` after v4 boot | Masterkey didn't reach the new container | Re-check env / secret. In v4 the env-var path is reliable (Quirk 24 was v2.66-specific) — if it still panics, file a bug. |
 | Bootstrap script fails with `INVALID_ARGUMENT: missing organization_id` | You partially refactored a call to v2 Connect protocol but kept the v1 header convention (Quirk 27) | Move `orgId` from `x-zitadel-orgid` header to `organizationId` in body. See `api-v1-to-v2-mapping.md §"Contextual info"`. |
 

@@ -50,6 +50,50 @@ Notes:
 - `AuthorizationService` replaces the v1 grant endpoints — note the rename from "grant" to "authorization" in path/method names. The semantics are identical.
 - The v2 search methods often just take a flat filter object instead of v1's `queries: [{ <filterTypeQuery>: {...} }]` wrapper. Read the response carefully.
 
+### §2.1. List\* response field names — non-uniform across services (v4.15 verified)
+
+When porting code from v1 (which reliably used `result[]` everywhere) to v2, the JSON response field for the list of items is **per-service** — and the camelCase form differs from what you might guess. Wrong field name = silent `undefined` → `find()` returns `null` → "create" path runs, hits `ALREADY_EXISTS`, and the bootstrap fails on re-runs.
+
+| Service / Method | proto field | JSON (camelCase) |
+|---|---|---|
+| `OrganizationService.ListOrganizations` | `result` | **`result`** |
+| `UserService.ListUsers` | `result` | **`result`** |
+| `ProjectService.ListProjects` | `projects` | **`projects`** |
+| `ProjectService.ListProjectRoles` | `project_roles` | **`projectRoles`** |
+| `ApplicationService.ListApplications` | `applications` | **`applications`** |
+| `AuthorizationService.ListAuthorizations` | `authorizations` | **`authorizations`** |
+
+Verified against `proto/zitadel/<svc>/v2/<svc>_service.proto` at tag `v4.15.0`. When in doubt, hit the proto on raw GitHub.
+
+### §2.2. List\* request shapes — `filters[]` is the only path
+
+`ListProjectsRequest`, `ListApplicationsRequest`, `ListAuthorizationsRequest` and similar **do not accept top-level `projectId` / `organizationId` / `userId` fields**. Those are silently dropped if you send them — the server returns the unfiltered list. You must wrap the filter in the service's `<Resource>SearchFilter` `oneof` inside `filters: []`.
+
+Each `<Resource>SearchFilter` is a oneof — exactly one branch must be set per filter object. Filters AND together. Some inner branch names are non-uniform:
+
+| Service | Filter wrapper | Common branches (camelCase JSON) |
+|---|---|---|
+| `ProjectSearchFilter` | `filters[]` | `projectNameFilter` (inner field is `projectName`, not `name`); `inProjectIdsFilter`; `organizationIdFilter` |
+| `ApplicationSearchFilter` | `filters[]` | `projectIdFilter` (inner `projectId`); `nameFilter` (inner `name` — note the bare name, not `applicationNameFilter`); `stateFilter`; `typeFilter`; `clientIdFilter`; `entityIdFilter` |
+| `AuthorizationSearchFilter` | `filters[]` | exists in proto but inner branch names not canonical here — fall back to client-side filter when in doubt |
+| `UserSearchQuery` (still v1-style!) | `queries[]` | `userNameQuery` etc. — `UserService` kept the v1 wrapper in v4.15 |
+| `OrganizationService.ListOrganizations` | `queries[]` | same as User — kept the v1 wrapper |
+
+**Pragmatic fallback**: when proto field names are unstable across patches or you can't verify them quickly, **list all + filter client-side in JS**. Project / app counts in typical bootstraps are tiny (1-5), so the cost is negligible and the resulting code stays robust to upstream proto renames.
+
+### §2.3. Single-resource response field names — `*Id`, not `id`
+
+The new v2 `Project` and `Application` messages use the resource-typed ID name in the field, not the bare `id`:
+
+| Object | proto / JSON field for the unique ID |
+|---|---|
+| `Project` | `project_id` / **`projectId`** |
+| `Application` | `application_id` / **`applicationId`** |
+| `Application.oidcConfiguration` (oneof branch) | `oidc_configuration` / **`oidcConfiguration`** (NOT `oidc` or `oidcConfig`) |
+| `Authorization` | `id` (kept short here — but `project`, `user`, `roles` are nested objects, see §1.13) |
+
+Verified against `proto/zitadel/application/v2/application.proto` and `proto/zitadel/project/v2/query.proto` at tag `v4.15.0`. Classic v1 used `id` universally; v2 spelled it out. Code that reads `existing.id` from a v1-shaped consumer silently breaks against v2.
+
 ## §3. Contextual info (header → body)
 
 This is the single most disruptive change for refactor work, and the source of Quirk 27.
@@ -123,7 +167,13 @@ Field renames worth singling out:
 - `initialPassword` → `password.{ password, changeRequired }` (object now)
 - `preferredLanguage`: `pt-BR` (v1 accepted) → `pt` (v2 only accepts ISO-639-1 short codes — same as Quirk 22 for custom_login_text). If you pass `pt-BR` you'll get `400 LANG-...`.
 
-### `CreateApplication` (replaces `apps/oidc`) — discriminator + nested config
+### `CreateApplication` (replaces `apps/oidc`) — discriminator + nested config (v4.15 verified)
+
+This one bites. Three traps in a row:
+
+1. **The discriminator JSON field is `oidcConfiguration`, not `oidc`.** Proto in v4.15 has `oneof application_type { CreateOIDCApplicationRequest oidc_configuration = 4; ... }`. The standard protojson serialization of a oneof emits **only the selected branch field** at the top level (no wrapper field with the oneof name). The branch is named `oidc_configuration` → camelCase JSON is `oidcConfiguration`.
+2. **Server error names the oneof, not the branch.** If you forget to set any branch, you get `400 invalid_argument: invalid CreateApplicationRequest.ApplicationType: value is required`. The `ApplicationType` is the proto oneof name — not a JSON field. Tempting trap: respond by wrapping `{ "applicationType": { "oidc": {...} } }` (which would be a literal proto field at the request level if it existed — it doesn't). That payload also fails. The fix is to set `oidcConfiguration` directly at the top level.
+3. **Inner field names are not the v1 short names.** Inside `oidcConfiguration` the OIDC fields use the proto canonical names: `applicationType` (NOT `appType`) and `developmentMode` (NOT `devMode`). v1 REST accepted `appType`/`devMode` for years; v2 Connect/JSON does not.
 
 ```diff
 # v1 — POST /management/v1/projects/{p}/apps/oidc
@@ -132,23 +182,69 @@ Field renames worth singling out:
 -   "redirectUris": [...],
 -   "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", ...],
 -   "appType": "OIDC_APP_TYPE_USER_AGENT",
+-   "devMode": false,
 -   ...
 - }
 
 # v2 — POST /zitadel.application.v2.ApplicationService/CreateApplication
 + {
 +   "projectId": "<projectId>",
++   "applicationId": "<your-deterministic-uuid>",
 +   "name": "battery-lifecycle-web",
-+   "oidc": {
++   "oidcConfiguration": {                     // ← proto: `oidc_configuration`, NOT `oidc`
 +     "redirectUris": [...],
-+     "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", ...],
-+     "appType": "OIDC_APP_TYPE_USER_AGENT",
-+     ...
++     "postLogoutRedirectUris": [...],
++     "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
++     "responseTypes": ["OIDC_RESPONSE_TYPE_CODE"],
++     "applicationType": "OIDC_APP_TYPE_USER_AGENT",   // ← NOT `appType`
++     "authMethodType": "OIDC_AUTH_METHOD_TYPE_NONE",
++     "version": "OIDC_VERSION_1_0",
++     "developmentMode": false,                        // ← NOT `devMode`
++     "accessTokenType": "OIDC_TOKEN_TYPE_JWT",
++     "accessTokenRoleAssertion": true,
++     "idTokenRoleAssertion": true,
++     "idTokenUserinfoAssertion": true,
++     "clockSkew": "5s"
 +   }
 + }
 ```
 
-The OIDC-specific fields are now nested under an `oidc` key. SAML / API equivalents would nest under `saml` / `api` respectively. Mutually exclusive — exactly one type field per request.
+SAML / API equivalents nest under `samlConfiguration` / `apiConfiguration` respectively. Mutually exclusive — exactly one branch per request.
+
+The response mirrors the discriminator: `CreateApplicationResponse` is `{ applicationId, oidcConfiguration: { clientId, clientSecret? }, ... }`. Some patches return the response with `oidcConfiguration` empty/missing — when that happens, follow up with `GetApplication { applicationId }` (note: no `projectId` in the v2 GetApplication request body — silently dropped) which returns `{ application: { applicationId, oidcConfiguration: { clientId } } }`.
+
+`UpdateApplication` follows the same shape (`{ projectId, applicationId, oidcConfiguration: {...} }`) — `COMMAND-1m88i` no-op trap from Quirk 14 still applies.
+
+### `AuthorizationService` (replaces `users/grants`) — Create requires `organizationId`; Update/Delete take `id`
+
+Subtle gotchas in v4.15:
+
+- `CreateAuthorizationRequest` requires **`organizationId`** alongside `userId`/`projectId` (REQUIRED in proto — `validate.rules.string.min_len: 1`). It's the org that **owns the project**, which may differ from the user's own org. Forgetting it: `400 invalid_argument: CreateAuthorizationRequest.OrganizationId: value length must be between 1 and 200 runes`.
+- `UpdateAuthorizationRequest` and `DeleteAuthorizationRequest` take the field **`id`**, not `authorizationId`. The Create response returns `{ id }` (also bare), so you read `id` from create and pass `id` into update/delete.
+- The `Authorization` shape returned by `ListAuthorizations` is **nested**, not flat: `{ id, project: { id, name, organizationId }, organization: { id, name }, user: { id, preferredLoginName, ... }, roles: [{ key, displayName }], state }`. Code that reads `a.userId`, `a.projectId`, `a.roleKeys` (the v1 flat shape) silently sees `undefined` and "no match found".
+
+```typescript
+// Create
+await connect('/zitadel.authorization.v2.AuthorizationService/CreateAuthorization', {
+  userId,
+  projectId,
+  organizationId: orgIdThatOwnsProject,        // ← REQUIRED
+  roleKeys: ['battery.admin'],
+});
+// → { id: '371...', creationDate: '...' }
+
+// Update
+await connect('/zitadel.authorization.v2.AuthorizationService/UpdateAuthorization', {
+  id: existing.id,                              // ← `id`, NOT `authorizationId`
+  roleKeys: ['battery.admin', 'battery.operator'],
+});
+
+// List + match (client-side, see §2.2)
+const res = await connect('.../ListAuthorizations', {});
+const found = res.authorizations?.find(           // ← `authorizations`, NOT `result`
+  (a) => a.user?.id === userId && a.project?.id === projectId,
+);
+```
 
 ## §5. Idempotence patterns
 
@@ -159,6 +255,19 @@ v1 and v2 imply different idempotence styles. v1 was search-then-create; v2 pref
 | **Resources with stable name** (org "JRC", project "ERP-JRC") | `POST /resource/_search` filtered by name; if 0 hits → `POST /resource` | Same — search first, then create. v2 lets you pass an `organizationId` you generated, but for human-readable resources the name-search pattern is still common. |
 | **Resources with deterministic ID** (users by UUIDv4, project apps by deterministic UUID) | Couldn't supply own ID — Zitadel generated it; you read it back. | Supply your own `userId` / `applicationId` in the body. Duplicate ID returns `ALREADY_EXISTS` error code; treat as success. **No round-trip required.** |
 | **Update-or-create idempotent PUT** | `PUT /resource/{id}` — Zitadel returns `400 COMMAND-1m88i "No changes"` when body matches state (Quirk 14). | Same `COMMAND-1m88i` returns from `Update*` methods. Catch and treat as no-op. The error code is preserved across v1/v2. |
+
+**`AlreadyExists` matcher needs to also catch `AlreadyExisting` (with `ing`).** Zitadel v4 sometimes uses the gerund form in error IDs — observed cases include `Errors.Project.App.AlreadyExisting` (when re-running CreateApplication with a name that already exists in the project) and `Errors.User.AlreadyExisting`. A naive substring matcher that checks only `'AlreadyExists'` will miss these and bubble the error to the bootstrap as a fatal. Cover both:
+
+```typescript
+const ALREADY_EXISTS_MARKERS = [
+  '"code":6',
+  'ALREADY_EXISTS',
+  'already_exists',
+  'already exists',
+  'AlreadyExists',
+  'AlreadyExisting',   // ← v4 also uses this form
+];
+```
 
 **Concrete example** — creating an OIDC app idempotently in v2:
 

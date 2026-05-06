@@ -92,10 +92,10 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.3.0",
-      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 27 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, login UI v2 separate container in v4, API v2 idempotence via deterministic IDs, contextual orgId header→body). Adds runbook for v2.66→v4 upgrade and mapping table for API v1→v2 Connect protocol.",
+      "version": "0.4.0",
+      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 28 documented quirks with proto-aligned examples verified against raw GitHub Zitadel v4.15.0 (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, login UI v2 separate container in v4, API v2 idempotence via deterministic IDs, contextual orgId header→body, CreateApplication discriminator = oidcConfiguration top-level com applicationType/developmentMode internos, per-service ListResponse field names, CreateAuthorization exige organizationId, AlreadyExisting com ing no matcher, quirk 28 — Login UI v2 auto-provisioning quebrado em v4.15.0 zitadel/zitadel#8910 + #9293, mitigação Path B). Includes v2.66→v4 upgrade runbook + API v1→v2 Connect protocol mapping.",
       "category": "development",
-      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2", "zitadel-v4", "v2.66-to-v4", "api-v1-to-v2", "connect-protocol", "login-ui-v2", "schema-migration"],
+      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2", "zitadel-v4", "v2.66-to-v4", "api-v1-to-v2", "connect-protocol", "login-ui-v2", "schema-migration", "v4.15", "proto-aligned", "createapplication", "oidcConfiguration"],
       "platforms": ["claude-code", "cursor"]
     }
   ]

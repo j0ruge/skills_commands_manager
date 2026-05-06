@@ -523,6 +523,83 @@ docker exec <postgres-ctr> psql -U zitadel -c \
 
 **Fix**: re-run your branding bootstrap. The label policy itself usually survives — what needs replaying is the asset upload (Quirk 21 path) and the project flag set (Quirk 19). Both are idempotent. See `branding.md §"Quirk 19"` and `§"Quirk 21"`.
 
+### `zitadel-login` container loops on "Awaiting file and reading token" (Login UI v2 never becomes healthy)
+
+**Symptom**: After deploying the `ghcr.io/zitadel/zitadel-login` container alongside the main `zitadel` server (per Quirk 25's Path A), `docker logs zitadel-login` shows only:
+
+```text
+ZITADEL_SERVICE_USER_TOKEN_FILE=/login-client/login-client.pat is set. Awaiting file and reading token.
+```
+
+The container never reports healthy. `/ui/v2/login` returns `404` (Caddy / nginx-proxy proxies to a backend that has no HTTP server up yet). The shared `login-client-pat` volume is empty.
+
+**Cause**: Quirk 28. Setting only `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` on the `zitadel` server isn't enough — the FirstInstance flow needs an explicit machine user definition (`ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME` + `_NAME` + `..._PAT_EXPIRATIONDATE`) for v4 to actually create the user and write the PAT. **But adding those envs causes a different, worse failure** — `03_default_instance` migration hits a unique constraint conflict on the instance domain (zitadel/zitadel#8910 and #9293) and the main `zitadel` server enters a restart loop.
+
+In v4.15.0 there's no env-only configuration that wins both ways. Fix is workaround-shaped:
+
+**Fix A (recommended for fast unblock — Path B of Quirk 25)**: stay on Login UI v1.
+
+1. In your bootstrap, after the admin PAT is read: `PUT /v2/features/instance` with body `{"loginV2": {"required": false}}`. Catch `COMMAND-1m88i` as no-op for re-runs.
+2. In OIDC app config (`CreateApplication`/`UpdateApplication`), pin `loginVersion: { loginV1: {} }` defensively at the app level.
+3. Apply branding via label policy v1 (still works in v4 — Quirks 19-22). The `zitadel-login` container can stay deployed and idle; it'll be ready when upstream stabilizes.
+
+**Fix B (independent of upstream — provision via bootstrap)**: post-boot, your bootstrap creates the machine user manually.
+
+1. Switch `zitadel-login` from named volume → bind mount, e.g. `./zitadel/local:/login-client:ro`.
+2. Drop `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` from the `zitadel` server (no auto-write).
+3. In the bootstrap script: create the machine user `login-client` via `UserService.v2/AddMachineUser` (or the equivalent in your patch — verify against proto), assign role `IAM_LOGIN_CLIENT` system-wide, generate a PAT, write it to the bind-mounted path (chmod 600).
+4. The `zitadel-login` container polls the file path — when it appears, the container becomes healthy.
+
+Track upstream PR #10518 and related issues — when the constraint-duplicate fix lands in a v4.x patch you can use, retire the workaround.
+
+### `Errors.Project.App.AlreadyExisting` (or `Errors.User.AlreadyExisting`) — your idempotency matcher missed it
+
+**Symptom**: Re-running bootstrap fails with `400 failed_precondition` and a body like:
+
+```json
+{ "code": "failed_precondition", "message": "Errors.Project.App.AlreadyExisting (PROJECT-lxowmp)" }
+```
+
+The first run created the resource fine; the second run was supposed to be idempotent but threw the error to the caller.
+
+**Cause**: your `isAlreadyExists()` helper checks for the substring `'AlreadyExists'` (no `ing`). Zitadel v4 uses both forms in error IDs — `Errors.User.AlreadyExists` **and** `Errors.Project.App.AlreadyExisting` (with the `ing` suffix). The substring `'AlreadyExists'` is **not** a prefix of `'AlreadyExisting'`, so the matcher misses it.
+
+**Fix**: extend the matcher to cover both forms (see `api-v1-to-v2-mapping.md §5`):
+
+```typescript
+const ALREADY_EXISTS_MARKERS = [
+  '"code":6', 'ALREADY_EXISTS', 'already_exists',
+  'already exists', 'AlreadyExists',
+  'AlreadyExisting',   // ← v4 also uses this
+];
+```
+
+This is also the reason your bootstrap appeared to "work the first time" but blew up on the second — the new resource (project app) hit the gerund form on re-create.
+
+### Setup migration `03_default_instance` fails: `duplicate key value violates unique constraint "unique_constraints_pkey"` / `Errors.Instance.Domain.AlreadyExists`
+
+**Symptom**: Fresh `docker compose up -d` (volumes just created), Zitadel container enters restart loop. Logs:
+
+```text
+starting migration name=03_default_instance
+add unique constraint failed: duplicate key value violates unique constraint "unique_constraints_pkey"
+detail: Key (instance_id, unique_type, unique_field)=(, instance_domain, <your-domain>) already exists.
+migration failed err.kind=AlreadyExists err.id=V3-DKcYh
+setup failed, skipping cleanup
+```
+
+`docker compose down -v` + retry doesn't help — every restart of the same DB run replays the same conflict (the partial state from the first attempt is left behind because of `setup failed, skipping cleanup`).
+
+**Cause**: known race / interaction in Zitadel v4 setup ([zitadel/zitadel#8910](https://github.com/zitadel/zitadel/issues/8910), [#9293](https://github.com/zitadel/zitadel/issues/9293), partial fix in PR #10518 — may not be in your patch). The `03_default_instance` migration tries to reserve the instance domain twice in one transaction when both the FirstInstance Human admin and a LoginClient machine user are configured. The classic trigger is adding `ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME` (etc.) — see Quirk 28.
+
+**Fix**:
+
+1. Stop the loop: `docker compose down -v` AND `docker volume rm <project>_<volume-name>` (the `down -v` may report the volume removed but the partial state can survive in the DB volume if the container restarted between operations). Confirm with `docker volume ls`.
+2. Remove the `ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_*` and `..._PAT_EXPIRATIONDATE` envs from the `zitadel` service. Keep at most `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` (which is harmless on its own — see Quirk 28 for what to do about Login UI v2).
+3. `docker compose up -d` — setup migrations should now complete on first try.
+
+If the failure persists without those envs, your underlying issue is somewhere else — check `zitadel/zitadel#8910` for the latest comments and pin to a v4.x patch with the fix, or downgrade to a known-good patch.
+
 ### Bootstrap fails with `INVALID_ARGUMENT: missing organization_id` after partial v2 refactor
 
 **Symptom**: You upgraded the IdP **and** simultaneously refactored some bootstrap calls from v1 to v2 (Connect protocol). The v1 calls work; the v2 calls fail with `INVALID_ARGUMENT: missing organization_id` even though the bootstrap script sets `x-zitadel-orgid` header globally on its HTTP client.

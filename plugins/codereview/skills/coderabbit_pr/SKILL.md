@@ -2,21 +2,7 @@
 name: coderabbit_pr
 metadata:
   version: 3.3.0
-description: >
-  Resolve AI review comments on a GitHub PR. Supports CodeRabbit, Copilot,
-  Gemini Code Assist, and Codex — auto-detects which reviewers are present.
-  Creates a separate checklist file per reviewer ({reviewer}-review.md),
-  verifies each finding against current code, applies fixes, runs regression
-  tests, and resolves all GitHub conversations. Uses model routing to optimize
-  token usage: lightweight models for data collection, full-power model for
-  analysis. Use this skill whenever the user mentions coderabbit, copilot review,
-  gemini review, codex review, wants to fix or resolve PR review comments,
-  address AI review feedback, handle review findings, process review suggestions,
-  or triage bot comments — even casually like "fix coderabbit", "resolve the PR
-  comments", "fix copilot comments", "address gemini feedback".
-  Triggers: "coderabbit", "copilot review", "gemini review", "codex review",
-  "fix PR review", "resolve review comments", "address review feedback",
-  "resolver comentarios", "corrigir review", "fix bot comments"
+description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code, applies fixes, runs regression tests, resolves GitHub conversations. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
 ---
 
 ## User Input

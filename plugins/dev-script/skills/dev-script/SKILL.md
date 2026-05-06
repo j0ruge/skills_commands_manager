@@ -2,27 +2,7 @@
 name: dev-script
 metadata:
   version: 0.3.0
-description: >
-  Generates a single-command development launcher (`dev.sh` for Linux/macOS,
-  `dev.ps1` for Windows) tailored to the current project. Detects the stack
-  (Docker Compose services, monorepo workspaces, frontend dev server, backend
-  process, IdP, database, bootstrap scripts, mkcert availability) and emits a
-  script that brings up everything with colored per-service prefixes,
-  per-component healthchecks, robust port reclaim, trap-based cleanup,
-  idempotent re-runs, and — when the stack involves an OIDC IdP or LAN sharing
-  — HTTPS termination via mkcert + Caddy so PKCE works outside `localhost`.
-  Use this skill PROACTIVELY whenever the user asks for: "dev.sh", "dev.ps1",
-  "dev script", "single command to bring everything up", "compose this project
-  for local dev", "share my dev environment on the LAN", "reproducible local
-  start", "boot the whole stack", "let teammates test from their machine",
-  or when the user is staring at a project that needs `docker compose up` +
-  `npm run dev` in two or more terminals and wants it down to one. Trigger
-  even when the user doesn't say "dev.sh" but is clearly asking for a single
-  entrypoint that orchestrates Postgres/SQL Server, an IdP (Zitadel/Keycloak),
-  one or more APIs, and a frontend dev server. Triggers: "dev.sh", "dev.ps1",
-  "dev script", "subir tudo", "levantar a infra dev", "compartilhar dev na
-  LAN", "monta o ambiente local", "script que sobe tudo", "boot the stack",
-  "local dev orchestrator", "dev launcher", "powershell dev script", "401 storm depois de --reset", "tsx watch zumbi", "env stale runtime", "runtime config drift", "bootstrap.json sanity check", "kill_known_dev_servers regex monorepo", "tsx watch não recarrega .env".
+description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, port-reclaim with pgrep fallback, HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Triggers — dev script, single-command dev, local stack, mkcert, kill port, runtime drift.
 ---
 
 # dev.script — Local Dev Stack Launcher Generator

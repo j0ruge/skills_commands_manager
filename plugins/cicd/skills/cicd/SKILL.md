@@ -2,15 +2,7 @@
 name: cicd
 metadata:
   version: 2.6.0
-description: |
-  Troubleshooting and configuration of CI/CD pipelines with GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner).
-  Unified skill — automatically detects backend (Prisma) or frontend (Vite) and routes to specific references.
-  Triggers: "CI/CD", "pipeline", "GitHub Actions", "workflow", "CI failing", "build failed",
-  "deploy", "staging", "production", "docker build", "GHCR", "self-hosted runner",
-  "myoung34/github-runner", "gh-runner container", "Cannot configure the runner",
-  "runner label default", "RUNNER_LABELS LABELS env var", "registration token expired",
-  "deploy key already in use 422", "transferRepo deploy key", ".env leading whitespace sed",
-  "gh run", "workflow dispatch", "secrets", "environment secrets"
+description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.
 ---
 
 # CI/CD Skill — GitHub Actions, Docker & GHCR (Unified)

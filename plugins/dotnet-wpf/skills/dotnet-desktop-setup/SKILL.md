@@ -1,17 +1,6 @@
 ---
 name: dotnet-desktop-setup
-description: >
-  Configura e audita projetos C#/.NET desktop (WinForms, WPF, Avalonia) para desenvolvimento
-  assistido por Claude Code em Windows. Gera ou atualiza CLAUDE.md (global e por projeto),
-  regras escopadas em .claude/rules/, .editorconfig, Directory.Build.props, global.json e hooks
-  de pre-commit. Audita codebase existente para detectar acoplamento UI/logica, God Classes, e
-  violacoes arquiteturais, recomendando refatoracao estrutural e desacoplamento. Use quando o
-  usuario quiser: configurar projeto .NET desktop para Claude Code; criar ou melhorar CLAUDE.md
-  de projeto C#; adicionar padroes de codificacao e convencoes de teste ao projeto; auditar
-  acoplamento ou arquitetura do codebase; preparar ambiente de desenvolvimento Windows para IA;
-  migrar projeto .NET Framework para .NET 8+ e reconfigurar tooling. NAO use para: escrever
-  testes ou codigo especifico, resolver erros de compilacao, deploy/CI-CD, projetos web/API/mobile,
-  adicionar bibliotecas, ou otimizacao de performance.
+description: C#/.NET desktop scaffolding (WinForms / WPF / Avalonia) — generates CLAUDE.md, scoped rules, .editorconfig, Directory.Build.props, global.json. Audits coupling (UI/logic, God Classes). Triggers — dotnet setup, .NET scaffolding, WPF project, WinForms project, editorconfig.
 ---
 
 # dotnet-desktop-setup

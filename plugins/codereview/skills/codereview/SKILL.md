@@ -2,24 +2,7 @@
 name: codereview
 metadata:
   version: 1.8.0
-description: >
-  Automated pre-PR code review. Diffs current branch against main, analyzes all
-  changed files, and produces a structured report with severity-rated findings,
-  test coverage assessment, documentation sync verification, and a final grade.
-  Checks docstring coverage, OpenAPI/README/rules sync, race conditions (TOCTOU),
-  accessibility, data integrity, hardcoded secrets (passwords, JWT, AWS/GCP/
-  GitHub tokens, PEM keys — GitGuardian-equivalent), and code quality. Uses
-  model routing to optimize token usage: lightweight models for git context and
-  file reading, full-power model for cross-file analysis and final report.
-  Use this skill whenever the user asks for code review, pre-PR review, code
-  analysis, quality check, documentation check, security review, accessibility
-  audit, secret scanning, or wants to review changes before merging — even if
-  they don't say "codereview" explicitly.
-  Triggers: "code review", "pre-PR review", "review my code", "quality check",
-  "review changes", "codereview", "check my code", "analyze code", "PR review",
-  "check docs", "documentation review", "security review", "accessibility check",
-  "race condition", "toctou", "secret detection", "hardcoded credentials",
-  "gitguardian", "ggshield", "leaked password", "api key", "check for secrets"
+description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Stack-agnostic with TypeScript/React defaults and dotnet preset. Triggers — code review, pre-PR, secrets scan, ggshield, accessibility audit.
 ---
 
 ## User Input

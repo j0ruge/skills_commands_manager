@@ -1,19 +1,6 @@
 ---
 name: dotnet-wpf-e2e-testing
-description: >
-  Guia completo para criar testes E2E de aplicações WPF com FlaUI e xUnit.
-  Configura projeto de testes, adiciona AutomationIds ao XAML, cria Page Objects,
-  implementa test base class, e lida com file dialogs via IFileDialogService.
-  Use quando o usuário quiser: criar testes E2E para WPF; adicionar testes de UI
-  automatizados; configurar FlaUI em projeto .NET; testar fluxos de usuário em
-  telas WPF; adicionar AutomationId a controles XAML; criar smoke tests para
-  janelas WPF; automatizar testes de interface desktop Windows; configurar CI/CD
-  para testes de UI; testar aplicação WPF-UI (Fluent); criar Page Objects para
-  testes FlaUI. Também use quando o usuário mencionar "FlaUI", "teste E2E WPF",
-  "automação de UI", "smoke test desktop", "teste de interface WPF",
-  "AutomationId", "UI automation", ou "testar tela WPF".
-  NÃO use para: testes unitários de ViewModel (use dotnet-wpf-mvvm), testes de
-  API/web, testes com Selenium/Playwright (browsers), ou deploy/CI-CD genérico.
+description: FlaUI + xUnit E2E testing for WPF — project setup, AutomationId annotation, Page Objects, smoke tests, file-dialog automation, CI/CD wiring. Unit tests live in dotnet-wpf-mvvm. Triggers — WPF E2E, FlaUI, AutomationId, Page Object, smoke test.
 ---
 
 # Testes E2E para WPF com FlaUI

@@ -12,7 +12,7 @@
       "name": "cicd",
       "source": "./plugins/cicd",
       "version": "2.6.0",
-      "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner — dedicated reference covers CMD-herdado-zerado, env LABELS vs RUNNER_LABELS, EPHEMERAL+restart loop, gpg --dearmor em buildkit, plus shared troubleshooting for deploy keys per-repo unique e .env leading whitespace + sed silenciando).",
+      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.",
       "category": "development",
       "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys"],
       "platforms": ["claude-code", "cursor"]
@@ -30,7 +30,7 @@
       "name": "codereview",
       "source": "./plugins/codereview",
       "version": "1.10.0",
-      "description": "Code review toolkit: automated pre-PR review with severity grading and model routing for token efficiency (haiku/sonnet/opus), TOCTOU race condition detection, accessibility checks, data integrity analysis, deterministic hardcoded secrets detection via Python regex script (passwords, JWT, AWS/GCP/GitHub tokens, PEM keys — GitGuardian-equivalent, applied to CODE/TESTS/CONFIG with BLOCKED banner + forced grade F, plus optional ggshield/gitleaks integration when installed), and multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex) with severity recalibration, cross-reviewer deduplication, and GitHub conversation resolution. Stack-agnostic with TypeScript/React defaults and dotnet preset for C#/.NET projects.",
+      "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex). Stack-agnostic with TypeScript/React defaults and dotnet preset.",
       "category": "quality",
       "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "gitleaks", "credentials", "hardcoded-secrets", "deterministic-scan"],
       "platforms": ["claude-code", "cursor"]
@@ -57,7 +57,7 @@
       "name": "dotnet-wpf",
       "source": "./plugins/dotnet-wpf",
       "version": "1.6.0",
-      "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, DataGrid icon patterns, RowHeight sizing, form spacing recipes, UserControl height clipping diagnosis, date control MaxYear validation trap, multi-column form layouts, Grid row separators, ContentDialog confirmation pattern for destructive actions), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
+      "description": "C#/.NET WPF toolkit — project setup/audit, Fluent Design guide (90+ controls, layout troubleshooting, dark theme, branding), WinForms→WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
       "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows", "form-layout", "date-validation", "content-dialog", "destructive-action"],
       "platforms": ["claude-code", "cursor"]
@@ -66,7 +66,7 @@
       "name": "ddd",
       "source": "./plugins/ddd",
       "version": "0.4.0",
-      "description": "Domain-Driven Design toolkit: analisa codebases e aponta violações DDD, guia strategic design (event storming, context mapping), gera specs de conversão legacy→DDD e ensina conceitos sob demanda. Agnóstica de linguagem, progressive disclosure por tema, síntese de Evans + Vernon + práticas contemporâneas.",
+      "description": "Domain-Driven Design toolkit — analyzes codebases for DDD violations, guides strategic design (event storming, context mapping), generates legacy→DDD migration specs. Language-agnostic. Synthesizes Evans + Vernon + modular-monolith practice.",
       "category": "architecture",
       "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"],
       "platforms": ["claude-code", "cursor"]
@@ -84,7 +84,7 @@
       "name": "dev-script",
       "source": "./plugins/dev-script",
       "version": "0.3.0",
-      "description": "Generates a single-command local-dev launcher tailored to the current project — bash (dev.sh) for Linux/macOS and PowerShell (dev.ps1) for Windows. Detects the stack (compose, monorepo, frontend, backend, IdP, mkcert), produces idempotent scripts with colored prefixes per service, per-component healthchecks, robust port reclaim with pgrep fallback for kernels that hide PIDs from ss/lsof, trap cleanup, and HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE. Encodes the gotchas painfully learned in JRC projects (Vite allowedHosts, NODE_EXTRA_CA_CERTS for self-signed JWKS, Zitadel externalDomain drift, --tlsMode external triad, signinRedirect silent fail outside secure context, bootstrap-skip cache that masks OIDC URI drift, Playwright contexts needing ignoreHTTPSErrors against mkcert, monorepo-path regex flipping kill_known_dev_servers into a silent no-op, tsx watch not picking up .env changes leaving stale runtime, and the boot-time sanity-check pattern that catches disk-vs-heap drift in 5 seconds instead of 30 minutes).",
+      "description": "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, port-reclaim with pgrep fallback, HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Encodes the gotchas learned in JRC projects (Vite allowedHosts, JWKS over self-signed HTTPS, --tlsMode external, runtime drift detection).",
       "category": "development",
       "keywords": ["dev-script", "dev.sh", "dev.ps1", "bootstrap", "local-development", "docker-compose", "mkcert", "caddy", "https-lan", "monorepo", "scaffold", "powershell", "bash", "playwright", "kill-port", "pgrep", "sanity-check", "runtime-drift", "tsx-watch"],
       "platforms": ["claude-code", "cursor"]
@@ -93,7 +93,7 @@
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
       "version": "0.2.0",
-      "description": "Zitadel self-hosted OIDC field guide — captures 24 high-friction quirks (FirstInstance env placement, volume perms, v1/v2 API split, tenant→orgId mapping, JWT validation over self-signed HTTPS via NODE_EXTRA_CA_CERTS + JWKS, loginV2 instance flag, silent-renew redirect URI byte-match, idempotent bootstrap 'No changes' 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time signinSilent recursion, StrictMode closure trap, post_logout_redirect_uri invalid, Login UI v1 branding via privateLabelingSetting / custom_login_text / LANG-lg4DP, F5 with InMemoryWebStorage, 401 storm post --reset-zitadel from tsx-watch zombies, multi-app YAML refactor regression vs dynamic env, and Zitadel v2.66.x masterkey-via-flag fix for the silent env-var fallback failure in start-from-init). Bundles working docker-compose.zitadel.yml, idempotent bootstrap-zitadel.ts and reset-zitadel.sh.",
+      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 24 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms).",
       "category": "development",
       "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2"],
       "platforms": ["claude-code", "cursor"]

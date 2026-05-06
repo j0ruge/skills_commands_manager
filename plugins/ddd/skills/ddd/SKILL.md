@@ -2,28 +2,7 @@
 name: ddd
 metadata:
   version: 0.4.0
-description: >
-  Domain-Driven Design toolkit — analisa codebases e aponta violações DDD, guia
-  strategic design (event storming, context mapping, bounded contexts), gera specs
-  de conversão legacy→DDD e ensina conceitos DDD sob demanda. Agnóstica de
-  linguagem e framework (Java, C#, TypeScript, Python, Go, Rust, PHP...).
-  Use esta skill SEMPRE que o usuário mencionar: DDD, Domain-Driven Design,
-  bounded context, ubiquitous language, aggregate, entity, value object, domain
-  event, event storming, context mapping, anti-corruption layer, CQRS, event
-  sourcing, hexagonal architecture, modular monolith, strangler fig, legacy
-  migration, microservices boundaries, "modelar o domínio", "desenhar a
-  arquitetura", "como organizar módulos", "refatorar para DDD", "anemic
-  model", "rich domain model", "análise estratégica", revisão de arquitetura
-  ou código sob lente DDD. Também dispare quando o usuário pedir para
-  analisar/revisar um codebase existente procurando boas práticas
-  arquiteturais, mesmo que não diga "DDD" literalmente. O toolkit sintetiza
-  Evans (DDD Reference, Guia Rápido) + Vernon (IDDD, DDD Distilled) + práticas
-  contemporâneas (DDD Crew, ContextMapper, modular monolith, distributed
-  monolith antipattern). Triggers: "ddd", "domain driven", "bounded context",
-  "event storming", "aggregate design", "modelar domínio", "context map",
-  "arquitetura limpa", "hexagonal", "ports and adapters", "anti-corruption",
-  "strangler", "modular monolith", "microservices boundaries", "rich model",
-  "anemic model", "CQRS", "event sourcing", "ubiquitous language".
+description: Domain-Driven Design toolkit — analyzes codebases for DDD violations, guides strategic design (event storming, context mapping), generates legacy→DDD migration specs. Language-agnostic. Synthesizes Evans + Vernon + modular-monolith practice. Triggers — DDD, bounded context, aggregate, event storming, hexagonal, legacy migration, architecture review.
 ---
 
 ## User Input

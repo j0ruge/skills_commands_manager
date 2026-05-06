@@ -89,6 +89,93 @@ Each `plugin.json` includes a `platforms` field declaring which platforms suppor
    - For skills: add an entry with `"source_type": "skill"` pointing to the skill directory.
    - For commands: add an entry with `"source_type": "command"` and a `"cursor_description"` for Cursor's trigger-based discovery.
 
+## Skill description guidelines
+
+The `description` field in SKILL.md frontmatter and `marketplace.json` is the
+primary trigger mechanism. When the combined skill listing exceeds Claude
+Code's `skillListingBudgetFraction` (default 1% of context), descriptions are
+**dropped silently** and the skills lose their trigger. Keep descriptions tight
+so this never happens.
+
+### DO
+- Keep `description` ≤ 350 characters (hard cap: 500). Fits one line in
+  `/skills` output.
+- Open with one sentence describing the function — not "Use this skill when…".
+- Follow with 1–2 distinctive capabilities that disambiguate from neighbors.
+- End with a single trigger list of ≤ 8 keywords, prefixed `Triggers — `.
+- Pick **one language** per description (English preferred for cross-team
+  reach). Body of the skill can stay bilingual.
+- Mirror the exact same description in `SKILL.md` frontmatter and the matching
+  entry in `.claude-plugin/marketplace.json` — single source of truth.
+- Run `/doctor` after adding or editing skills. If it reports any descriptions
+  dropped, trim before merging.
+
+### DON'T
+- Don't enumerate every quirk, capability, file, or use-case in the description
+  — that belongs in the SKILL.md body or in a `references/` file.
+- Don't write the trigger list twice (once in prose "Use when X, Y, Z" and
+  again as a bullet list). Pick one form, prefer the explicit `Triggers — `
+  line.
+- Don't write "Use this skill SEMPRE / ALWAYS / PROACTIVELY" — it's noise that
+  triggers nothing extra and eats budget.
+- Don't mix languages inside a single description (PT + EN). It doubles the
+  text without doubling the recall.
+- Don't paste the raw `keywords:` list into `description:` — Claude already
+  sees `keywords` separately.
+- Don't ship hash-suffixed copies (`my-skill-2f5564a0.md`) in
+  `~/.claude/commands/`. If they appear, they're orphans from old installs and
+  should be deleted.
+
+### Why
+Each dropped description silently disables a skill's trigger — Claude only
+sees the name, never the "when to use it" text. Symptoms: skills that used to
+work stop firing on their canonical phrases, and `/doctor` shows
+`N descriptions dropped`. The fix is always trimming descriptions, not raising
+the budget (raising costs ~5k tokens per session and consumes rate limits
+faster).
+
+## Identity & canonical repository
+
+**Chewiesoft is the fictional software company / brand. j0ruge is the GitHub
+user that owns and publishes everything under that brand.** The two names
+coexist by design — Chewiesoft is product branding, j0ruge is the GitHub
+account that ships it.
+
+| Layer | Value | Where it appears |
+|---|---|---|
+| Brand / company (fictional) | **Chewiesoft** | `author.name` in `plugin.json`, `owner.name` in `marketplace.json`, README/install.py headings |
+| Marketplace slug | **chewiesoft-marketplace** | `name` in `.claude-plugin/marketplace.json`, key in `.claude/settings.json` |
+| GitHub owner / user | **j0ruge** | All clone/install URLs, `git remote` |
+| Canonical repo URL | **`https://github.com/j0ruge/skills_commands_manager`** | All install snippets, README, this CLAUDE.md |
+
+Chewiesoft is **not** a GitHub organization. The repo lives under the personal
+user `j0ruge`.
+
+### DO
+- Use `j0ruge/skills_commands_manager` in every install/clone snippet
+  (`README.md`, this `CLAUDE.md`, `install.py`, `.claude/settings.json`,
+  `/plugin marketplace add` examples).
+- Keep `"author": { "name": "Chewiesoft" }` in plugin manifests and
+  `"chewiesoft-marketplace"` as the marketplace slug — those are branding,
+  not repo references.
+- When introducing a new plugin, use the same pairing: `author.name =
+  "Chewiesoft"` and any source/clone URL pointing at
+  `j0ruge/skills_commands_manager`.
+
+### DON'T
+- Don't write URLs like `Chewiesoft/skills_commands_manager` or
+  `chewiesoft/...` as if Chewiesoft were a GitHub org — it isn't. The user
+  `j0ruge` owns the repo.
+- Don't introduce URLs pointing at any other GitHub owner or repo name for
+  this marketplace (internal mirrors, forks, archived predecessors). Any
+  reference that resolves to a different repo is stale and must be replaced
+  with the canonical URL above.
+- Don't rename the brand to "j0ruge Marketplace" or vice-versa — the two
+  names coexist on purpose.
+- Don't confuse external doc links (zitadel, wpfui, microsoft/fluentui,
+  FlaUI, ddd-crew, kgrzybek) with marketplace repo links — those external
+  links are valid and should not be rewritten.
+
 ## Plugin Source Options
 
 When registering plugins in `marketplace.json`, the `source` field supports:

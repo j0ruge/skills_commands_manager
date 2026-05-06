@@ -1,17 +1,6 @@
 ---
 name: dotnet-wpf-mvvm
-description: >
-  Guia completo para migrar projetos WinForms para WPF com MVVM usando CommunityToolkit.Mvvm
-  e WPF-UI. Cria ViewModels, configura DataBinding, Commands, navegacao e DI. Use quando o
-  usuario quiser: migrar WinForms para WPF; adicionar MVVM a projeto WPF existente; criar
-  ViewModel para uma tela; configurar navegacao WPF-UI com MVVM; substituir code-behind por
-  bindings e commands; configurar DI com Microsoft.Extensions.Hosting em WPF; usar
-  CommunityToolkit.Mvvm (ObservableProperty, RelayCommand); criar ObservableCollection para
-  listas; implementar Messenger para comunicacao entre ViewModels. Tambem use quando o usuario
-  mencionar "MVVM", "ViewModel", "data binding WPF", "migrar WinForms", "code-behind para
-  commands", ou "navegacao WPF". NAO use para: setup inicial de projeto .NET (use
-  dotnet-desktop-setup), testes unitarios, deploy, CI/CD, projetos web/API/mobile, ou
-  configuracao de .editorconfig/CLAUDE.md.
+description: WinForms→WPF MVVM migration plus new WPF screens — CommunityToolkit.Mvvm, WPF-UI, ViewModels, data binding, Commands, navigation, DI via Microsoft.Extensions.Hosting. Setup and E2E live in sibling skills. Triggers — MVVM, WinForms to WPF, CommunityToolkit, data binding, RelayCommand.
 ---
 
 # dotnet-wpf-mvvm

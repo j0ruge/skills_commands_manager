@@ -1,24 +1,6 @@
 ---
 name: dotnet-wpf-design
-description: >
-  Guia de design profissional para WPF/XAML com Fluent Design (WPF-UI). Catalogo de solucoes
-  documentadas para problemas de layout, espacamento, tipografia, sizing de controles, dark
-  theme e customizacao de identidade visual (brand color, theming overrides). Use quando o
-  usuario quiser: corrigir layout de formulario WPF; ajustar espacamento entre campos;
-  resolver toolbar/header que rola junto com conteudo; aumentar tamanho de controles pequenos
-  ou com texto cortado; melhorar respiro visual entre secoes; aplicar tipografia Fluent
-  Design; usar cores corretas de dark theme; diagnosticar problemas de ScrollViewer aninhado;
-  alinhar labels com campos; auditar qualidade visual de uma pagina XAML; aplicar cor da
-  marca/corporativa em botoes Appearance="Primary"; customizar cor de checkmark do CheckBox;
-  mudar cor do ProgressRing; forcar texto branco em ToggleButton checked; descobrir nomes de
-  recursos do WPF-UI para override; eliminar delay no hover de botoes brand. Tambem use
-  quando o usuario mencionar "design WPF", "layout XAML", "campos pequenos", "texto cortado",
-  "espacamento", "respiro", "controle apertado", "formulario feio", "dark theme cores",
-  "Fluent Design tokens", "ScrollViewer problema", "toolbar rola", "cor da marca",
-  "brand color", "identidade visual", "customizar tema WPF-UI", "theming override",
-  "botao com delay no hover", ou "cor do checkbox/toggle/progressring".
-  NAO use para: setup inicial de projeto (use dotnet-desktop-setup), MVVM/ViewModel (use
-  dotnet-wpf-mvvm), testes E2E (use dotnet-wpf-e2e-testing), logica de negocio, APIs, deploy.
+description: Professional WPF/XAML design guide — Fluent Design (90+ controls, DataGrid icons, RowHeight), layout troubleshooting (ScrollViewer, toolbar, form spacing), control sizing, dark theme, branding. MVVM and E2E live in sibling skills. Triggers — WPF design, XAML layout, Fluent, DataGrid icon, form spacing, dark theme.
 ---
 
 # dotnet-wpf-design

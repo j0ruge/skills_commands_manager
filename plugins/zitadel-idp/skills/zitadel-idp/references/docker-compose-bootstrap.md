@@ -171,6 +171,71 @@ my-host.example.com:443 {
 - Backends that fetch JWKS from `https://<EXTERNALDOMAIN>:<EXTERNALPORT>/oauth/v2/keys` must trust the cert the proxy serves. With mkcert / a local CA, set `NODE_EXTRA_CA_CERTS` on the Node backend (see `token-validation.md §"Trusting a self-signed JWKS endpoint from Node"`). Same applies to any tool (curl, integration tests, bootstrap script over HTTPS).
 - For LAN testing, `<LAN_IP>.sslip.io` is a quick win — sslip.io resolves `1.2.3.4.sslip.io` to `1.2.3.4` for any client, so other devices on the network reach the same external URL without DNS setup. Combined with mkcert covering the same hostname, dev clients only need to import the local root CA once.
 
+## §"Quirk 24 — masterkey via flag em v2.66.x"
+
+**Aplica-se a:** Zitadel `v2.66.x` (linha 2.66 inteira, possivelmente 2.x mais antigas — não testei). Em `v4.x` o env-var fallback funciona; **não** aplique este workaround sem necessidade no v4.
+
+**Sintoma**:
+
+```text
+panic: No master key provided
+caller="cmd/start/start_from_init.go:30"
+error="masterkey must either be provided by file path, value or environment variable"
+```
+
+Container em loop de restart, `RestartCount` crescendo, exit code 2 a cada ~60s. Log idêntico a cada ciclo.
+
+**O que confunde**: `docker inspect <ctr> --format '{{range .Config.Env}}{{println .}}{{end}}'` mostra a variável presente e correta:
+
+```text
+ZITADEL_MASTERKEY=qMnP1D5gM0oclBSJKFmdifWlpfAnTvwR
+```
+
+— exatos 32 chars, sem CR/LF, sem leading whitespace, sem null bytes (validável com `xxd`). `docker compose config` também resolve o valor literal corretamente. E mesmo assim `start-from-init` panic'a.
+
+**Causa raiz**: `cmd/key/key.go` em v2.66.x lê `os.Getenv("ZITADEL_MASTERKEY")` como fallback quando a flag CLI `--masterkey` está ausente — mas o caminho de leitura **não é confiável** sob certas combinações de cobra/viper bindings na linha 2.66. (Em v4 o caminho foi reescrito.) Quando isso falha, o erro é genérico ("masterkey must either be provided") e não distingue "ausente" de "presente mas não-lida", o que mata o sinal.
+
+**Fix canônico — passar a masterkey como flag CLI**:
+
+```yaml
+zitadel:
+  image: ghcr.io/zitadel/zitadel:v2.66.10  # ou outra v2.66.x
+  command:
+    - start-from-init
+    - --masterkey
+    - ${ZITADEL_MASTERKEY}
+    - --tlsMode
+    - external                              # quando atrás de proxy TLS — ver §7
+  environment:
+    # ZITADEL_MASTERKEY ainda pode ficar aqui (não atrapalha; serve como
+    # fonte da interpolação ${...}). A flag tem precedência.
+    ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY}
+    # ... DB, externalDomain, etc ...
+```
+
+A flag tem precedência sobre env quando ambas existem, então é seguro deixar a env também (útil pra ferramentas que inspecionam o container e esperam a env).
+
+**Trade-off de segurança**: a flag aparece em `docker inspect <ctr>` (campo `Args`/`Cmd`) e em `ps aux` no host. Aceitável quando:
+
+- O `.env` está com `chmod 600` no host (já é boa prática).
+- O VPS é dedicado (acesso SSH restrito a operadores).
+- Você não tem agentes de inventário de terceiros enviando `docker inspect` para fora.
+
+Se algum desses não for verdade, troque pelo arquivo:
+
+```yaml
+command:
+  - start-from-init
+  - --masterkeyFile
+  - /run/secrets/zitadel_masterkey
+secrets:
+  - zitadel_masterkey
+```
+
+E declare o `secrets:` top-level apontando para um arquivo `chmod 400` ou um Docker secret externo.
+
+**Prevenção**: `docker logs <ctr> --tail 5` logo após o primeiro `up -d` — se vir o panic, aplique a flag antes de gastar tempo investigando volume permissions, bytes da env, encoding, etc. (todos esses são red herrings pra esse panic específico em v2.66.)
+
 ## §8. Where to go next
 
 - Programmatic configuration: `references/api-cheatsheet.md`

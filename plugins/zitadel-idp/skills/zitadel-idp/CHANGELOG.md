@@ -2,6 +2,23 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-05-05 — Zitadel v2.66.x masterkey via flag CLI (1 lição) — bump 0.1.0 → 0.2.0
+
+Source: feature 005-production-deploy bootstrap em VPS de produção. Stack rodando `ghcr.io/zitadel/zitadel:v2.66.10` entrou em loop de restart com `panic: No master key provided` (exit 2, RestartCount=135 antes do diagnóstico). Verificação cruzada confirmou que `ZITADEL_MASTERKEY` estava corretamente injetada no container (32 chars exatos, sem CR/whitespace/null bytes, validado via `docker inspect | xxd`), e mesmo assim `start-from-init` ignorava a env. Em v4.x — coberto pelo grosso da skill — o fallback `os.Getenv` funciona; em v2.66.x não. Skill estava silenciosa sobre v2.x e o asset `docker-compose.zitadel.yml` por acidente já usa `--masterkey ${...}` no `command:` (legado de iteração anterior), mas não documentava **por quê** isso é obrigatório em v2.66 — ficava como "convenção". 1h+ de debug perdido investigando volume permissions, bytes da env, encoding, antes de cair na ficha.
+
+### Adicionado
+
+- **L23 — Zitadel v2.66.x: env-var `ZITADEL_MASTERKEY` não é lida com confiabilidade pelo `start-from-init`; passar via flag CLI** (`SKILL.md` quirk 24, `references/docker-compose-bootstrap.md` novo §"Quirk 24 — masterkey via flag em v2.66.x").
+  *Sintoma evitado*: container Zitadel em loop de restart com `panic: No master key provided / masterkey must either be provided by file path, value or environment variable`, exit code 2 a cada ~60s, mensagem idêntica a cada ciclo. `docker inspect` mostra a env presente e correta, `docker compose config` resolve o literal — mas o panic continua. Causa raiz no path cobra/viper de v2.66 (em v4 foi reescrito). Fix canônico: flag CLI tem precedência sobre env, então `command: [start-from-init, --masterkey, ${ZITADEL_MASTERKEY}, --tlsMode, external]`. Trade-off documentado: flag aparece em `docker inspect` e `ps aux`, então `.env` chmod 600 + VPS dedicado; se não for o caso, migrar para `--masterkeyFile` + Docker secret. Prevenção: `docker logs <ctr> --tail 5` logo após primeiro `up -d` para detectar o panic e aplicar a flag antes de perder tempo com red herrings (volume perms, byte encoding, etc).
+
+### Mudado
+
+- `SKILL.md` headline "the twenty-three quirks" → **"the twenty-four quirks"**.
+- `SKILL.md` scope: nota explícita de que v2.66.x está coberto **só** pelo Quirk 24 (masterkey); resto da skill segue v4-first. Isso evita que alguém olhe a skill e pense que ela cobre v2 inteiro.
+- `description` do frontmatter ganha 5 triggers novos: `Zitadel v2.66 No master key provided`, `ZITADEL_MASTERKEY env ignored`, `start-from-init masterkey flag`, `panic No master key provided`, `masterkey must either be provided`.
+
+---
+
 ## 2026-05-04 — Multi-app YAML refactor: env > YAML precedence (1 lição)
 
 Source: feature 005-production-deploy (refactor T301 do `bootstrap-zitadel.ts` para suportar `applications[]` declarativo no mesmo Project ERP-JRC). Após o merge, login em LAN HTTPS via `dev.sh` quebrou imediatamente com `{"error":"invalid_request","error_description":"The requested redirect_uri is missing in the client configuration"}` no callback do Zitadel. Bug introduzido na **própria sessão** que adicionou multi-app — caso prototípico de "regressão de refatoração" que o asset bundled da skill ainda não previa.

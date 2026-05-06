@@ -1,7 +1,7 @@
 ---
 name: codereview
 metadata:
-  version: 1.8.0
+  version: 1.8.1
 description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Stack-agnostic with TypeScript/React defaults and dotnet preset. Triggers — code review, pre-PR, secrets scan, ggshield, accessibility audit.
 ---
 

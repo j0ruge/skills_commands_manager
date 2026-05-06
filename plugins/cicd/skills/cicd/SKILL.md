@@ -1,7 +1,7 @@
 ---
 name: cicd
 metadata:
-  version: 2.6.0
+  version: 2.6.1
 description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.
 ---
 

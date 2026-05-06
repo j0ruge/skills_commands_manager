@@ -11,7 +11,7 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.6.0",
+      "version": "2.6.1",
       "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.",
       "category": "development",
       "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys"],
@@ -29,7 +29,7 @@
     {
       "name": "codereview",
       "source": "./plugins/codereview",
-      "version": "1.10.0",
+      "version": "1.10.1",
       "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex). Stack-agnostic with TypeScript/React defaults and dotnet preset.",
       "category": "quality",
       "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "gitleaks", "credentials", "hardcoded-secrets", "deterministic-scan"],
@@ -56,7 +56,7 @@
     {
       "name": "dotnet-wpf",
       "source": "./plugins/dotnet-wpf",
-      "version": "1.6.0",
+      "version": "1.6.1",
       "description": "C#/.NET WPF toolkit — project setup/audit, Fluent Design guide (90+ controls, layout troubleshooting, dark theme, branding), WinForms→WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
       "keywords": ["dotnet", "csharp", "wpf", "xaml", "winforms", "mvvm", "communitytoolkit", "wpf-ui", "fluent-design", "flaui", "e2e-testing", "desktop", "windows", "form-layout", "date-validation", "content-dialog", "destructive-action"],
@@ -65,7 +65,7 @@
     {
       "name": "ddd",
       "source": "./plugins/ddd",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "description": "Domain-Driven Design toolkit — analyzes codebases for DDD violations, guides strategic design (event storming, context mapping), generates legacy→DDD migration specs. Language-agnostic. Synthesizes Evans + Vernon + modular-monolith practice.",
       "category": "architecture",
       "keywords": ["ddd", "domain-driven-design", "bounded-context", "event-storming", "context-mapping", "aggregate", "cqrs", "hexagonal", "modular-monolith", "erp", "legacy-migration", "code-review", "architecture"],
@@ -83,7 +83,7 @@
     {
       "name": "dev-script",
       "source": "./plugins/dev-script",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, port-reclaim with pgrep fallback, HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Encodes the gotchas learned in JRC projects (Vite allowedHosts, JWKS over self-signed HTTPS, --tlsMode external, runtime drift detection).",
       "category": "development",
       "keywords": ["dev-script", "dev.sh", "dev.ps1", "bootstrap", "local-development", "docker-compose", "mkcert", "caddy", "https-lan", "monorepo", "scaffold", "powershell", "bash", "playwright", "kill-port", "pgrep", "sanity-check", "runtime-drift", "tsx-watch"],
@@ -92,7 +92,7 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 24 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms).",
       "category": "development",
       "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2"],

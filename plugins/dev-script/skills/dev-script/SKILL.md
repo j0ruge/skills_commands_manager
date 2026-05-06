@@ -1,7 +1,7 @@
 ---
 name: dev-script
 metadata:
-  version: 0.3.0
+  version: 0.3.1
 description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, port-reclaim with pgrep fallback, HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Triggers — dev script, single-command dev, local stack, mkcert, kill port, runtime drift.
 ---
 

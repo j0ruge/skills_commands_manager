@@ -1,7 +1,7 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.3.0
+  version: 3.3.1
 description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code, applies fixes, runs regression tests, resolves GitHub conversations. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
 ---
 

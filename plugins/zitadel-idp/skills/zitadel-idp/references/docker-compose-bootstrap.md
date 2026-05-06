@@ -236,8 +236,165 @@ E declare o `secrets:` top-level apontando para um arquivo `chmod 400` ou um Doc
 
 **Prevenção**: `docker logs <ctr> --tail 5` logo após o primeiro `up -d` — se vir o panic, aplique a flag antes de gastar tempo investigando volume permissions, bytes da env, encoding, etc. (todos esses são red herrings pra esse panic específico em v2.66.)
 
-## §8. Where to go next
+## §8. Compose v4: login-container + nginx routing (Quirk 25)
 
-- Programmatic configuration: `references/api-cheatsheet.md`
+**Aplica-se a:** Zitadel `v4.x` quando você quer usar a Login UI v2 (default em v3+) em vez de continuar em v1. Se prefere ficar com Login UI v1 indefinidamente, esta seção não é obrigatória — basta `PUT /v2/features/instance {"loginV2":{"required":false}}` (ver `troubleshooting.md §"Hosted UI returns 404"`) e o resto da skill cobre o caminho.
+
+**Por que esta seção existe:** em v2.66 a Login UI v1 vinha embutida no binário do Zitadel; um único container atendia tudo (`/ui/login/`, `/oauth/v2/*`, `/management/v1/*`, `/v2/*`). Em v4 a Login UI v2 saiu do binário — virou container Next.js separado (`ghcr.io/zitadel/zitadel-login`). Compose precisa subir os dois, e o reverse proxy precisa rotear `/ui/v2/login` (Prefix) pro novo container.
+
+### Compose mínimo
+
+```yaml
+services:
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.15.0
+    command:
+      - start-from-init
+      # masterkey via env funciona em v4 (Quirk 24 era específico de v2.66)
+      - --tlsMode
+      - external                              # quando atrás de proxy TLS — ver §7
+    environment:
+      ZITADEL_EXTERNALDOMAIN: ${EXTERNALDOMAIN}
+      ZITADEL_EXTERNALPORT: 443
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${POSTGRES_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY}
+      # FirstInstance — agora dois PATs (IAM_OWNER + IAM_LOGIN_CLIENT)
+      ZITADEL_FIRSTINSTANCE_PATPATH: /current-dir/admin.pat
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /current-dir/login-client.pat
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: admin-sa
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Admin Service Account
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-12-31T23:59:59Z"
+    volumes:
+      - ./zitadel/local:/current-dir:rw
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready", "--config", "/zitadel.yaml"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  zitadel-login:
+    image: ghcr.io/zitadel/zitadel-login:v4.15.0
+    environment:
+      ZITADEL_API_URL: https://${EXTERNALDOMAIN}
+      # Token do service account IAM_LOGIN_CLIENT, escrito por FirstInstance
+      ZITADEL_SERVICE_USER_TOKEN_FILE: /current-dir/login-client.pat
+    volumes:
+      - ./zitadel/local:/current-dir:ro
+    depends_on:
+      zitadel:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: zitadel
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: zitadel
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zitadel"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
+```
+
+**Pontos não-óbvios deste compose:**
+
+- `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` é o que **provisiona o PAT do IAM_LOGIN_CLIENT** que o container `zitadel-login` consome. Se a env não existir antes do primeiro boot, FirstInstance não cria o service account, e o container `zitadel-login` falha pra subir com `permission denied` no PAT (que nunca foi escrito). Adicionar a env depois requer `down -v` — o estado de FirstInstance é congelado depois do primeiro setup.
+- `zitadel-login` precisa **ler** o PAT do volume compartilhado (`/current-dir:ro`). Não monte com `:rw` — o container não escreve nada lá. Read-only previne corrupção acidental.
+- `image: ghcr.io/zitadel/zitadel-login:v4.15.0` deve estar **na mesma versão** que `zitadel`. Versions desalinhadas (login v4.15 contra zitadel v4.14, p.ex.) podem ter API drift sutil — pin ambos no mesmo tag.
+
+### Nginx routing
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name idp.example.com;
+  # ssl_certificate / ssl_certificate_key conforme seu ACME/let's-encrypt setup
+
+  # Login UI v2 — container Next.js separado
+  location /ui/v2/login {
+    proxy_pass http://zitadel-login:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  # Tudo o mais — API container (OIDC discovery, /oauth/v2/*, /v2/*,
+  # /management/v1/*, /admin/v1/*, /assets/v1/org/*, /ui/login/* (Login UI v1
+  # se ainda usar via fallback))
+  location / {
+    proxy_pass http://zitadel:8080;
+    proxy_set_header Host $host;          # Quirk 3 — Zitadel valida Host
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+### Caddy equivalente
+
+```caddy
+idp.example.com {
+  handle_path /ui/v2/login* {
+    reverse_proxy zitadel-login:3000
+  }
+  reverse_proxy zitadel:8080
+}
+```
+
+`handle_path` (com asterisco) faz prefix-match, idêntico ao `location /ui/v2/login` do nginx — qualquer sub-path (`/ui/v2/login/login`, `/ui/v2/login/_next/static/...`) cai no container correto.
+
+### Como detectar que o roteamento está OK
+
+```bash
+# Login UI v2 deve responder 200 ou 307
+curl -sI https://idp.example.com/ui/v2/login | head -1
+
+# OIDC discovery deve servir do container API, não do login
+curl -sf https://idp.example.com/.well-known/openid-configuration | jq .issuer
+# expect: "https://idp.example.com"
+
+# JWKS deve vir do container API
+curl -sf https://idp.example.com/oauth/v2/keys | jq '.keys | length'
+# expect: número > 0
+```
+
+Se `/.well-known/openid-configuration` retornar 404 mas `/ui/v2/login` retornar 200, seu roteamento está invertido — provavelmente o `location /` veio antes do `location /ui/v2/login` e nginx pegou o match mais geral. Reordenar para que rotas específicas venham primeiro.
+
+### E se eu quiser ficar com Login UI v1?
+
+Path B do `migration-v2-to-v4.md §2`. Não suba o container `zitadel-login`, não faça split de routing — só desligue o flag de instância:
+
+```bash
+PAT=$(cat zitadel/local/admin.pat)
+curl -sS -X PUT https://${EXTERNALDOMAIN}/v2/features/instance \
+  -H "Authorization: Bearer $PAT" -H 'Content-Type: application/json' \
+  -d '{"loginV2":{"required":false}}'
+```
+
+Login UI v1 continua servida em `/ui/login/` pelo container `zitadel` — mesmo behavior de v2.66. A diferença é que agora você sabe que pode mudar de ideia depois subindo o container `zitadel-login` e revertendo o flag, sem reset.
+
+## §9. Where to go next
+
+- Programmatic configuration: `references/api-cheatsheet.md` (v1) + `references/api-v1-to-v2-mapping.md` (v2)
+- Upgrading from v2.66 to v4: `references/migration-v2-to-v4.md`
 - Token validation in your backend: `references/token-validation.md`
 - Errors during steps above: `references/troubleshooting.md`

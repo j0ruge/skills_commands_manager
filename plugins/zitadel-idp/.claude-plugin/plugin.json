@@ -1,10 +1,10 @@
 {
   "name": "zitadel-idp",
-  "description": "Zitadel self-hosted OIDC integration field guide. Captures the full set of high-friction quirks discovered while integrating Zitadel v4.x as the IdP for JRC Brasil ERP — FirstInstance env placement, volume permissions, v1/v2 API split, tenant→orgId mapping, JWT validation traps over self-signed HTTPS (NODE_EXTRA_CA_CERTS, JWKS over HTTPS), loginV2 instance flag, silent-renew redirect URI byte-match, JWT access token sem profile claims, idempotent bootstrap 'No changes' 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time signinSilent recursion, StrictMode + closure cancelled flag, post_logout_redirect_uri invalid, branding da Login UI v1 / privateLabelingSetting / 405 em /assets/v1, custom_login_text e LANG-lg4DP, F5 com InMemoryWebStorage, 401 storm pós --reset-zitadel por tsx-watch zumbi, regressão multi-app YAML que sobrescreve env vars OIDC_REDIRECT_URIS dinâmicas, e Zitadel v2.66.x panic 'No master key provided' mesmo com env presente — fix com flag CLI '--masterkey' (env-var fallback do start-from-init é unreliable em v2.66, em v4 funciona). Bundles a working docker-compose.zitadel.yml, idempotent bootstrap-zitadel.ts and reset-zitadel.sh script. Use whenever starting Zitadel integration, debugging 4xx on Zitadel APIs, validating Zitadel JWTs in Node/TypeScript, customizing the hosted Login UI, or wiring an SPA via OIDC PKCE.",
+  "description": "Zitadel self-hosted OIDC integration field guide. Captures the full set of high-friction quirks discovered while integrating Zitadel v4.x as the IdP for JRC Brasil ERP — FirstInstance env placement, volume permissions, v1/v2 API split, tenant→orgId mapping, JWT validation traps over self-signed HTTPS (NODE_EXTRA_CA_CERTS, JWKS over HTTPS), loginV2 instance flag, silent-renew redirect URI byte-match, JWT access token sem profile claims, idempotent bootstrap 'No changes' 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time signinSilent recursion, StrictMode + closure cancelled flag, post_logout_redirect_uri invalid, branding da Login UI v1 / privateLabelingSetting / 405 em /assets/v1, custom_login_text e LANG-lg4DP, F5 com InMemoryWebStorage, 401 storm pós --reset-zitadel por tsx-watch zumbi, regressão multi-app YAML que sobrescreve env vars OIDC_REDIRECT_URIS dinâmicas, Zitadel v2.66.x panic 'No master key provided' mesmo com env presente (fix com flag CLI '--masterkey'), e — novo em v0.3.0 — runbook completo de upgrade v2.66 → v4 (pre-flight Postgres advisory A10015, schema migration automática no setup, Login UI v2 como container Next.js separado, validation matrix, rollback) + mapping API v1 → v2 Connect protocol cobrindo as 13 chamadas v1 do bootstrap (Organization/Project/Application/User/Authorization/Settings/Action/Feature services, payload diffs firstName→givenName / userName→username / pt-BR→pt, contextual orgId header→body, idempotência via deterministic IDs). Bundles a working docker-compose.zitadel.yml, idempotent bootstrap-zitadel.ts (anotado com v2 equivalents) and reset-zitadel.sh script. Use whenever starting Zitadel integration, debugging 4xx on Zitadel APIs, validating Zitadel JWTs in Node/TypeScript, customizing the hosted Login UI, wiring an SPA via OIDC PKCE, planning a v2.66→v4 upgrade, or refactoring callers from API v1 to v2.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "0.2.1",
+  "version": "0.3.0",
   "category": "development",
   "keywords": [
     "zitadel",
@@ -25,7 +25,13 @@
     "jwks",
     "private-labeling",
     "masterkey",
-    "zitadel-v2"
+    "zitadel-v2",
+    "zitadel-v4",
+    "v2.66-to-v4",
+    "api-v1-to-v2",
+    "connect-protocol",
+    "login-ui-v2",
+    "schema-migration"
   ],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"

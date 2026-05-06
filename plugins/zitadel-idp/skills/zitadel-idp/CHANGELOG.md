@@ -2,6 +2,58 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-05-06 — Migration v2.66 → v4 + API v1 → v2 playbook (3 quirks + 2 references) — bump 0.2.1 → 0.3.0
+
+Source: projeto `validade_bateria_estoque`, missão "Zitadel v2.66.10 → v4.15.0 + API v2 (Connect protocol)" (memory: "Feature 006 pending"; prod travado por mismatch entre script bootstrap v4-shaped e instância pinned em v2.66.10 — login end-to-end bloqueado em produção). A skill atual cobria v4 muito bem (24 quirks) e v2.66.x num único quirk (#24, masterkey), mas tinha duas lacunas críticas pra missão de upgrade: (a) **nenhum runbook operacional** de como fazer o jump v2.66 → v4 (snapshot, schema migration, login-UI split, validation, rollback), e (b) **mapping API v1→v2 só implícito** — espalhado em comentários e quirks isolados, sem tabela única que cubra as 13 chamadas v1 do bootstrap real. Skill nesta release ganha as duas references novas + 3 quirks pra os modos de falha mais traiçoeiros do upgrade (Login UI v2 como container separado, idempotência via deterministic IDs, orgId header→body).
+
+### Adicionado
+
+- **L25 — Login UI v2 separate Next.js container** (`SKILL.md` quirk 25, `references/docker-compose-bootstrap.md` §8 nova "Compose v4: login-container + nginx routing", `references/migration-v2-to-v4.md` §3.2-3.3, `references/troubleshooting.md` §"Post-upgrade errors" entry "404 Not Found on /ui/v2/login").
+  *Sintoma evitado*: pós-upgrade pra v4, SPA redireciona pra `https://idp/ui/v2/login` e recebe `404 {"code":5,"message":"Not Found"}`. Em v2.66 a Login UI v1 vinha embutida no binário; em v4 a Login UI v2 saiu pra container separado (`ghcr.io/zitadel/zitadel-login`). Reverse proxy precisa rotear `/ui/v2/login` (Prefix) → `zitadel-login:3000`, todo o resto → `zitadel:8080`. Path B alternativo: `PUT /v2/features/instance {"loginV2":{"required":false}}` e seguir com Login UI v1 indefinidamente. Skill agora tem snippet compose pronto, snippet nginx + Caddy, validation cURL, e documenta a env nova `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` que provisiona o PAT do IAM_LOGIN_CLIENT (precisa estar no compose ANTES do primeiro boot — adicionar depois exige `down -v`).
+
+- **L26 — API v2 idempotence via deterministic IDs** (`SKILL.md` quirk 26, `references/api-v1-to-v2-mapping.md` §5 "Idempotence patterns").
+  *Sintoma evitado*: bootstrap v2-shaped fazendo round-trip `_search` antes de cada create, mantendo o mesmo número de chamadas que a v1 (overhead em multi-app boot). Em v2 você pode passar seu próprio `userId`/`applicationId`/`projectId` no body; tentar criar com ID já existente retorna `ALREADY_EXISTS`, que você trata como sucesso → 1 round-trip em vez de 2 por recurso. Pra recursos com nome humano-legível e sem ID estável (`org "JRC"`, `project "ERP-JRC"`), search-then-create v1 continua válido em v2 também. Skill explica quando aplicar cada padrão e dá exemplo TypeScript completo.
+
+- **L27 — Contextual `orgId` moved from header (`x-zitadel-orgid`) to body (`organizationId`)** (`SKILL.md` quirk 27, `references/api-v1-to-v2-mapping.md` §3 "Contextual info", `references/troubleshooting.md` §"Post-upgrade errors" entry "Bootstrap fails with INVALID_ARGUMENT: missing organization_id").
+  *Sintoma evitado*: refactor parcial v1→v2 onde alguém dropa o header global `x-zitadel-orgid` mas esquece de adicionar `organizationId` no body do call v2 — modo de falha tipicamente silencioso (header é ignorado em v2, então quem só leu doc não fica claro o que mudou). Sintoma é `INVALID_ARGUMENT: missing organization_id` (ou per-resource equivalent) só nos calls refatorados, enquanto v1 calls no mesmo script continuam funcionando. Skill agora documenta que o header é **inofensivo em v2** — pode manter setado globalmente no HTTP client durante a transição.
+
+- **NOVO `references/migration-v2-to-v4.md`** — runbook completo de upgrade self-hosted: §1 pre-flight checklist (Postgres 14+, masterkey, snapshot, env triad, inventário de callers v1, maintenance window), §2 upgrade path (direct v2.66 → v4 OK quando Postgres já em uso — advisory A10015 satisfeita; sem v3 stop), §3 step-by-step (snapshot, update compose com novo container `zitadel-login`, reverse-proxy routing, boot, smoke test 4 cURL, re-run bootstrap idempotente, app-level smoke), §4 validation matrix (8 sintomas × causas × fixes), §5 rollback (restore from snapshot — não há in-place downgrade), §6 features novas que ficam disponíveis pós-upgrade (Login UI v2, Connect protocol, AuthorizationService, /v2/users/human REST), §7 ponteiros pra references vizinhas.
+
+- **NOVO `references/api-v1-to-v2-mapping.md`** — mapping table cobrindo as 13 chamadas v1 reais do `bootstrap-zitadel.ts` do projeto JRC (Organization, Project, Application, User, Authorization, Settings, Action, Feature services). §1 path prefixes (Connect JSON / binary, REST `/v2/`, legacy v1, OIDC standards), §2 service mapping com 19 linhas (v1 → v2 service → v2 path), §3 contextual info header→body (Quirk 27 explained), §4 body-shape changes (`firstName/lastName` → `givenName/familyName`, `userName` → `username`, `email.isEmailVerified` → `email.isVerified`, `pt-BR` → `pt`, `apps/oidc` → `CreateApplication` com discriminator + nested `oidc` config), §5 idempotence patterns (deterministic IDs vs search-then-create), §6 lista do que ainda é v1-only em v4.15 (`SystemService`, alguns reads avançados), §7 auth unchanged, §8 migration checklist per-caller, §9 ponteiros.
+
+### Mudado
+
+- `SKILL.md` headline "the twenty-four quirks" → **"the twenty-seven quirks"**; `description` do frontmatter expandida com triggers novos (`zitadel v4 upgrade`, `v2.66 to v4`, `api v1 to v2`, `connect protocol`, `login-ui-v2 container`, `schema migration zitadel`); nova seção "Migration v2.66 → v4 + API v2" (logo após "Implementation flow"); seção "What this skill does NOT cover" agora aponta `migration-v2-to-v4.md` em vez de simplesmente listar v3→v4 como out-of-scope (caminho v2.66→v4 está coberto). Tabela "How to use the bundled material" ganha 2 linhas novas (planning upgrade + refactoring v1→v2).
+- `references/api-cheatsheet.md` — intro nova logo no topo direcionando código novo pra `api-v1-to-v2-mapping.md` (ainda mantém os snippets v1 pra paste-able cURL e idempotência conhecida); seção "v3 → v4 breaking changes" agora aponta `migration-v2-to-v4.md §2`; nova seção "v2.66 → v4 upgrade?" curta no fim, redirecionando upgrade work pra runbook.
+- `references/docker-compose-bootstrap.md` — nova §8 "Compose v4: login-container + nginx routing (Quirk 25)" com compose mínimo completo (zitadel + zitadel-login + postgres healthcheck), nginx + Caddy snippets, smoke cURL, e detalhe sobre `ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH` (precisa estar no compose ANTES do primeiro boot); §"Where to go next" renumerada pra §9 e ganha ponteiros pra `migration-v2-to-v4.md` + `api-v1-to-v2-mapping.md`.
+- `references/troubleshooting.md` — nova seção "Post-upgrade errors (v2.66 → v4)" com 5 entries (404 em /ui/v2/login, 401 storm pós-upgrade por JWKS rotation, setup hang > 5min, branding sumiu, INVALID_ARGUMENT missing organization_id em refactor parcial). Cada entry com sintoma + causa + fix + ponteiros pras quirks vizinhas (12, 13, 19, 21, 25, 27).
+- `assets/bootstrap-zitadel.ts` — comentários `// v2 equivalent: POST /zitadel.<svc>.v2.<Method>` ao lado de cada uma das 6 chamadas v1 funcionais do template (`findOrg`, `findProject`, `ensureProject`, `ensureRoles` com 2 endpoints, `findApp`, `ensureApp`). Sem refator funcional — quem usa o template pra v2.66 segue valendo; quem migrar pra v2 tem o mapping inline.
+
+### Não mudado / fora de escopo
+
+- Reescrever `bootstrap-zitadel.ts` do projeto `validade_bateria_estoque` para API v2 — responsabilidade da spec da feature 006, separada deste retrofit.
+- Mudar `infra/docker/docker-compose.prod.yml` do projeto de v2.66 para v4 — PR separado, gated por testes; este retrofit só fornece o playbook.
+- Cobertura de SAML / SCIM / Federation — continua out-of-scope da skill (decisão consciente desde a v0.1.0).
+- Test cases / evals automatizados pra skill — sem evals hoje; iteração futura se o usuário pedir.
+- `references/spa-recipes.md`, `references/tenant-org-mapping.md`, `references/token-validation.md`, `references/branding.md` — sem mudança nesta release. OIDC/OAuth endpoints (`/oauth/v2/*`, `/oidc/v1/userinfo`, `/.well-known/openid-configuration`) **não mudam** entre v2.66 e v4, então o SPA + JWT validation code continua valendo idêntico após o upgrade.
+
+### Verificação
+
+```bash
+grep -rn "v2.66.*v4\|migration-v2-to-v4\|api-v1-to-v2-mapping\|zitadel-login\|loginV2.*container\|organizationId.*body\|ALREADY_EXISTS.*deterministic" \
+  plugins/zitadel-idp/skills/zitadel-idp/
+```
+
+Esperado: ≥1 hit em cada termo, distribuídos por SKILL.md, references/migration-v2-to-v4.md, references/api-v1-to-v2-mapping.md, references/docker-compose-bootstrap.md §8, references/troubleshooting.md, references/api-cheatsheet.md, e assets/bootstrap-zitadel.ts.
+
+Bump consistente em 3 lugares:
+
+- `plugins/zitadel-idp/.claude-plugin/plugin.json` → `"version": "0.3.0"`
+- `.claude-plugin/marketplace.json` linha `zitadel-idp` → `"version": "0.3.0"`
+- `README.md` raiz tabela "Available Plugins" → `0.3.0` + count "27 quirks"
+
+---
+
 ## 2026-05-05 — Zitadel v2.66.x masterkey via flag CLI (1 lição) — bump 0.1.0 → 0.2.0
 
 Source: feature 005-production-deploy bootstrap em VPS de produção. Stack rodando `ghcr.io/zitadel/zitadel:v2.66.10` entrou em loop de restart com `panic: No master key provided` (exit 2, RestartCount=135 antes do diagnóstico). Verificação cruzada confirmou que `ZITADEL_MASTERKEY` estava corretamente injetada no container (32 chars exatos, sem CR/whitespace/null bytes, validado via `docker inspect | xxd`), e mesmo assim `start-from-init` ignorava a env. Em v4.x — coberto pelo grosso da skill — o fallback `os.Getenv` funciona; em v2.66.x não. Skill estava silenciosa sobre v2.x e o asset `docker-compose.zitadel.yml` por acidente já usa `--masterkey ${...}` no `command:` (legado de iteração anterior), mas não documentava **por quê** isso é obrigatório em v2.66 — ficava como "convenção". 1h+ de debug perdido investigando volume permissions, bytes da env, encoding, antes de cair na ficha.

@@ -97,6 +97,10 @@ async function api<T = unknown>(path: string, init: RequestInit = {}, orgId?: st
 }
 
 async function findOrg(name: string): Promise<{ id: string; name: string } | null> {
+  // v1 (kept for v2.66 compat — works in v4 too)
+  // v2 equivalent: POST /zitadel.org.v2.OrganizationService/ListOrganizations
+  //   body: { filters: [{ nameFilter: { name, method: "..." } }] }
+  // See references/api-v1-to-v2-mapping.md §2.
   const res = await api<{ result?: Array<{ id: string; name: string }> }>('/admin/v1/orgs/_search', {
     method: 'POST',
     body: JSON.stringify({
@@ -123,6 +127,10 @@ async function ensureOrg(): Promise<string> {
 }
 
 async function findProject(orgId: string, name: string): Promise<{ id: string } | null> {
+  // v1 (kept for v2.66 compat — works in v4 too)
+  // v2 equivalent: POST /zitadel.project.v2.ProjectService/ListProjects
+  //   body moves orgId from header `x-zitadel-orgid` to `organizationId` field
+  //   (Quirk 27). See references/api-v1-to-v2-mapping.md §3.
   const res = await api<{ result?: Array<{ id: string; name: string }> }>(
     '/management/v1/projects/_search',
     {
@@ -142,6 +150,11 @@ async function ensureProject(orgId: string): Promise<string> {
     console.log(`[project] reusing "${PROJECT_NAME}" id=${existing.id}`);
     return existing.id;
   }
+  // v1 (kept for v2.66 compat — works in v4 too)
+  // v2 equivalent: POST /zitadel.project.v2.ProjectService/CreateProject
+  //   body: { organizationId, name, projectRoleAssertion, ... }   (orgId moves
+  //   into body — Quirk 27). Optionally supply your own `projectId` for
+  //   deterministic-ID idempotence (Quirk 26) and skip the search above.
   const created = await api<{ id: string }>(
     '/management/v1/projects',
     {
@@ -160,6 +173,12 @@ async function ensureProject(orgId: string): Promise<string> {
 }
 
 async function ensureRoles(orgId: string, projectId: string): Promise<void> {
+  // v1 (kept for v2.66 compat — works in v4 too)
+  // v2 equivalent (search): POST /zitadel.project.v2.ProjectService/ListProjectRoles
+  //   body: { projectId, organizationId }
+  // v2 equivalent (create): POST /zitadel.project.v2.ProjectService/AddProjectRole
+  //   body: { projectId, organizationId, roleKey, displayName, group }
+  // See references/api-v1-to-v2-mapping.md §2.
   const existing = await api<{ result?: Array<{ key: string }> }>(
     `/management/v1/projects/${projectId}/roles/_search`,
     { method: 'POST', body: JSON.stringify({}) },
@@ -192,6 +211,10 @@ async function findApp(
   projectId: string,
   name: string,
 ): Promise<{ id: string; oidcConfig?: { clientId?: string } } | null> {
+  // v1 (kept for v2.66 compat — works in v4 too)
+  // v2 equivalent: POST /zitadel.application.v2.ApplicationService/ListApplications
+  //   body: { projectId, organizationId, filters: [{ nameFilter: ... }] }
+  // See references/api-v1-to-v2-mapping.md §2.
   const res = await api<{
     result?: Array<{ id: string; name: string; oidcConfig?: { clientId?: string } }>;
   }>(
@@ -224,6 +247,11 @@ async function ensureApp(
     );
     return { appId: existing.id, clientId: detail.app.oidcConfig?.clientId ?? '' };
   }
+  // v1 (kept for v2.66 compat — works in v4 too)
+  // v2 equivalent: POST /zitadel.application.v2.ApplicationService/CreateApplication
+  //   body: { projectId, organizationId, name, oidc: { redirectUris, ... } }
+  //   (single endpoint for OIDC/SAML/API — discriminated by which type-key
+  //   you nest the config under). See references/api-v1-to-v2-mapping.md §4.
   const created = await api<{ appId: string; clientId: string }>(
     `/management/v1/projects/${projectId}/apps/oidc`,
     {

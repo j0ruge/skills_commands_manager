@@ -1,6 +1,6 @@
 ---
 name: zitadel-idp
-description: Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 24 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms). Triggers — zitadel, oidc-self-hosted, login UI, silent-renew, JWKS, masterkey.
+description: Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 27 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, v2.66→v4 upgrade runbook, login UI v2 separate container, API v1→v2 Connect protocol mapping, contextual orgId header→body). Triggers — zitadel, oidc-self-hosted, login UI, silent-renew, JWKS, masterkey, zitadel v4 upgrade, v2.66 to v4, api v1 to v2, connect protocol, login-ui-v2 container, schema migration zitadel.
 ---
 
 # Zitadel IdP — Field Guide
@@ -37,11 +37,13 @@ The SKILL.md body intentionally stays short. Drill into the relevant reference b
 | Map domain `tenantId` to Zitadel `orgId` | `references/tenant-org-mapping.md` |
 | Wire an SPA (React + `react-oidc-context`) — boot-time silent renew, F5 retention, logout flow | `references/spa-recipes.md` |
 | Apply org branding to the hosted Login UI v1 (logo, colors, custom texts) | `references/branding.md` |
+| Plan a v2.66.x → v4.x upgrade (pre-flight, snapshot, login UI v2 container, validation, rollback) | `references/migration-v2-to-v4.md` |
+| Refactor callers from Management API v1 to v2 (Connect protocol, payload diffs, idempotence patterns) | `references/api-v1-to-v2-mapping.md` |
 | Hit a confusing error and want a quick lookup | `references/troubleshooting.md` |
 
 The references are designed to be readable in isolation — open the one you need without slogging through the rest.
 
-## The twenty-four quirks (the headline list)
+## The twenty-seven quirks (the headline list)
 
 These are the issues that consistently bite first-time Zitadel integrators. Each has a dedicated section in the references; this list is the trigger map so you know which file to open.
 
@@ -93,6 +95,22 @@ These are the issues that consistently bite first-time Zitadel integrators. Each
 
 24. **Zitadel v2.66.x `start-from-init`: env-var `ZITADEL_MASTERKEY` não é lida com confiabilidade — passe via flag CLI** — em v2.66.10 (e potencialmente outras patches da linha 2.66) o subcomando `start-from-init` falha com `panic: No master key provided ... masterkey must either be provided by file path, value or environment variable` mesmo quando `ZITADEL_MASTERKEY` está injetada corretamente no container (validável via `docker inspect <ctr> --format '{{range .Config.Env}}{{println .}}{{end}}'` — 32 chars exatos, sem CR, sem leading whitespace, sem null bytes). Em v4.x o fallback `os.Getenv` funciona; em v2.66 não. **Sintoma**: container em loop de restart com `RestartCount` crescendo, exit 2, e o panic acima a cada ciclo (~60s, devido ao retry policy). Fix canônico: passar `--masterkey ${ZITADEL_MASTERKEY}` no `command:` do compose (a flag tem precedência sobre env). Trade-off: a flag aparece em `docker inspect` e `ps aux`, então o `.env` precisa ser `chmod 600` e o host dedicado/de confiança. Se isso virar problema, migrar para `--masterkeyFile /run/secrets/zitadel_masterkey` + Docker secret. → `docker-compose-bootstrap.md §"Quirk 24 — masterkey via flag em v2.66.x"`.
 
+25. **Login UI v2 em v4 é um container Next.js separado** — diferente de Login UI v1, que vive embutida no binário do Zitadel em `/ui/login/`, a Login UI v2 (`/ui/v2/login`) é servida pela imagem `ghcr.io/zitadel/zitadel-login`. Em v3+ o instance flag `loginV2.required` default é `true` — o `signinRedirect` da SPA cai em `/ui/v2/login` por padrão, e se você só tem o container `zitadel` no compose recebe `404 {"code":5,"message":"Not Found"}`. Duas saídas: (A) deploy do container `zitadel-login` + reverse proxy roteando `/ui/v2/login` → `zitadel-login:3000` e tudo o mais → `zitadel:8080`; (B) `PUT /v2/features/instance {"loginV2":{"required":false}}` e seguir com Login UI v1 indefinidamente. Escolha uma — oscilar entre as duas sem pensar gera 404 esporádicos. → `migration-v2-to-v4.md §3.2-3.3` + `docker-compose-bootstrap.md §8`.
+
+26. **Idempotência em v2 via IDs determinísticos em vez de search-then-create** — em v1 o padrão idiomático era `POST /resource/_search` filtrando por nome → se 0 hits, `POST /resource` (Zitadel gera o ID). Em v2 você pode passar seu próprio `userId`/`applicationId`/`projectId` no body; tentar criar com ID já existente retorna `ALREADY_EXISTS`, que você trata como sucesso. Resultado: 1 round-trip em vez de 2 por recurso. Vale a pena para bootstraps multi-app (5 apps × 2 round-trips × N boots = ruído mensurável em hot-deploy). Pra recursos com nome humano-legível e sem ID estável (`org "JRC"`, `project "ERP-JRC"`), o padrão search-then-create v1 continua válido em v2 também. → `api-v1-to-v2-mapping.md §5`.
+
+27. **Contextual `orgId` mudou de header para body em v2** — v1 exigia `x-zitadel-orgid: 379...` em todo call org-scoped. v2 coloca o equivalente no body, geralmente como `organizationId` (às vezes nested em `org.id` ou `resourceOwner`). Modo de falha mais comum em refactor: dropar o header e esquecer de adicionar o campo no body — symptom é `INVALID_ARGUMENT: missing organization_id`. O header é **inofensivo em calls v2** (ignorado), então durante a transição você pode manter o header setado globalmente no HTTP client sem quebrar nada. → `api-v1-to-v2-mapping.md §3`.
+
+## Migration v2.66 → v4 + API v2
+
+When upgrading from v2.66.x to v4.x and refactoring callers from API v1 to v2:
+
+- **Start with the runbook** in `references/migration-v2-to-v4.md` — pre-flight (Postgres required since v3, advisory A10015), upgrade path (direct v2.66 → v4 OK if Postgres in place — no v3 stop), schema migration runs automatically in the v4 image's `setup` phase, validation matrix, rollback.
+- **Use the mapping table** in `references/api-v1-to-v2-mapping.md` — covers all 15 v2 services (Organization, Project, Application, User, Authorization, Action, Feature, Settings, OIDC, IDP, Group, SAML, Session, WebKey, Instance), payload diffs (`firstName/lastName` → `givenName/familyName`, `userName` → `username`, `email.isEmailVerified` → `email.isVerified`, language `pt-BR` → `pt`), and idempotence patterns.
+- **Login UI v2 is a separate container** — see Quirk 25 above. Reverse proxy must route `/ui/v2/login` to `zitadel-login:3000`, everything else (including OIDC discovery, OAuth, JWKS) to `zitadel:8080`. Path B (sticking with Login UI v1) is supported — Login UI v1 keeps working at `/ui/login/` indefinitely.
+- **Bootstrap idempotence in v2 differs** (Quirk 26) — deterministic IDs in body replace `_search`-then-create round-trip. Existing v1-shaped bootstrap scripts keep working in v4; refactor only when there's a reason.
+- **Connect protocol auth is unchanged**: same `Authorization: Bearer <PAT>` header. JSON variant uses `Content-Type: application/json`. Binary variant uses `application/connect+proto` (only if you have a generated client).
+
 ## Implementation flow (suggested order)
 
 For a fresh project, this sequence avoids most reordering:
@@ -108,7 +126,7 @@ For a fresh project, this sequence avoids most reordering:
 ## What this skill explicitly does NOT cover
 
 - Production hardening (TLS, masterkey rotation, Postgres backup, SMTP) — these are real concerns but vary by environment. Quick pointer: terminate TLS at NGINX/Caddy/Traefik and set `ZITADEL_EXTERNALSECURE=true` + `ZITADEL_TLS_ENABLED=false` + start flag `--tlsMode external` (full triad — see `docker-compose-bootstrap.md §"TLS terminated by reverse proxy"`, quirk 15). Backup the Zitadel Postgres database like any other Postgres.
-- v3 → v4 migration. Greenfield projects should start on v4.
+- v3 → v4 migration. Greenfield projects should start on v4. The skill covers v2.66 → v4 (the supported direct hop when Postgres is already in place — see `migration-v2-to-v4.md`), not v3 as an intermediate stop.
 - Federation, SAML, SCIM, Actions, Webhooks. Add them when needed — they are mostly straight reads of the docs once Zitadel is bootstrapped correctly.
 
 ## Source of truth

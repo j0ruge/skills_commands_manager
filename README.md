@@ -29,7 +29,7 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 | **release** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **retrofit-skill** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **statusline** | ✓ | — | Claude Code only (uses the Claude Code status line API) |
-| **zitadel-idp** | ✓ | ✓ | Skill — Zitadel self-hosted OIDC integration field guide (bootstrap, JWT, branding, 20+ gotchas) |
+| **zitadel-idp** | ✓ | ✓ | Skill — Zitadel self-hosted OIDC integration field guide (bootstrap, JWT, branding, 27 gotchas + v2.66→v4 upgrade runbook + API v1→v2 mapping) |
 
 ## Installation
 
@@ -83,7 +83,7 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | **ddd** | 0.3.0 | Architecture | Domain-Driven Design toolkit — codebase analysis, strategic design (event storming, context mapping), legacy → DDD conversion specs |
 | **dev-script** | 0.3.0 | Development | Generates `dev.sh` (bash) + `dev.ps1` (PowerShell) launchers tailored to the current project — detects compose/monorepo/IdP/mkcert, emits idempotent script with healthchecks, port reclaim (with `pgrep` fallback for kernels that hide PIDs from `ss`/`lsof`), trap cleanup, HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE, Playwright LAN-HTTPS testing recipe, monorepo `kill_known_dev_servers` regex gotcha (path appears before `tsx` in cmdline), `tsx watch --include=.env` so launcher-patched env actually reaches runtime, and the boot-time sanity-check pattern (app warns LOUD when runtime config diverges from launcher's source-of-truth file) |
 | **retrofit-skill** | 0.1.0 | Development | Apply non-obvious session lessons to a target skill in this marketplace — bumps version, updates CHANGELOG, marketplace.json and README, commits and pushes |
-| **zitadel-idp** | 0.2.0 | Development | Zitadel `v4.x` self-hosted OIDC integration field guide — captures **24** high-friction quirks (FirstInstance env placement, volume perms, v1/v2 API split, tenant→orgId mapping, JWT validation over self-signed HTTPS via `NODE_EXTRA_CA_CERTS` + JWKS, `loginV2` instance flag, silent-renew redirect URI byte-match, idempotent bootstrap `No changes` 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time `signinSilent` recursion, StrictMode closure trap, `post_logout_redirect_uri invalid`, Login UI v1 branding via `privateLabelingSetting` / `custom_login_text` / `LANG-lg4DP`, F5 with `InMemoryWebStorage`, 401 storm post `--reset-zitadel` from `tsx watch` zombies, multi-app YAML refactor regression vs dynamic env, **and Zitadel v2.66.x `--masterkey` flag fix** for the silent env-var fallback failure in `start-from-init`). Bundles working `docker-compose.zitadel.yml`, idempotent `bootstrap-zitadel.ts` and `reset-zitadel.sh` |
+| **zitadel-idp** | 0.3.0 | Development | Zitadel `v4.x` self-hosted OIDC integration field guide — captures **27** high-friction quirks (FirstInstance env placement, volume perms, v1/v2 API split, tenant→orgId mapping, JWT validation over self-signed HTTPS via `NODE_EXTRA_CA_CERTS` + JWKS, `loginV2` instance flag, silent-renew redirect URI byte-match, idempotent bootstrap `No changes` 400, TLS-terminating reverse proxy, secure-context PKCE on LAN, boot-time `signinSilent` recursion, StrictMode closure trap, `post_logout_redirect_uri invalid`, Login UI v1 branding via `privateLabelingSetting` / `custom_login_text` / `LANG-lg4DP`, F5 with `InMemoryWebStorage`, 401 storm post `--reset-zitadel` from `tsx watch` zombies, multi-app YAML refactor regression vs dynamic env, Zitadel v2.66.x `--masterkey` flag fix, **and new in v0.3.0**: Login UI v2 as a separate Next.js container (`zitadel-login`) with reverse-proxy split, API v2 idempotence via deterministic IDs, contextual `orgId` moved from header into body). Adds two new references: `migration-v2-to-v4.md` (full upgrade runbook — pre-flight, schema migration, validation matrix, rollback) and `api-v1-to-v2-mapping.md` (Connect protocol mapping for all 13 v1 calls in the bundled bootstrap, payload diffs, idempotence patterns). Bundles working `docker-compose.zitadel.yml`, idempotent `bootstrap-zitadel.ts` (annotated with `// v2 equivalent` comments) and `reset-zitadel.sh` |
 
 ---
 
@@ -210,9 +210,9 @@ Captures patterns and pitfalls discovered while integrating **Zitadel `v4.x` sel
 
 | Skill | Description |
 |-------|-------------|
-| `zitadel-idp` | Field guide with **24** documented quirks (v4-first, plus a v2.66.x masterkey edge case), drill-down references, and bundled working assets |
+| `zitadel-idp` | Field guide with **27** documented quirks (v4-first, with a v2.66.x masterkey edge case and a full v2.66→v4 upgrade runbook), drill-down references, and bundled working assets |
 
-**Bundled references** (`references/`): `api-cheatsheet.md`, `branding.md`, `docker-compose-bootstrap.md`, `spa-recipes.md`, `tenant-org-mapping.md`, `token-validation.md`, `troubleshooting.md`.
+**Bundled references** (`references/`): `api-cheatsheet.md`, `api-v1-to-v2-mapping.md` (NEW v0.3.0), `branding.md`, `docker-compose-bootstrap.md`, `migration-v2-to-v4.md` (NEW v0.3.0), `spa-recipes.md`, `tenant-org-mapping.md`, `token-validation.md`, `troubleshooting.md`.
 
 **Bundled assets**: `docker-compose.zitadel.yml` (working FirstInstance + volume perms), `bootstrap-zitadel.ts` (idempotent Management API bootstrap with multi-app `applications[]` and env > YAML > hardcoded precedence for dynamic dev hosts), `scripts/reset-zitadel.sh`.
 

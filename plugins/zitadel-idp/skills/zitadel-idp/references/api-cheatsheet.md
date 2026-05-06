@@ -2,6 +2,8 @@
 
 This is a working reference for the REST endpoints we actually use in a typical IdP integration: org/project/role/app provisioning, user management, and grant lifecycle. Each section gives the exact path, method, body shape, and the gotcha that bit us when we first wrote it.
 
+> **For new code on Zitadel v4: prefer the v2 service surface.** This cheatsheet documents the v1 endpoints actually exercised by `assets/bootstrap-zitadel.ts` and similar working bootstraps — they keep working in v4 and are useful when you need a quick paste-able cURL. For greenfield work or refactors, see `references/api-v1-to-v2-mapping.md` for the v2 (Connect protocol) equivalents, payload diffs (`firstName/lastName` → `givenName/familyName`, `userName` → `username`, `pt-BR` → `pt`), and the contextual `orgId` move from header into body. v1 is not deprecated in v4 — mixing v1 and v2 calls in the same script is fine.
+
 All examples assume:
 
 - `ZITADEL_API_URL=http://127.0.0.1.sslip.io:8080` (use the external domain literally — see `docker-compose-bootstrap.md §3`).
@@ -441,8 +443,12 @@ The full idempotent bootstrap script for Org/Project/Roles/App is at `assets/boo
 ## v3 → v4 breaking changes worth knowing
 
 - `OrganizationService.AddOrganization` (v2 Connect) was added in v3 and remains in v4. If you target v3 clusters, also test that endpoint exists.
-- The Login UI v2 (`zitadel-login` Next.js container) was promoted in v4 and uses `IAM_LOGIN_CLIENT` role. The v1 login UI is still bundled in the binary at `/ui/login/`.
+- The Login UI v2 (`zitadel-login` Next.js container) was promoted in v4 and uses `IAM_LOGIN_CLIENT` role. The v1 login UI is still bundled in the binary at `/ui/login/`. → see `migration-v2-to-v4.md §2` for compose-level implications.
 - Some response field names migrated from `id` to `<resource>Id` (e.g., `appId`, `organizationId`). Read the actual response, don't assume.
+
+## v2.66 → v4 upgrade?
+
+If you're not adding callers but **upgrading the IdP itself** from v2.66.x to v4.x, this cheatsheet is the wrong starting point — you want `references/migration-v2-to-v4.md`, which covers pre-flight (Postgres requirement, masterkey, snapshot), the schema migration that runs automatically in v4's `setup` phase, the new `zitadel-login` container, validation, and rollback. Direct v2.66 → v4 is supported when Postgres is already in place; no v3 stop required.
 
 ---
 

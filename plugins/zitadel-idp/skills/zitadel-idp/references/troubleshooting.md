@@ -456,6 +456,81 @@ services:
 
 See `docker-compose-bootstrap.md §"TLS terminated by reverse proxy"` for a full Caddy + Zitadel example.
 
+## Post-upgrade errors (v2.66 → v4)
+
+These show up specifically after bumping the Zitadel image from v2.66.x to v4.x. The full upgrade procedure (snapshot, schema migration, container split) lives in `references/migration-v2-to-v4.md` — this section is the lookup table for the four most common failure modes during the upgrade window.
+
+### `404 Not Found` on `/ui/v2/login` immediately after the v4 boot
+
+**Symptom**: Stack came up, OIDC discovery works (`/.well-known/openid-configuration` returns 200), JWKS loads, but the SPA's `signinRedirect` lands on `https://${EXTERNALDOMAIN}/ui/v2/login/login?authRequest=...` and gets `404`.
+
+**Cause**: In v4 the Login UI v2 is a **separate Next.js container** (`ghcr.io/zitadel/zitadel-login`) — the binary stopped serving `/ui/v2/login` itself. If your reverse proxy still routes everything to the `zitadel` container (which was correct in v2.66), `/ui/v2/login` 404s because the API container doesn't know that path. This is Quirk 25 in disguise.
+
+**Fix (Path A — recommended for v4 forward)**: add the `zitadel-login` container to compose and update the reverse proxy to route `/ui/v2/login` (Prefix) to it. See `docker-compose-bootstrap.md §8` for the full snippet.
+
+**Fix (Path B — least change)**: turn off the instance flag so `signinRedirect` falls back to Login UI v1 (still bundled in the API container at `/ui/login/`):
+
+```bash
+PAT=$(cat zitadel/local/admin.pat)
+curl -sS -X PUT https://${EXTERNALDOMAIN}/v2/features/instance \
+  -H "Authorization: Bearer $PAT" -H 'Content-Type: application/json' \
+  -d '{"loginV2":{"required":false}}'
+```
+
+Pick one and stick with it — toggling `loginV2.required` while only some clients have v1 set on their app payload causes intermittent 404s.
+
+### 401 storm right after the v4 boot — JWKS keys regenerated
+
+**Symptom**: Backend returns `401` on every `/api` request immediately after `docker compose up -d` on the v4 image. SPA falls into a silent-renew loop. The JWT from the new login decodes cleanly (signature, iss, aud, exp all look correct).
+
+**Cause**: The v4 image's `setup` phase **may rotate instance signing keys** during the migration. The backend's in-process `createRemoteJWKSet` cache holds the v2.66 public keys; tokens minted post-upgrade are signed with new keys whose `kid` doesn't match anything in the cache. jose surfaces this as `JWSSignatureVerificationFailed` (sometimes wrapped as a generic 401) — same shape as Quirk 12 but a different trigger.
+
+**Fix**: restart the backend after confirming Zitadel logs `setup completed`. The fresh `createRemoteJWKSet` fetches the v4 keys on first verification.
+
+If the storm persists after a backend restart, you've hit one of the other 401-storm causes (Quirk 12: TLS handshake / `NODE_EXTRA_CA_CERTS`; Quirk 13: `AUTH_AUDIENCE` cached from v2.66 doesn't match the v4-regenerated `projectId`). Walk through `troubleshooting.md §"401 storm with apparently-valid JWT"` causes 1, 2, 3 in that order.
+
+### `setup` phase hangs > 5 minutes during the v4 first boot
+
+**Symptom**: `docker logs zitadel` after `docker compose up -d` shows the new container booting, applying migration steps, then long silence. No `setup completed`, no obvious error. Container stays in `health: starting`.
+
+**Causes** (in order of likelihood):
+
+1. **Postgres connection limit reached.** v4's setup runs migrations as multiple short-lived connections; if `max_connections` on Postgres is at default (100) and you have other consumers (backend, dev tools), Zitadel can starve. Check `pg_stat_activity` for queue depth.
+2. **Disk full** on the Postgres volume. Migration writes new tables; out of space mid-write leaves the DB inconsistent. `df -h` on the host.
+3. **Slow migration on a large events table**. If you have years of v2.66 events (millions of rows), some migration steps (notably re-indexing for v4 query patterns) take 5–30 min. Patience or scale up CPU temporarily.
+
+**Diagnostic**:
+
+```bash
+# Tail the migration progress
+docker logs zitadel 2>&1 | grep -E "migration|setup" | tail -20
+
+# Compare with what's currently happening on Postgres
+docker exec <postgres-ctr> psql -U zitadel -c \
+  "SELECT pid, state, query_start, left(query, 100) FROM pg_stat_activity WHERE state = 'active';"
+```
+
+**Fix**: address the root cause (raise `max_connections`, free disk, wait). **Do not** restart the container mid-migration — that's how you get into the `Errors.Instance.Domain.AlreadyExists` half-migrated state, which requires a snapshot restore (see `migration-v2-to-v4.md §5`).
+
+### Branding (logo / colors) gone after the upgrade
+
+**Symptom**: Login UI looked branded (red JRC, custom logo) on v2.66; same Login UI on v4 shows the default Zitadel blue/gray. `LabelPolicy` GET still returns the customized values — they're persisted, just not applied.
+
+**Cause**: Two possible drifts:
+
+1. **Asset path migration**. Quirk 21 was a v3→v4 rename — `/assets/v1/orgs/me/policy/label/...` → `/assets/v1/org/policy/label/...`. If you re-uploaded assets between upgrades and used the old path, the upload returned 405 silently (or you didn't upload after the upgrade and the old binary blob is now in a path the v4 binary doesn't read).
+2. **`privateLabelingSetting` reset on the project**. Some migration steps reset project-level flags to defaults; the project's `PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY` may have flipped back to `_UNSPECIFIED`, falling back to the instance label policy (Quirk 19).
+
+**Fix**: re-run your branding bootstrap. The label policy itself usually survives — what needs replaying is the asset upload (Quirk 21 path) and the project flag set (Quirk 19). Both are idempotent. See `branding.md §"Quirk 19"` and `§"Quirk 21"`.
+
+### Bootstrap fails with `INVALID_ARGUMENT: missing organization_id` after partial v2 refactor
+
+**Symptom**: You upgraded the IdP **and** simultaneously refactored some bootstrap calls from v1 to v2 (Connect protocol). The v1 calls work; the v2 calls fail with `INVALID_ARGUMENT: missing organization_id` even though the bootstrap script sets `x-zitadel-orgid` header globally on its HTTP client.
+
+**Cause**: Quirk 27 — v2 carries org context in the **body** (`organizationId`), not the header. The header is harmless but ignored on v2 calls. You dropped the global header during refactor (or didn't), but didn't add the body field — that's the missing piece.
+
+**Fix**: for each v2 call, ensure the body includes the `organizationId` (or per-resource equivalent — sometimes nested as `org.id` or `resourceOwner`). Check `api-v1-to-v2-mapping.md §3` for the convention. Don't refactor everything at once — keep v1 and v2 calls in the same script and migrate gradually.
+
 ## When you don't see your error here
 
 1. Check Zitadel logs first: `docker logs <container> 2>&1 | tail -100`. Most setup errors print at INFO or ERROR level.

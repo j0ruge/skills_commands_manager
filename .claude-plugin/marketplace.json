@@ -92,10 +92,10 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.2.1",
-      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 24 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms).",
+      "version": "0.3.0",
+      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 27 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, login UI v2 separate container in v4, API v2 idempotence via deterministic IDs, contextual orgId header→body). Adds runbook for v2.66→v4 upgrade and mapping table for API v1→v2 Connect protocol.",
       "category": "development",
-      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2"],
+      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2", "zitadel-v4", "v2.66-to-v4", "api-v1-to-v2", "connect-protocol", "login-ui-v2", "schema-migration"],
       "platforms": ["claude-code", "cursor"]
     }
   ]

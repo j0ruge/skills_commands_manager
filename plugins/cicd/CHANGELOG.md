@@ -2,6 +2,33 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.6.0] - 2026-05-05
+
+### Adicionado
+
+- **Nova reference `self-hosted-runner-docker.md`** (~280 linhas) — guia dedicado ao runner conteinerizado via `myoung34/github-runner`, complementando o conteúdo de runner-via-systemd que já existia em `troubleshooting-shared.md §"Runner Offline"`. Cobre 6 gotchas específicos da imagem com diagnóstico, fix canônico e template completo de Dockerfile + entrypoint + compose:
+  - **§1**: `CMD` herdado da imagem base é zerado quando você define `ENTRYPOINT` custom — runner configura, sai com exit 0, restart loop. Fix: restaurar `CMD ["./bin/Runner.Listener", "run", "--startuptype", "service"]`.
+  - **§2**: Imagem upstream consome env var `LABELS`, não `RUNNER_LABELS` — runner registra com label `default`, workflows com `runs-on: [self-hosted, production]` não enxergam.
+  - **§3**: `EPHEMERAL=true` + `restart: always` entra em loop infinito porque `.runner` / `.credentials` persistem no FS layer entre restarts. Fix: limpar state files no entrypoint custom antes de delegar pro upstream.
+  - **§4**: Build com `gpg --dearmor` falha em buildkit non-tty (`cannot open '/dev/tty'`). Fix: usar keyring `.asc` direto via `signed-by=`, eliminando dependência de gnupg.
+  - **§5**: Registration tokens são single-use e vencem em 1h — script de bring-up deve regerar imediatamente antes de cada `up -d`.
+  - **§6**: Stale runner registrations no GH bloqueiam re-registro limpo — `DELETE /repos/.../actions/runners/<id>` antes de re-registrar com mesmo nome.
+- **`troubleshooting-shared.md` cenário 9: GitHub deploy keys per-repo unique (transferRepo)** — deploy key não migra automaticamente em `transferRepo`; tentar adicionar a mesma pubkey no novo repo dá `422 "key is already in use"` sem dizer onde está em uso. Fix: DELETE no antigo + POST no novo, ou gerar nova ed25519.
+- **`troubleshooting-shared.md` cenário 10: `.env` com leading whitespace + `sed -i`** — sed silencia (regex `^KEY=` não casa) mas `docker-compose --env-file` strip-a o whitespace ao parsear, então `${KEY}` ainda funciona. Bug aparece só em manutenção via sed/awk. Fix canônico: reescrever `.env` atomicamente via heredoc + validação awk que detecta linha com leading space.
+- **`troubleshooting-shared.md §4 "Runner Offline"` expandido**: agora distingue diagnóstico systemd vs container, e aponta para `self-hosted-runner-docker.md` quando o runner está em container com `RestartCount > 0`.
+- **`SKILL.md` Routing Table**: nova entrada explícita pra `self-hosted-runner-docker.md` com gatilhos de detecção (presença de `myoung34/github-runner` em Dockerfile/compose, sintomas de loop).
+- **`SKILL.md` description**: 9 triggers novos no frontmatter (`myoung34/github-runner`, `gh-runner container`, `Cannot configure the runner`, `runner label default`, `RUNNER_LABELS LABELS env var`, `registration token expired`, `deploy key already in use 422`, `transferRepo deploy key`, `.env leading whitespace sed`).
+
+### Motivação
+
+Feature 005-production-deploy do `validade_bateria_estoque`: bring-up do self-hosted runner conteinerizado em VPS de produção JRC encontrou os 6 gotchas em sequência (algumas combinadas em loops mascarados). Sessão gastou ~1h investigando o "exit 0 sem mensagem de erro" antes de inspecionar o entrypoint upstream e descobrir o `exec "$@"` esperando o CMD herdado. Outras 30min em `Cannot configure the runner` antes de mapear que `restart != recreate` em Docker e `.runner` persiste no FS layer.
+
+Em paralelo, transferRepo `j0ruge/...` → `JRC-Brasil/...` revelou a regra deploy-key-per-repo, e múltiplas regenerações do `.env` durante o ciclo de debug expuseram o bug do leading-whitespace + sed silenciando.
+
+A skill antes só cobria runner via systemd no host (caso clássico) — runner conteinerizado é o caminho recomendado pelos specs JRC desde 005 (FR-022a, R-002 socket-mount), então a lacuna era de cobertura. Progressive disclosure: o cluster grande (6 gotchas + template completo) virou ref própria; os 2 gotchas curtos (deploy key, .env whitespace) entraram em `troubleshooting-shared.md` sem inflar.
+
+---
+
 ## [2.5.0] - 2026-05-05
 
 ### Adicionado

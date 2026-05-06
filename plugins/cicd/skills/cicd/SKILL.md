@@ -1,12 +1,15 @@
 ---
 name: cicd
 metadata:
-  version: 2.5.0
+  version: 2.6.0
 description: |
-  Troubleshooting and configuration of CI/CD pipelines with GitHub Actions, Docker, GHCR, and self-hosted runners.
+  Troubleshooting and configuration of CI/CD pipelines with GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner).
   Unified skill — automatically detects backend (Prisma) or frontend (Vite) and routes to specific references.
   Triggers: "CI/CD", "pipeline", "GitHub Actions", "workflow", "CI failing", "build failed",
   "deploy", "staging", "production", "docker build", "GHCR", "self-hosted runner",
+  "myoung34/github-runner", "gh-runner container", "Cannot configure the runner",
+  "runner label default", "RUNNER_LABELS LABELS env var", "registration token expired",
+  "deploy key already in use 422", "transferRepo deploy key", ".env leading whitespace sed",
   "gh run", "workflow dispatch", "secrets", "environment secrets"
 ---
 
@@ -107,15 +110,18 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 
 ## Routing Table — Detailed References
 
-| Problem Category                               | Reference                                    |
-| --------------------------------------------- | -------------------------------------------- |
-| Shared infra (GHCR, network, SSL, runner)      | `references/troubleshooting-shared.md`       |
-| Shared checklist (runner, GHCR, DNS)           | `references/checklist-shared.md`             |
-| Backend troubleshooting (Zod, Prisma, Jest)    | `references/troubleshooting-backend.md`      |
-| Backend checklist (secrets, tests, build)       | `references/checklist-backend.md`            |
-| Jest test fix patterns                         | `references/test-fixes-backend.md`           |
-| Frontend troubleshooting (Vite, SPA, nginx)    | `references/troubleshooting-frontend.md`     |
-| Frontend checklist (VITE_*, Dockerfile, CD)    | `references/checklist-frontend.md`           |
+| Problem Category                                          | Reference                                    |
+| --------------------------------------------------------- | -------------------------------------------- |
+| Shared infra (GHCR, network, SSL, runner via systemd)     | `references/troubleshooting-shared.md`       |
+| **Self-hosted runner conteinerizado (myoung34/github-runner)** | `references/self-hosted-runner-docker.md`    |
+| Shared checklist (runner, GHCR, DNS)                      | `references/checklist-shared.md`             |
+| Backend troubleshooting (Zod, Prisma, Jest)               | `references/troubleshooting-backend.md`      |
+| Backend checklist (secrets, tests, build)                 | `references/checklist-backend.md`            |
+| Jest test fix patterns                                    | `references/test-fixes-backend.md`           |
+| Frontend troubleshooting (Vite, SPA, nginx)               | `references/troubleshooting-frontend.md`     |
+| Frontend checklist (VITE_*, Dockerfile, CD)               | `references/checklist-frontend.md`           |
+
+> **Trigger pra `self-hosted-runner-docker.md`**: presença de `infra/docker/runner/Dockerfile` (ou similar) com `FROM myoung34/github-runner` no projeto, OU `docker-compose.*.yml` com serviço cujo `image:`/`build:` referencia esse runner conteinerizado. Sintomas-chave: container em loop de restart com exit 0/2, logs com "Configuring → Settings Saved → fim", "Cannot configure the runner because it is already configured", build falhando em `gpg --dearmor`, ou `gh api .../actions/runners` mostrando label `default` em vez da configurada.
 
 ---
 

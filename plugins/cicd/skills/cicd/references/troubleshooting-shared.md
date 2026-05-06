@@ -112,9 +112,9 @@ curl -sv http://domain 2>&1 | head -10
 No runner matching the specified labels was found
 ```
 
-**Cause:** Self-hosted runner with label `staging` or `production` is not online.
+**Cause:** Self-hosted runner with label `staging` or `production` is not online — **or** registrou online mas com a label errada (sintoma sutil: o runner aparece em `gh api .../actions/runners` mas com `["self-hosted","Linux","X64","default"]` em vez da label esperada).
 
-**Diagnosis:**
+**Diagnosis (runner via systemd no host):**
 
 ```bash
 # On the runner server
@@ -123,6 +123,18 @@ sudo systemctl status actions.runner.*
 # Restart if needed
 sudo systemctl restart actions.runner.*.service
 ```
+
+**Diagnosis (runner conteinerizado — `myoung34/github-runner`):**
+
+```bash
+docker ps --filter name=gh-runner --format "table {{.Names}}\t{{.Status}}"
+docker inspect gh-runner --format "RestartCount={{.RestartCount}} ExitCode={{.State.ExitCode}}"
+docker logs --tail 30 gh-runner
+gh api /repos/<owner>/<repo>/actions/runners \
+  --jq '.runners[] | {id, name, status, busy, labels: [.labels[].name]}'
+```
+
+Se `RestartCount > 0` e logs em loop com "Configuring → Settings Saved → fim" ou "Cannot configure the runner because it is already configured", **vá direto para `references/self-hosted-runner-docker.md`** — cobre os 6 gotchas específicos da imagem (CMD herdado zerado, env var `LABELS` vs `RUNNER_LABELS`, state residual em FS layer, `gpg --dearmor` em buildkit, registration token single-use, registros stale no GH).
 
 **Monitor queue:**
 
@@ -317,3 +329,78 @@ npm run test -w <ws>
 ```
 
 **Por que isso é dangeroso de diagnosticar:** o erro `Cannot find package 'X'` aponta para `<other-pkg>` no stack trace, não para a workspace que declarou `X`. Sem o passo de comparar `node_modules/X` vs `packages/<ws>/node_modules/X` no lock, parece bug do `<other-pkg>` ou versão errada de `X`. A causa real (hoisting frustrado) só aparece via inspeção do lock.
+
+---
+
+## 9. GitHub deploy keys são per-repo unique (transferRepo)
+
+**Sintoma**: depois de transferir um repo (`old-org/repo` → `new-org/repo`), o servidor que clonava via deploy key não consegue mais clonar (`Permission denied (publickey)`). Você tenta adicionar a mesma chave SSH no novo repo via UI ou API:
+
+```text
+422 {"message":"Validation Failed","errors":[{"resource":"PublicKey","code":"custom","field":"key","message":"key is already in use"}]}
+```
+
+**Causa**: GitHub deploy keys são **per-repo unique**. A mesma `ssh-ed25519 ...` pubkey só pode estar registrada em um repo por vez. Transferir o repo NÃO migra automaticamente os deploy keys — eles ficam no repo-fantasma de origem e bloqueiam re-uso.
+
+**Fix**: deletar a key no repo antigo, depois adicionar no novo.
+
+```bash
+# 1. Listar keys no repo antigo (ainda existe se foi transferRepo, ou se você cuidou de redirect)
+gh api /repos/<old-owner>/<repo>/keys
+
+# 2. Pegar id da chave que você quer migrar e deletar
+gh api -X DELETE /repos/<old-owner>/<repo>/keys/<id>
+
+# 3. Re-adicionar no repo novo
+PUBKEY=$(ssh <host> 'cat ~/.ssh/<keyname>.pub')
+gh api -X POST /repos/<new-owner>/<repo>/keys \
+  -f title='<descrição>' -f "key=${PUBKEY}" -F read_only=true
+```
+
+**Variante "esqueci de salvar a privada"**: se o repo antigo desapareceu (foi deletado, não transferido) e a chave ficou órfã, gerar uma nova ed25519 no servidor é mais rápido do que tentar recuperar — `ssh-keygen -t ed25519 -f ~/.ssh/<keyname> -N ""` e adicionar a `.pub` resultante.
+
+**Por que é fácil errar**: a UI do GitHub no repo novo aceita "Add deploy key", você cola, ele aceita o título, e só no Save é que aparece o 422 — sem indicar onde a chave está em uso. A API é mais explícita ("key is already in use") mas continua sem listar o repo conflitante. A correção é sempre "DELETE no antigo + POST no novo", sem atalho.
+
+---
+
+## 10. Operational gotchas — `.env` com leading whitespace + `sed -i`
+
+**Sintoma**: você reescreveu uma linha do `.env` com `sed -i 's|^KEY=.*|KEY=newvalue|' .env`, o sed não retornou erro, mas a validação subsequente diz que `KEY` continua vazia / com valor antigo.
+
+```bash
+$ sed -i 's|^RUNNER_REGISTRATION_TOKEN=.*|RUNNER_REGISTRATION_TOKEN=ABC123|' infra/docker/.env
+$ awk -F= 'NF>=2 {print $1"=("length(substr($0,index($0,"=")+1))" chars)"}' infra/docker/.env
+ RUNNER_REGISTRATION_TOKEN=(0 chars)    # ← sed silenciou
+```
+
+**Causa**: o arquivo tem leading whitespace nas linhas (`  KEY=value` em vez de `KEY=value`). O regex `^KEY=` não casa porque não há `K` na coluna 0. Mas — e essa é a parte traiçoeira — `docker compose --env-file` **strip-a leading whitespace ao parsear**, então `${KEY}` em interpolações continua funcionando. O bug só aparece em ferramentas que fazem regex line-anchored sobre o arquivo bruto.
+
+**Fontes comuns de leading whitespace**:
+
+- Editor de YAML que reformata bloco indentado quando o usuário cola num heredoc dentro de YAML.
+- Heredoc com `<<-` vs `<<` (o `<<-` strip-a só tabs, não spaces).
+- Cópia de tutorial markdown onde o code block tinha indentação de lista (`- env:\n  KEY=value`).
+
+**Fix canônico — reescrever o `.env` atomicamente via heredoc**:
+
+```bash
+cat > infra/docker/.env <<'ENV_EOF'
+IMAGE_TAG=latest
+POSTGRES_PASSWORD=...
+RUNNER_REGISTRATION_TOKEN=$TOK
+ENV_EOF
+chmod 600 infra/docker/.env
+```
+
+**Validação rápida** (verifica que cada linha começa em coluna 0):
+
+```bash
+awk -F= '
+  /^[[:space:]]/ {print "LEADING WHITESPACE: "$0; exit 1}
+  NF>=2 {print $1"=("length(substr($0,index($0,"=")+1))" chars)"}
+' infra/docker/.env
+```
+
+Se `LEADING WHITESPACE` aparece em qualquer linha, reescreva o arquivo do zero — sed não vai te ajudar.
+
+**Por que isso confunde**: aplicações que usam o `.env` (docker-compose, dotenv-cli, vite, etc.) toleram o whitespace e funcionam. Você "vê" o secret carregando no container e assume que o arquivo está OK. Só percebe quando precisa fazer manutenção via sed/awk e o regex não casa, ou quando uma ferramenta mais estrita (alguns parsers Go/Rust) recusa ler.

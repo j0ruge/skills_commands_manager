@@ -11,10 +11,10 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.5.0",
-      "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners",
+      "version": "2.6.0",
+      "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner — dedicated reference covers CMD-herdado-zerado, env LABELS vs RUNNER_LABELS, EPHEMERAL+restart loop, gpg --dearmor em buildkit, plus shared troubleshooting for deploy keys per-repo unique e .env leading whitespace + sed silenciando).",
       "category": "development",
-      "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment"],
+      "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys"],
       "platforms": ["claude-code", "cursor"]
     },
     {

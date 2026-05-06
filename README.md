@@ -74,7 +74,7 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 
 | Plugin | Version | Category | Description |
 |--------|---------|----------|-------------|
-| [**cicd**](#cicd) | 2.5.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners — now with monorepo workspace hoisting diagnosis and vitest jsdom→happy-dom recipe for msw v2 setups |
+| [**cicd**](#cicd) | 2.6.0 | Development | CI/CD troubleshooting for GitHub Actions, Docker, GHCR, and self-hosted runners (systemd-on-host **e containerizado via `myoung34/github-runner`**) — agora com nova reference dedicada cobrindo CMD-herdado-zerado, env `LABELS` vs `RUNNER_LABELS`, `EPHEMERAL`+`restart:always` loop, `gpg --dearmor` em buildkit, mais deploy keys per-repo unique e `.env` leading whitespace + `sed` silenciando, somados ao monorepo workspace hoisting diagnosis e vitest jsdom→happy-dom recipe pra msw v2 |
 | [**codereview**](#codereview) | 1.10.0 | Quality | Pre-PR code review with model routing (haiku/sonnet/opus), TOCTOU detection, accessibility, **deterministic hardcoded secrets detection** via Python regex script + optional ggshield/gitleaks (GitGuardian-equivalent, blocks PRs with leaked credentials), and multi-reviewer PR resolver (CodeRabbit, Copilot, Gemini, Codex) with baseline-aware regression testing and **verify-before-trust** validation of reviewer-cited references |
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
@@ -96,7 +96,7 @@ Unified troubleshooting and pipeline configuration for GitHub Actions, Docker, G
 
 | Skill | Description |
 |-------|-------------|
-| `/cicd` | Troubleshoots and configures CI/CD pipelines — 30+ scenarios, 31 lessons learned |
+| `/cicd` | Troubleshoots and configures CI/CD pipelines — 30+ scenarios, 33+ lessons learned (incl. dedicated `self-hosted-runner-docker.md` reference for `myoung34/github-runner` setups) |
 
 **Highlights:** project-type detection, tagged troubleshooting (`[S]` shared / `[B]` backend / `[F]` frontend), Jest OOM fixes, Biome 2.x migration, stale Docker image cache handling.
 

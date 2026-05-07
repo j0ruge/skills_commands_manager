@@ -1,7 +1,7 @@
 ---
 name: cicd
 metadata:
-  version: 2.6.1
+  version: 2.7.0
 description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.
 ---
 
@@ -112,6 +112,9 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | Jest test fix patterns                                    | `references/test-fixes-backend.md`           |
 | Frontend troubleshooting (Vite, SPA, nginx)               | `references/troubleshooting-frontend.md`     |
 | Frontend checklist (VITE_*, Dockerfile, CD)               | `references/checklist-frontend.md`           |
+| **CD pipeline pitfalls (build-time vs runtime, operator clones, `--profile run` reconcile)** | `references/cd-pipeline-pitfalls.md` |
+
+> **Trigger pra `cd-pipeline-pitfalls.md`**: você está num cutover de produção (ou hotfix) e o sintoma envolve uma divergência entre camadas — secret atualizado mas container ainda com valor antigo, frontend buildado contra URL errada, manual `docker compose run` derrubando containers de outros serviços. Sintomas-chave: SPA com 404 em todas as chamadas API após login funcionar (VITE_* base URL drift), `docker compose --profile X run` derrubando containers running, "operator clone" do repo no host com versão stale do compose. Ver §1-3 do referencial.
 
 > **Trigger pra `self-hosted-runner-docker.md`**: presença de `infra/docker/runner/Dockerfile` (ou similar) com `FROM myoung34/github-runner` no projeto, OU `docker-compose.*.yml` com serviço cujo `image:`/`build:` referencia esse runner conteinerizado. Sintomas-chave: container em loop de restart com exit 0/2, logs com "Configuring → Settings Saved → fim", "Cannot configure the runner because it is already configured", build falhando em `gpg --dearmor`, ou `gh api .../actions/runners` mostrando label `default` em vez da configurada.
 

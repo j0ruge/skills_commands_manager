@@ -198,6 +198,32 @@ echo "$TOK" | gh secret set RUNNER_REGISTRATION_TOKEN --env production --repo "$
 # Trigger workflow imediatamente — em <1h
 ```
 
+## §5b. Multi-job CD em um dia exaure o token mesmo dentro da janela de 1h
+
+`EPHEMERAL=true` significa que **cada job consome o token uma vez** — o runner deregistra ao fim e tenta re-registrar. Se você dispara 4-5 deploys consecutivos (debug iterativo de cutover, hotfixes, retries), o agente reusa o **mesmo** token salvo no `.env`/GH secret a cada ciclo e o GitHub responde `404` no segundo ciclo. Sintoma do container: `gh-runner Restarting (1)`, log:
+
+```text
+Http response code: NotFound from 'POST https://api.github.com/actions/runner-registration'
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"}
+An error occurred: Not configured.
+```
+
+**Não é a janela de 1h** — pode acontecer 2 minutos depois do primeiro registro se você já rodou um ephemeral job no meio. CI da GitHub Actions ficou "in_progress → queued" porque o runner não voltou pra pool.
+
+**Fix em mid-flight cutover**: regenerar token + atualizar **dois lugares** (GH secret + arquivo `.env` no host do runner) + force-recreate:
+
+```bash
+NEW_TOKEN=$(gh api -X POST "/repos/${REPO}/actions/runners/registration-token" --jq .token)
+# (1) GH secret — pra próximas runs do CD
+gh secret set RUNNER_REGISTRATION_TOKEN --env production --repo "$REPO" --body "$NEW_TOKEN"
+# (2) .env no host do runner — pra recreate funcionar agora
+ssh ops@runner-host "sed -i 's|^RUNNER_REGISTRATION_TOKEN=.*|RUNNER_REGISTRATION_TOKEN=$NEW_TOKEN|' /opt/.../infra/docker/.env && docker compose -f /opt/.../docker-compose.prod.yml up -d --force-recreate runner"
+```
+
+Ambos passos são necessários: a próxima execução do CD step "Gerar .env de produção" sobrescreve o `.env` com o secret atual; mas o **runner que está running agora** lê o `.env` existente. Sem atualizar os dois, ou o CD deploy do agora falha (env stale), ou o próximo CD falha (secret stale).
+
+**Prevenção** (longa duração): rotacionar o token automaticamente em cada CD via job pre-deploy — `gh api … registration-token` + `printf` no `.env` antes do `up -d`. Caro nas APIs (uma chamada gerenciada por deploy) mas elimina o "queue stuck" intermitente.
+
 ## §6. Stale runner registrations no GitHub bloqueiam re-registro limpo
 
 **Sintoma**: você derruba o container, limpa o volume `runner-work`, gera token novo, mas o registro continua dando "A runner exists with the same name" e/ou a label aparece errada (`default` em vez da que você passou).

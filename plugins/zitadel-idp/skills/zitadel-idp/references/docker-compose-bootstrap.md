@@ -392,6 +392,72 @@ curl -sS -X PUT https://${EXTERNALDOMAIN}/v2/features/instance \
 
 Login UI v1 continua servida em `/ui/login/` pelo container `zitadel` — mesmo behavior de v2.66. A diferença é que agora você sabe que pode mudar de ideia depois subindo o container `zitadel-login` e revertendo o flag, sem reset.
 
+## §"DefaultInstance feature flags pre-config" (Quirk 31)
+
+When the upstream Login UI v2 auto-provisioning bug (Quirk 28) blocks `/ui/v2/login` *and* the operator can't login to the console to create the IAM_OWNER PAT manually because the OIDC redirect to `/ui/v2/login` 404s, the cleanest break is to set the `loginV2.required` flag in **DefaultInstance** config (an env on the `zitadel` server) so the instance is born with the flag already off:
+
+```yaml
+zitadel:
+  environment:
+    ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+    # ...other FirstInstance envs...
+```
+
+This takes effect at first boot (when `setup` phase creates the default instance). The OIDC authorize endpoint then redirects to `/ui/login` (v1, embedded in the binary) immediately — no PAT needed, no chicken-and-egg. Bootstrap's runtime call `PUT /v2/features/instance {"loginV2":{"required":false}}` becomes a no-op idempotency check.
+
+**Why this matters in CI/CD cutovers**: in a fresh-volume cutover, the `bootstrap` service user (and its PAT in `ZITADEL_PAT` secret) doesn't exist yet — the wipe killed the previous one. Bootstrap fails 401. Operator must login to console to create a new PAT — but console redirects through the broken `/ui/v2/login`. With `DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false`, the loop opens at the right place: console works on `/ui/login` v1, operator creates PAT, updates secret, bootstrap re-runs successfully.
+
+Other DefaultInstance feature flags follow the same pattern: `ZITADEL_DEFAULTINSTANCE_FEATURES_<FLAG_NAME>_<FIELD>=<value>`. Useful when you need a feature-flag baseline different from upstream defaults across all your environments.
+
+## §"nginx-proxy: split VIRTUAL_HOST + VIRTUAL_PATH" (Quirk 32)
+
+When you put two containers behind the same `VIRTUAL_HOST` and split traffic by path (e.g., `zitadel-login` on `VIRTUAL_PATH=/ui/v2/login` for the modern Login UI, plus `zitadel` on root for everything else), nginx-proxy will silently ignore the container that doesn't declare a `VIRTUAL_PATH`. Only the more-specific path gets a `location {…}` block in the generated `nginx.conf`; everything else returns 404.
+
+Symptoms:
+
+- `curl https://idp.example.com/.well-known/openid-configuration` → 404
+- `curl -sI /ui/console` → 404
+- `nginx-proxy` access log shows trailing `"-"` upstream (no route matched, e.g., `"GET /.well-known/openid-configuration HTTP/2.0" 404 153 "-" "curl/8.5.0" "-"`)
+
+Fix — declare `VIRTUAL_PATH=/` + `VIRTUAL_DEST=/` on the "default" container too, so nginx-proxy registers both as siblings:
+
+```yaml
+zitadel:
+  environment:
+    VIRTUAL_HOST: idp.example.com
+    VIRTUAL_PATH: /                    # NEW — required when sibling has VIRTUAL_PATH
+    VIRTUAL_DEST: /                    # NEW — strip nothing, pass-through
+    VIRTUAL_PORT: 8080
+    VIRTUAL_PROTO: http
+
+zitadel-login:
+  environment:
+    VIRTUAL_HOST: idp.example.com
+    VIRTUAL_PATH: /ui/v2/login
+    VIRTUAL_DEST: /
+    VIRTUAL_PORT: "3000"
+```
+
+General nginx-proxy quirk — applies to any split (API + admin UI on same host, public site + RPC endpoint, etc.). The single-container "no VIRTUAL_PATH" pattern works only as long as **no sibling** introduces a VIRTUAL_PATH for that host.
+
+## §"Idp-bootstrap Dockerfile: `src/` + canonical YAML path"
+
+When packaging your bootstrap script (`bootstrap-zitadel.ts` style) into a Docker image, two pitfalls bite hard in CD:
+
+1. **`tsx` imports under `src/` need the source available at runtime** — `bootstrap-zitadel.ts` typically imports helpers from `../src/infrastructure/...` (zod schemas, error matchers, Connect/v2 client wrappers). If your runtime stage only copies `dist/` (the compiled tsc output) plus `scripts/`, the runtime path doesn't exist and Node throws `ERR_MODULE_NOT_FOUND` *immediately* on script start. Fix: add `COPY packages/idp/src packages/idp/src` (and `COPY packages/idp/tsconfig.json packages/idp/`) in the runtime stage.
+
+2. **YAML path drift across feature releases** — the canonical config path may move between releases (e.g., `specs/002-idp-oidc/contracts/zitadel-config.yaml` → `packages/idp/zitadel-config.yaml`). Dockerfile `COPY` lines hardcode the source path. Audit on every YAML restructure. The bake-into-image pattern (vs. bind mount) avoids the runtime path-resolution problem but trades it for a build-time path-drift problem.
+
+Verify both with:
+
+```bash
+docker run --rm --entrypoint sh <image> -c 'ls /app/packages/idp/src; ls /config/zitadel-config.yaml'
+```
+
+## §"PASSWORDCHANGEREQUIRED for CI/CD reproducibility"
+
+Already mentioned in §1 (FirstInstance env table), but the **why for CI/CD** is worth calling out: without `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED=false`, the operator's first console login is forced into a password change. Result: the value in `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` secret no longer matches the actual password. After any volume wipe (cutover, disaster recovery), FirstInstance recreates the user *with the stale secret value*, the operator tries the changed password (their muscle memory) and gets `password.check.failed`, debugging session ensues. Setting CHANGEREQUIRED=false makes the secret the immutable source of truth — wipe + redeploy + login-with-secret-value just works, every time.
+
 ## §9. Where to go next
 
 - Programmatic configuration: `references/api-cheatsheet.md` (v1) + `references/api-v1-to-v2-mapping.md` (v2)

@@ -608,6 +608,81 @@ If the failure persists without those envs, your underlying issue is somewhere e
 
 **Fix**: for each v2 call, ensure the body includes the `organizationId` (or per-resource equivalent — sometimes nested as `org.id` or `resourceOwner`). Check `api-v1-to-v2-mapping.md §3` for the convention. Don't refactor everything at once — keep v1 and v2 calls in the same script and migrate gradually.
 
+### OIDC client_id mismatch — `Errors.App.NotFound` immediately after a clean cutover
+
+**Symptom**: Bootstrap succeeded (log shows `[app] created appId=<uuid> clientId=<numeric>`), the SPA was rebuilt with the right secret, but `/oauth/v2/authorize?client_id=<your-secret>` returns `400 invalid_request "Errors.App.NotFound"`. Login flow dies before the user ever sees the UI.
+
+**Cause**: Quirk 29 — you wired `VITE_OIDC_CLIENT_ID` (or equivalent SPA env) to the deterministic `applicationId` UUID you passed in `CreateApplicationRequest`, but Zitadel auto-generates a separate **numeric `clientId`** (e.g. `371898282416275459`) for OAuth/OIDC. The UUID is the resource handle for v2 admin APIs; only the numeric `clientId` is accepted as `client_id` on the OIDC endpoints.
+
+**Fix**:
+
+1. Confirm the numeric `clientId` from the bootstrap output (`clientId=<numeric>` next to `appId=<uuid>`) or via:
+   ```bash
+   curl -s -X POST https://${EXTERNALDOMAIN}/zitadel.application.v2.ApplicationService/GetApplication \
+     -H "Authorization: Bearer $PAT" -H 'Content-Type: application/json' \
+     -d "{\"applicationId\": \"<your-uuid>\"}" | jq '.application.oidcConfiguration.clientId'
+   ```
+2. Set the SPA secret to the numeric value: `gh secret set VITE_OIDC_CLIENT_ID --env production --body "<numeric>"`.
+3. **Trigger a frontend rebuild** — VITE_* are baked at image build time, not runtime.
+4. (Optional, recommended for CD) add a workflow step that reads the numeric `clientId` from the bootstrap output and overwrites the secret automatically — avoids the manual step every re-bootstrap.
+
+Backend `AUTH_AUDIENCE` for JWT validation can stay as the deterministic `projectId` — the JWT `aud` claim contains both, and Zitadel emits projectId for backend validation.
+
+### Wrong-environment IDs in prod IdP — bootstrap defaulted to `dev`
+
+**Symptom**: bootstrap succeeded; entities have *dev* deterministic IDs from your YAML (e.g., `applications[].ids.dev`); the frontend secret has *prod* IDs; OIDC authorize returns `Errors.App.NotFound`. Same surface symptom as Quirk 29 but different root cause.
+
+**Cause**: Quirk 30 — your bootstrap script reads an env (e.g., `ZITADEL_BOOTSTRAP_ENV`) to pick which `ids.<env>` block to use, with a silent default to `dev`. The CD pipeline never set the env. Bootstrap log line `[bootstrap] ambiente=dev` confirms it.
+
+**Fix**:
+
+1. Set the env explicitly on the bootstrap container in `docker-compose.prod.yml`:
+   ```yaml
+   idp-bootstrap:
+     environment:
+       ZITADEL_BOOTSTRAP_ENV: prod
+   ```
+2. Wipe the IdP DB volume — wrong-ID entities can't be renamed in place; search-by-name finds them and reuses, perpetuating the mismatch. After wipe + redeploy, FirstInstance + bootstrap recreate everything with the correct prod IDs.
+3. (Recommended) update the bootstrap script to **throw** on missing env rather than defaulting — fail loud so this never recurs. Keep dev compat by having `dev.sh` (or your dev launcher) set the env explicitly too.
+
+### "A senha é inválida" / `password.check.failed` despite the env value matching
+
+**Symptom**: `it@jrcbrasil.com` (FirstInstance human admin) can't login. The container env literally has `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=<secret-value>` — verified via `docker inspect <ctr> --format '{{range .Config.Env}}{{println .}}{{end}}'` — and that's exactly what the operator is typing.
+
+**Most common cause**: Zitadel default `passwordChangeRequired=true` forced a password change on first login; operator changed it; current password ≠ secret value. After a volume wipe, FirstInstance recreates the user with the secret value but the operator forgets and tries the *changed* password — or types the secret value correctly but is misled by stale earlier attempts.
+
+**Diagnose** with the eventstore directly (the password event log is the source of truth):
+
+```bash
+docker exec <postgres-idp-container> psql -U zitadel -d zitadel -tAc "
+  SELECT created_at, event_type
+  FROM eventstore.events2
+  WHERE aggregate_type = 'user'
+    AND aggregate_id = (
+      SELECT aggregate_id
+      FROM eventstore.events2
+      WHERE event_type = 'user.human.added'
+        AND payload->>'userName' = 'it@jrcbrasil.com'
+      LIMIT 1
+    )
+  ORDER BY position ASC;"
+```
+
+You'll see `user.human.password.check.failed` / `succeeded` events with timestamps, plus any `user.human.password.changed` events that prove a drift between the secret and the actual password.
+
+**Fix**: set `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED=false` on the `zitadel` service so the secret is the stable source of truth. After a volume wipe + redeploy, the operator logs in with the secret value directly, no forced change.
+
+### `idp-bootstrap` container fails with `ERR_MODULE_NOT_FOUND` for a path under `src/`
+
+**Symptom**: CD bootstrap step exits 1 with:
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/app/packages/idp/src/infrastructure/adapters/zitadel/client/errors' imported from /app/packages/idp/scripts/bootstrap-zitadel.ts
+```
+
+**Cause**: the bootstrap script imports from `src/...` at runtime (via `tsx`), but the runtime stage of `packages/idp/Dockerfile` only copies `dist/`, `scripts/`, `prisma/` — `src/` is missing from the image. Compounding bug: the same Dockerfile may also be `COPY`ing a legacy YAML path (e.g., `specs/002-idp-oidc/contracts/zitadel-config.yaml`) instead of the canonical one (e.g., `packages/idp/zitadel-config.yaml`).
+
+**Fix**: add `COPY packages/idp/src packages/idp/src` and `COPY packages/idp/tsconfig.json packages/idp/` in the runtime stage, and audit the YAML COPY line. Verify with: `docker run --rm --entrypoint sh <image> -c 'ls /app/packages/idp/src && ls /config/'`.
+
 ## When you don't see your error here
 
 1. Check Zitadel logs first: `docker logs <container> 2>&1 | tail -100`. Most setup errors print at INFO or ERROR level.

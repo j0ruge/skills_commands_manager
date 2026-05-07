@@ -11,8 +11,8 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.6.1",
-      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.",
+      "version": "2.7.0",
+      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34) including multi-job ephemeral token exhaustion. NEW v2.7.0 — dedicated cd-pipeline-pitfalls reference: VITE/CRA/Next build args baked at image build time (frontend rebuild mandatory; /api path drift), operator clones on deploy host reverting running stack to stale compose, `docker compose --profile X run` reconciling unrelated services. Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys, cutover prod, build-time vs runtime, queued runner.",
       "category": "development",
       "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys"],
       "platforms": ["claude-code", "cursor"]
@@ -92,10 +92,10 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.4.0",
-      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 28 documented quirks with proto-aligned examples verified against raw GitHub Zitadel v4.15.0 (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, login UI v2 separate container in v4, API v2 idempotence via deterministic IDs, contextual orgId header→body, CreateApplication discriminator = oidcConfiguration top-level com applicationType/developmentMode internos, per-service ListResponse field names, CreateAuthorization exige organizationId, AlreadyExisting com ing no matcher, quirk 28 — Login UI v2 auto-provisioning quebrado em v4.15.0 zitadel/zitadel#8910 + #9293, mitigação Path B). Includes v2.66→v4 upgrade runbook + API v1→v2 Connect protocol mapping.",
+      "version": "0.5.0",
+      "description": "Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 32 documented quirks with proto-aligned examples verified against raw GitHub Zitadel v4.15.0 (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, login UI v2 separate container in v4, API v2 idempotence via deterministic IDs, contextual orgId header→body, CreateApplication discriminator = oidcConfiguration top-level, per-service ListResponse field names, CreateAuthorization exige organizationId, quirk 28 Login UI v2 auto-provisioning quebrado em v4.15.0). NEW v0.5.0 — CD cutover survival kit: quirk 29 OIDC client_id é o numeric clientId do oidcConfiguration NÃO o applicationId UUID determinístico; quirk 30 BOOTSTRAP_ENV silent-default-to-dev em CD cria entidades com IDs do ambiente errado; quirk 31 ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false at FirstInstance breaks the chicken-and-egg of quirks 25 + 28 cleanly; quirk 32 nginx-proxy ignora silently containers sem VIRTUAL_PATH quando sibling tem; ListUsers per-item field é userId não id; eventstore SQL pra diagnóstico de password.check.failed; idp-bootstrap Dockerfile precisa COPY src/ pra tsx imports. Includes v2.66→v4 upgrade runbook + API v1→v2 Connect protocol mapping.",
       "category": "development",
-      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2", "zitadel-v4", "v2.66-to-v4", "api-v1-to-v2", "connect-protocol", "login-ui-v2", "schema-migration", "v4.15", "proto-aligned", "createapplication", "oidcConfiguration"],
+      "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2", "zitadel-v4", "v2.66-to-v4", "api-v1-to-v2", "connect-protocol", "login-ui-v2", "schema-migration", "v4.15", "proto-aligned", "createapplication", "oidcConfiguration", "cd-cutover", "bootstrap-env", "client-id-numeric", "defaultinstance", "nginx-proxy-virtual-path", "eventstore-password-diagnose"],
       "platforms": ["claude-code", "cursor"]
     }
   ]

@@ -2,6 +2,37 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-05-07 — CD cutover survival kit: 4 quirks + ListUsers field + DefaultInstance pre-config — bump 0.4.0 → 0.5.0
+
+Source: same project (`validade_bateria_estoque`), Onda 3 of feature 006 (cutover prod). v0.4.0 covered the local smoke; landing in real prod surfaced four NEW classes of failure that the skill didn't capture, plus one explicit field name in the API mapping that wasn't called out:
+
+- **Quirk 29** — OIDC `client_id` is the **numeric `clientId` from `oidcConfiguration`**, NOT the deterministic `applicationId` UUID you supplied to `CreateApplicationRequest`. Frontend `VITE_OIDC_CLIENT_ID` wired to the UUID returned `400 Errors.App.NotFound` on every `/oauth/v2/authorize` request. Cost ~30 minutes of "everything looks right but login is dead" debugging because the bootstrap log shows both values side-by-side and the natural assumption is that the deterministic UUID is the OAuth identifier. The skill now spells out the resource-vs-OAuth identifier split + the CD recipe to extract the numeric value from bootstrap output and rebuild the SPA.
+
+- **Quirk 30** — `ZITADEL_BOOTSTRAP_ENV` (or any env-driven dev/prod ID selector) silently defaulting to `dev` is a CD footgun: prod IdP gets dev IDs, frontend secret has prod IDs, login fails with the same opaque `Errors.App.NotFound` as Quirk 29. Wasted another ~20 minutes of "I just fixed this" before realizing the second occurrence had a different root cause. Skill now requires the env explicitly in the prod compose snippet and recommends throwing on undefined.
+
+- **Quirk 31** — `ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false` at FirstInstance time is the *clean* break for the Quirk 25 + 28 chicken-and-egg in CI/CD cutovers. The skill mentioned the `PUT /v2/features/instance` runtime flip and the bootstrap-time alternative, but neither helps when the operator can't even login to the console post-wipe (because the OIDC redirect goes to broken `/ui/v2/login`). The DefaultInstance env makes the instance born with the flag already off — operator login works on `/ui/login` v1 immediately, no PAT needed. Cost ~1 hour of trying `FIRSTINSTANCE_PATPATH` + `ORG_MACHINE_*` workarounds (which trigger Quirk 28's #8910 instance-domain-AlreadyExists bug) before stepping back to the DefaultInstance approach.
+
+- **Quirk 32** — nginx-proxy: when 2 containers share a `VIRTUAL_HOST` and one declares `VIRTUAL_PATH`, the no-`VIRTUAL_PATH` sibling is silently ignored. All requests outside the prefix return 404 — including OIDC discovery, `/ui/console`, oauth endpoints. Symptom is trailing `"-"` upstream in nginx access log. Cost ~20 minutes of "discovery 404 but stack is healthy" before reading the generated nginx config and noticing only one location block. Fix is `VIRTUAL_PATH=/` + `VIRTUAL_DEST=/` on the default container too. General nginx-proxy quirk, not Zitadel-specific, but bites hardest when adding the `zitadel-login` container to an existing single-host setup.
+
+- **`ListUsers` per-item field is `userId` not `id`** (proto-confirmed v4.15.0). The wrapper field name table in `api-v1-to-v2-mapping.md §2.1` was correct (`result[]`) but didn't call out the inner field, and code that reads `result[0].id` returns `undefined` and falls back to bogus IDs. Triggered an `INVALID_ARGUMENT: User could not be found (COMMAND-4f8sg)` in `CreateAuthorization`. Companion to the existing nested-Authorization shape note for completeness.
+
+Also added in `troubleshooting.md`:
+
+- **Diagnose `password.check.failed` via the eventstore directly** — `SELECT created_at, event_type FROM eventstore.events2 WHERE aggregate_type='user' AND aggregate_id=(...) ORDER BY position` shows the full timeline of password attempts + change events, makes "secret value matches but login fails" debugging deterministic.
+- **Idp-bootstrap Dockerfile pitfall** — runtime stage must `COPY src/` (tsx imports the source directly) and audit the YAML COPY path on every release. ~10 minutes wasted on `ERR_MODULE_NOT_FOUND` before tracing back to the Dockerfile.
+- **PASSWORDCHANGEREQUIRED for CI/CD reproducibility** — already in `docker-compose-bootstrap.md §1`, now with explicit "why for CI" framing in a dedicated subsection. Wipe + redeploy keeps the secret as the source of truth instead of drifting to whatever the operator typed at first console login.
+
+### Adicionado
+
+- 4 new quirks (29-32) to `SKILL.md` headline list; quirk 28 reordered to keep numbering monotonic
+- `references/api-v1-to-v2-mapping.md §2.1.1` — `ListUsers` per-item `userId` field documented with payload example + the silent `undefined` failure mode
+- `references/troubleshooting.md` — 4 new sections: OIDC client_id mismatch (numeric vs UUID), Wrong-environment IDs (BOOTSTRAP_ENV default), eventstore SQL for password debugging, idp-bootstrap Dockerfile fixes
+- `references/docker-compose-bootstrap.md` — 4 new sections: DefaultInstance feature flags pre-config (Quirk 31), nginx-proxy split VIRTUAL_HOST + VIRTUAL_PATH (Quirk 32), Idp-bootstrap Dockerfile pitfalls, PASSWORDCHANGEREQUIRED for CI/CD reproducibility
+
+### Por que minor (não patch)
+
+Adiciona conhecimento substantivo (4 novos quirks, ~3 novas páginas de troubleshooting) que muda as recomendações da skill em cenários CD novos. Não há mudança de quirk pre-existente que cause regressão para consumidores em v0.4.0 — só adições.
+
 ## 2026-05-06 — v4.15 proto-aligned mapping fixes + Login UI v2 deploy bug (1 quirk + per-service response shapes) — bump 0.3.0 → 0.4.0
 
 Source: same project (`validade_bateria_estoque`), Onda 2 of feature 006 (smoke local). After the v0.3.0 mapping landed, real Connect/v2 calls against Zitadel `v4.15.0` surfaced four classes of issues that the previous skill version didn't cover: (a) the `CreateApplication` discriminator JSON name and OIDC inner field renames don't match the names v0.3.0's example used (`oidc` vs `oidcConfiguration`, `appType` vs `applicationType`, `devMode` vs `developmentMode`); (b) every `List*` response field name is different per service (`projects[]`, `projectRoles[]`, `applications[]`, `authorizations[]`) and the v1 habit of reading `result[]` everywhere silently fails; (c) `CreateAuthorizationRequest` requires `organizationId` and Update/Delete take field `id` (not `authorizationId`), with the response `Authorization` shape nested rather than flat; (d) the entire Login UI v2 auto-provisioning path (`ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_*` envs) is broken in v4.15 by zitadel/zitadel#8910 / #9293 — there is no env-only configuration that works, so the realistic fix is Path B of Quirk 25 (`loginV2.required: false`) until upstream stabilizes. All four wasted hours of debugging in this session and would have wasted hours in any consumer project that relied on v0.3.0's example as canonical.

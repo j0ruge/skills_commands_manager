@@ -65,6 +65,27 @@ When porting code from v1 (which reliably used `result[]` everywhere) to v2, the
 
 Verified against `proto/zitadel/<svc>/v2/<svc>_service.proto` at tag `v4.15.0`. When in doubt, hit the proto on raw GitHub.
 
+#### §2.1.1. Per-item field name inside `result[]` for `ListUsers`
+
+The wrapper is `result` for `UserService.ListUsers` (above), but each *item* in that list uses **`userId`**, not `id`:
+
+```jsonc
+// Response from POST /zitadel.user.v2.UserService/ListUsers
+{
+  "result": [
+    {
+      "userId": "371797720757239825",   // ← this is the field
+      "username": "it@jrcbrasil.com",
+      "details": { /* ... */ },
+      "human": { /* ... */ }
+    }
+  ],
+  "details": { "totalResult": "1" }
+}
+```
+
+Code that reads `result[0].id` (the v1 habit, also the natural guess from "User has an id") returns `undefined`. If the bootstrap then falls back to a YAML-derived deterministic ID, downstream calls like `CreateAuthorization { userId: <bogus> }` fail with `failed_precondition: User could not be found (COMMAND-4f8sg)` — the most opaque way to discover this. Always destructure `userId` from list hits. Verified against `proto/zitadel/user/v2/user_service.proto` at `v4.15.0`. (For `ListAuthorizations`, items are nested differently — see §3 below.)
+
 ### §2.2. List\* request shapes — `filters[]` is the only path
 
 `ListProjectsRequest`, `ListApplicationsRequest`, `ListAuthorizationsRequest` and similar **do not accept top-level `projectId` / `organizationId` / `userId` fields**. Those are silently dropped if you send them — the server returns the unfiltered list. You must wrap the filter in the service's `<Resource>SearchFilter` `oneof` inside `filters: []`.

@@ -2,6 +2,32 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.9.0] - 2026-05-07
+
+### Adicionado
+
+- **`self-hosted-runner-docker.md` §7 (novo, ~85 linhas) — "RUNNER_REGISTRATION_TOKEN como GitHub secret estática = chicken-and-egg armadilha"**: classe de falha em produção onde o secret estática consumida pelo workflow CD funciona em regime estável só por **coincidência arquitetural** (`docker compose up` detecta no-diff entre deploys e pula recriação do `runner` service). Qualquer evento que force re-registro — host restart, OOM-killer, network blip + ephemeral runner ciclando, daemon restart, `docker compose down runner` manual — dispara `config.sh` com o token agora vencido (registration tokens vivem ~1h, §5) → 404 em `/actions/runner-registration` → crashloop. A partir daí, deadlock: deploy precisa do runner, runner precisa do deploy pra rotacionar a secret. Cobre:
+  - **Diagnóstico canônico** com 3 comandos (gh api `.../actions/runners` vazio/offline + `docker ps` com outros runners UP + `docker logs gh-runner` mostrando 404 `/actions/runner-registration`) — distingue rapidamente do caminho systemd (cuja resposta canônica era `systemctl status actions.runner.*`, irrelevante quando runner é container).
+  - **Recovery em 3 passos coordenados que não óbvios**: (a) gerar token novo + atualizar GH secret com **mesmo valor** que vai pro `.env` local (sem o match, próximo `compose up` no deploy detecta diff → recria runner mid-job → mata o próprio job que estava recriando); (b) apagar registro fantasma no GH antes via `gh api -X DELETE` (§6 já cobre o "porquê" — sem isso `--replace` mantém labels antigas); (c) subir runner via `docker compose -p <project> -f <compose> --env-file .env up -d --build --no-deps runner` (NÃO `docker run` — sem labels do compose project, próximo CD `up -d` bate em "Container Conflict: name already in use" e falha; demonstrado no incidente).
+  - **Por que (a)+(c) sozinhos não bastam**: docker-run sem compose labels conflita; compose com token diferente do secret recria runner. O match-de-token + labels-de-compose é o que evita o segundo round.
+  - **Fix permanente** (2 alternativas, com tradeoffs): (1) token a quente no workflow via `gh api -X POST .../registration-token` usando PAT com escopo `repo` — cada deploy recria runner (precisa `--no-recreate runner` ou mover up do runner pra outro job em `ubuntu-latest`); (2) migrar pro compose centralizado de runners com `ACCESS_TOKEN` (PAT) — alinha com modelo `myoung34` puro, runner some do compose do produto, perde-se rebuild via deploy mas ganha-se estabilidade de semanas.
+- **`self-hosted-runner-docker.md` "Sintomas → seção"**: 2 linhas novas — "Deploy queued forever + gh-runner Restarting + log com 404 /actions/runner-registration" → §7; "Após recovery manual, `compose up` falha com `Container gh-runner Conflict: name already in use`" → §7 (apontando pro uso correto de `compose -p <project>`).
+- **`SKILL.md` Quick Troubleshooting**: row "Deploy queued indefinitely" enriquecida com bifurcação host-runner vs containerized — antes a solução só apontava `systemctl status actions.runner.*`, irrelevante quando runner é container; agora também cita `docker ps | grep runner` e referencia §7.
+- **`SKILL.md` routing trigger pra `self-hosted-runner-docker.md`**: append explícito sobre §7 cobrir o cenário deadlock-em-prod com 3-passos de recovery e o fix permanente.
+- **`SKILL.md` Lessons Learned**: novo item #35 (`[S]`) — "RUNNER_REGISTRATION_TOKEN estática é equilíbrio frágil — chicken-and-egg quando quebra".
+- **plugin.json**: bump 2.7.0 → 2.9.0 (corrige drift do bump anterior 2.8.0 que não havia atualizado plugin.json) + description estendida com triggers de §7 + keyword nova `registration-token`, `chicken-and-egg`.
+- **marketplace.json**: bump 2.8.0 → 2.9.0 + description estendida idem.
+
+### Motivação
+
+Cutover prod do `validade_bateria_estoque` (2026-05-07): após push do fix `useRefreshToken` no frontend (commit `d09ebe0`), CD travou. Diagnóstico inicial sugeriu seguir o caminho canônico ("self-hosted runner offline → `systemctl status`") — mas o runner é conteinerizado via `myoung34/github-runner`, então systemd não tem nada relevante. O `gh-runner` estava em `Restarting (1) 18 seconds ago`, com `docker logs` revelando `404 Not Found` em `POST /actions/runner-registration` ciclando a cada ~30s. Token de registro tinha expirado horas antes (provavelmente após algum evento de re-registro do ephemeral runner que não conseguimos identificar com certeza); secret no GH ficou estática desde o setup inicial.
+
+Recovery foi não-óbvia em 2 frentes que valem ser codificadas: (1) `docker run` direto com token fresco trouxe o runner online E destravou o pickup da queue, mas o **próximo `docker compose up` do deploy bateu em "Container gh-runner Conflict"** porque meu container manual não tinha as labels do compose project `jrc-prod`; (2) bring-up via `docker compose -p jrc-prod -f .../docker-compose.prod.yml --env-file .env up -d --build --no-deps runner` resolveu, MAS só funciona se a GH secret também for atualizada com o mesmo valor — caso contrário o próximo deploy detecta diff e recria o runner mid-job.
+
+A skill antes documentava (em §5) que registration tokens expiram em 1h, mas não articulava o equilíbrio sistêmico do uso como secret estática nem o cenário deadlock-em-prod com runbook de recovery. Operador caía em loop: tentava regenerar token localmente seguindo §5, mas o próximo deploy do CD ainda usava o secret velho do GH e recriava o runner. Documentar essa armadilha + recovery 3-passos foi a lição justificativa do bump minor — antes a skill levava a vários round-trips de tentativa-e-erro, agora cobre o cenário em uma seção dedicada.
+
+---
+
 ## [2.8.0] - 2026-05-07
 
 ### Adicionado

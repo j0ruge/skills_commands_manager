@@ -382,6 +382,117 @@ gh api "/repos/${REPO}/actions/runners" --jq '.runners[] | {id, name, status, bu
 
 Esperado: `Up X minutes`, RestartCount=0, log com "Listening for Jobs", status `online` no GH com labels corretas.
 
+## §7. `RUNNER_REGISTRATION_TOKEN` como GitHub secret estática = chicken-and-egg armadilha
+
+**Sintoma**: deploy fica em `queued` indefinidamente. `gh api .../actions/runners` retorna `{"total_count": 0}` ou o runner correto está com `status: offline`. No host, `docker ps` mostra `gh-runner` em **`Restarting (1) X seconds ago`** (outros runners do mesmo host estão UP). `docker logs gh-runner` revela:
+
+```text
+# Authentication
+Http response code: NotFound from 'POST https://api.github.com/actions/runner-registration'
+{"message":"Not Found","status":"404"}
+An error occurred: Not configured. Run config.(sh/cmd) to configure the runner.
+```
+
+E o pior: você não consegue fazer um deploy pra rotacionar o token, porque o deploy precisa do runner. Catch-22 em produção.
+
+**Causa**: `secrets.RUNNER_REGISTRATION_TOKEN` é uma **GH secret estática** consumida pelo workflow CD via `printf 'RUNNER_REGISTRATION_TOKEN=%s\n' "$TOK" >> infra/docker/.env`. Registration tokens expiram em ~1h (§5). Em regime estável, o setup funciona porque:
+
+1. Compose detecta **no-diff** entre deploys (mesmo valor de env → não recria service `runner`).
+2. Runner já registrado continua vivo entre deploys, mesmo com token vencido — o token só é consumido no `config.sh`, não na operação contínua.
+
+**Quando o equilíbrio quebra**: qualquer evento que force re-registro do runner — host restart, network blip + ephemeral runner reciclando, OOM-killer, daemon restart, alguém apertou `docker compose down runner` — dispara `config.sh` com o token agora vencido → 404 → crashloop. A partir daí: deploy queue → sem runner → não roda → secret não rotaciona → deadlock.
+
+**Diagnóstico — ladder canônico (3 segundos cada)**:
+
+```bash
+# 1. Há runner registrado?
+gh api "/repos/${REPO}/actions/runners" --jq '.runners[] | {name, status, busy}'
+# Vazio ou status:offline + busy:false → suspeite §7.
+
+# 2. Outros runners no host estão UP? (isola problema do runner específico)
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -i runner
+
+# 3. Logs do runner que deveria estar online
+docker logs --tail 30 gh-runner 2>&1 | grep -E 'Http response|Not Found|expired|Configuring'
+# `404 Not Found em /actions/runner-registration` confirma token vencido.
+```
+
+**Recovery sem perder o slot do CD em curso** — sequência de **3 passos coordenados**:
+
+```bash
+REPO=JRC-Brasil/<repo>
+COMPOSE_HOST=/tmp/cd-bootstrap/docker     # diretório de bring-up no host
+PROJECT=<seu-compose-project>             # ex.: jrc-prod, deve bater com o do CD
+
+# (a) Token novo + ATUALIZAR a GH secret com o MESMO valor que vai pro .env local.
+# Sem esse match, próximo `compose up` no deploy detecta diff → recria runner
+# mid-job → mata o próprio job que estava recriando.
+TOK=$(gh api -X POST "/repos/${REPO}/actions/runners/registration-token" --jq '.token')
+echo "$TOK" | gh secret set RUNNER_REGISTRATION_TOKEN --repo "$REPO" --env production
+echo "$TOK" | gh secret set RUNNER_REGISTRATION_TOKEN --repo "$REPO"  # repo-level fallback
+
+# (b) Apagar registro fantasma no GH ANTES de re-registrar (§6).
+EXISTING=$(gh api "/repos/${REPO}/actions/runners" \
+  --jq '.runners[]? | select(.name=="<runner-name>") | .id')
+[ -n "$EXISTING" ] && gh api -X DELETE "/repos/${REPO}/actions/runners/${EXISTING}"
+
+# (c) Subir runner via COMPOSE — não `docker run` direto.
+# `docker run` cria container sem labels do compose project; próximo CD `up -d`
+# bate em "Container gh-runner Conflict: name already in use" e falha.
+# `-p $PROJECT` adota o compose project existente; `--no-deps` isola só o runner.
+ssh host "mkdir -p $COMPOSE_HOST"
+rsync -az infra/docker/ host:$COMPOSE_HOST/
+ssh host "docker stop gh-runner 2>/dev/null; docker rm gh-runner 2>/dev/null
+  cat > $COMPOSE_HOST/.env <<EOF
+RUNNER_REGISTRATION_TOKEN=$TOK
+EOF
+  chmod 600 $COMPOSE_HOST/.env
+  cd $COMPOSE_HOST
+  docker compose -p $PROJECT -f docker-compose.prod.yml --env-file .env \
+    up -d --build --no-deps runner
+  sleep 8 && docker logs --tail 10 gh-runner | grep -E 'Listening|Settings Saved'"
+
+# Confirmar labels do compose batem com as do CD:
+ssh host "docker inspect gh-runner --format \
+  '{{index .Config.Labels \"com.docker.compose.project\"}} :: {{index .Config.Labels \"com.docker.compose.service\"}}'"
+# Esperado: <PROJECT> :: runner
+
+# Re-trigger o deploy stuck:
+gh run rerun <run-id> --failed
+```
+
+Após (c), o próximo `docker compose up -d` do CD vê o runner **com labels corretas E mesma RUNNER_TOKEN do .env** → no-diff → não recria → job sobrevive.
+
+**Por que só "passos (a)+(c)" não bastam**: se você atualizar o secret mas trazer o runner via `docker run`, faltam labels compose; se trouxer via compose mas com token diferente do secret, no próximo deploy o `compose up` recria. O match-de-token + labels-de-compose é o que evita o segundo round de chicken-and-egg.
+
+**Fix permanente recomendado**: sair do design "secret estática + nodiff coincidence" e adotar um dos dois caminhos:
+
+1. **Token gerado a quente no workflow**. No `cd-production.yml`, substituir o consumo de `secrets.RUNNER_REGISTRATION_TOKEN` por:
+
+   ```yaml
+   - name: Gerar registration token fresco
+     env:
+       GH_TOKEN: ${{ secrets.RUNNER_PROVISIONING_PAT }}  # PAT com escopo `repo`
+     run: |
+       TOK=$(gh api -X POST \
+         "/repos/${{ github.repository }}/actions/runners/registration-token" \
+         --jq '.token')
+       printf 'RUNNER_REGISTRATION_TOKEN=%s\n' "$TOK" >> infra/docker/.env
+   ```
+
+   Cada deploy gera token novo. `compose up` SEMPRE vai detectar diff e recriar o `runner` service — o que mata o job em execução. Mitigação: `docker compose up -d --no-recreate runner` no comando do deploy, ou mover o `up` do runner pra **outro job** que roda em `ubuntu-latest` (sem self-hosted) e SSH no host.
+
+2. **Migrar pro compose centralizado de runners com PAT** (modelo `myoung34` puro). Em `/home/<user>/runners/infra/runners/docker-compose.yml`, declarar service com `ACCESS_TOKEN: ${ACCESS_TOKEN}` (PAT) em vez de `RUNNER_TOKEN`. A imagem regenera registration tokens dinamicamente. Não há mais `runner` service no compose do produto — runner é infra do host, não da aplicação. CD perde a capacidade de rebuild do runner via deploy, mas ganha estabilidade de semanas (e elimina o secret expirável). É o modelo que outros 4+ runners JRC usam estavelmente.
+
+Pra rodar uma análise comparativa antes de decidir:
+
+```bash
+# Quantos runners você tem nesse host?
+docker ps --format '{{.Names}}\t{{.Status}}' | grep -i runner
+# Se a maioria já usa myoung34 com ACCESS_TOKEN → migrar é alinhamento;
+# se é só esse runner → token-quente no workflow tem menos blast radius.
+```
+
 ## Sintomas → seção
 
 | Sintoma | Vai para |
@@ -392,3 +503,5 @@ Esperado: `Up X minutes`, RestartCount=0, log com "Listening for Jobs", status `
 | Build falha em `gpg --dearmor` / `cannot open '/dev/tty'` | §4 (use .asc direto) |
 | Token consumido / "registration token has expired" | §5 (regenerar imediato) |
 | "A runner exists with the same name" / labels antigas mantidas | §6 (DELETE no GH antes) |
+| Deploy queued forever + `gh-runner` Restarting + log com `404 /actions/runner-registration` | §7 (chicken-and-egg) |
+| Após recovery manual, `compose up` falha com `Container gh-runner Conflict: name already in use` | §7 (use `compose -p <project> up`, não `docker run`) |

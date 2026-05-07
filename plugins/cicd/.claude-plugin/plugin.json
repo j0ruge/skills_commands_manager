@@ -1,12 +1,12 @@
 {
   "name": "cicd",
-  "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner — covers CMD-herdado-zerado, env LABELS vs RUNNER_LABELS, EPHEMERAL+restart loop, gpg --dearmor em buildkit, deploy keys per-repo unique e .env leading whitespace).",
+  "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner — covers CMD-herdado-zerado, env LABELS vs RUNNER_LABELS, EPHEMERAL+restart loop, gpg --dearmor em buildkit, deploy keys per-repo unique, .env leading whitespace, intermittent 401 / upstream pool poisoning por compose run orphan, e RUNNER_REGISTRATION_TOKEN como GH secret estática = chicken-and-egg em prod).",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "2.7.0",
+  "version": "2.9.0",
   "category": "development",
-  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys"],
+  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys", "registration-token", "chicken-and-egg"],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"
 }

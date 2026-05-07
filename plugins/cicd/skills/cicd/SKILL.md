@@ -1,8 +1,8 @@
 ---
 name: cicd
 metadata:
-  version: 2.7.0
-description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34). Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys.
+  version: 2.8.0
+description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34) and reverse-proxy upstream poisoning by `compose run` orphans. Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys, intermittent 401, split status codes, upstream pool stale, compose run orphan, docker-gen VIRTUAL_HOST, runbook canonical path mismatch.
 ---
 
 # CI/CD Skill — GitHub Actions, Docker & GHCR (Unified)
@@ -112,9 +112,9 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | Jest test fix patterns                                    | `references/test-fixes-backend.md`           |
 | Frontend troubleshooting (Vite, SPA, nginx)               | `references/troubleshooting-frontend.md`     |
 | Frontend checklist (VITE_*, Dockerfile, CD)               | `references/checklist-frontend.md`           |
-| **CD pipeline pitfalls (build-time vs runtime, operator clones, `--profile run` reconcile)** | `references/cd-pipeline-pitfalls.md` |
+| **CD pipeline pitfalls (build-time vs runtime, operator clones, `--profile run` reconcile, `compose run` orphans poisoning reverse-proxy upstream)** | `references/cd-pipeline-pitfalls.md` |
 
-> **Trigger pra `cd-pipeline-pitfalls.md`**: você está num cutover de produção (ou hotfix) e o sintoma envolve uma divergência entre camadas — secret atualizado mas container ainda com valor antigo, frontend buildado contra URL errada, manual `docker compose run` derrubando containers de outros serviços. Sintomas-chave: SPA com 404 em todas as chamadas API após login funcionar (VITE_* base URL drift), `docker compose --profile X run` derrubando containers running, "operator clone" do repo no host com versão stale do compose. Ver §1-3 do referencial.
+> **Trigger pra `cd-pipeline-pitfalls.md`**: você está num cutover de produção (ou hotfix) e o sintoma envolve uma divergência entre camadas — secret atualizado mas container ainda com valor antigo, frontend buildado contra URL errada, manual `docker compose run` derrubando containers de outros serviços, OU **401 inconsistente em produção com token sabido válido** (split entre 200/401 sob hits paralelos). Sintomas-chave: (§1) SPA com 404 em todas as chamadas API após login funcionar — VITE_* base URL drift; (§2) "operator clone" do repo no host com versão stale do compose, ou path canônico do runbook não existe no host (deploy real é via runner workspace); (§3) `docker compose --profile X run` derrubando containers running; (§4) `compose run` orphan herdou `VIRTUAL_HOST` do serviço e foi registrado no upstream pool do nginx-proxy/Traefik — round-robin manda ~50% das requests pra container stale com config velha. Diagnóstico canônico §4: 20 hits paralelos com mesmo token → split de status codes = upstream pool poisoned.
 
 > **Trigger pra `self-hosted-runner-docker.md`**: presença de `infra/docker/runner/Dockerfile` (ou similar) com `FROM myoung34/github-runner` no projeto, OU `docker-compose.*.yml` com serviço cujo `image:`/`build:` referencia esse runner conteinerizado. Sintomas-chave: container em loop de restart com exit 0/2, logs com "Configuring → Settings Saved → fim", "Cannot configure the runner because it is already configured", build falhando em `gpg --dearmor`, ou `gh api .../actions/runners` mostrando label `default` em vez da configurada.
 
@@ -157,6 +157,8 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | 31 | `[S]` | ESLint v9 flat config é per-workspace, não herda | Cada workspace que rode `eslint` precisa do próprio `eslint.config.{js,mjs,cjs}` — bump pra v9 num workspace não dá config aos siblings |
 | 32 | `[S]` | devDep com subtree em versões antigas não hoista em monorepo npm | npm aninha o subtree em `packages/<ws>/node_modules/X`, fora do alcance da resolução Node ESM partindo de outra dep hoisted. Diagnóstico: comparar `node_modules/X` (raiz) vs `packages/<ws>/node_modules/X` no lock |
 | 33 | `[F]` | vitest 3 + msw v2 + jsdom esconde 2 bugs latentes | Hoisting (jsdom@20 não hoista) + AbortSignal mismatch (jsdom injeta primitivas próprias incompatíveis com undici nativo). `happy-dom` resolve ambos: subtree leve hoista limpo + AbortController nativo do Node |
+| 34 | `[S]` | `compose run --rm` orphan + nginx-proxy = upstream pool poisoning | One-off `compose run` herda `VIRTUAL_HOST` do serviço; se `--rm` falha (CI cancel / OOM / daemon restart), órfão fica registrado pelo docker-gen no upstream pool e recebe round-robin com config stale. `up -d --remove-orphans` NÃO cobre (mesmo serviço, suffix-hash). Fix: `-e VIRTUAL_HOST= -e LETSENCRYPT_HOST=` no `compose run` + step pre-rolling `docker rm -f` em `*-run-*`. Diagnóstico: 20 hits paralelos = split de status codes |
+| `[S]` | ~50% das requests autenticadas retornam 401 mesmo com JWT comprovadamente válido (200 quando replay direto via curl) | Container órfão de `compose run --rm` antigo (ex.: `prisma migrate deploy` que não disparou `--rm` por CI cancelado / OOM) ainda Up, herdou `VIRTUAL_HOST` do serviço, registrado pelo docker-gen no upstream pool do nginx-proxy. Round-robin envia ~50% pra config stale. Confirmação: 20 hits paralelos com mesmo token → split de status codes. Ver `cd-pipeline-pitfalls.md §4` |
 
 ---
 

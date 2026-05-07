@@ -48,6 +48,8 @@ Three classes of failure that bite hardest in mid-flight cutovers, when the CD p
 2. If keeping the clone for read-only inspection, **rename it** to `_archive_<sha>` so it's obviously not "the" compose. You'll never accidentally `docker compose -f` against an `_archive_*` path.
 3. **Pin the compose path in compose itself**: the runner workspace path can be standardized (`/runner/_work/<repo>/<repo>/infra/docker/...`). Operators can `docker compose -f <runner-workspace-path>` for read-only `ps` / `logs` queries; reads are safe, writes are not.
 
+**Bonus footgun — runbook canonical path may not exist on disk**: in setups deployed by a self-hosted runner, the *real* compose path is the runner's workspace (`/runner/_work/<org>/<repo>/<repo>/infra/docker/`), regenerated per CD run. Internal docs (runbooks, ADRs) frequently reference an aspirational path like `/opt/<org>/<project>` that was the plan during the manual-deploy era and never got created. SSH-debugging operators read the runbook, `cd /opt/<org>/<project>`, get "No such file or directory", and assume the system is broken. It isn't — the docs are. When auditing a deployed system, run `docker inspect <container> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'` to find the *actual* working dir, then update the runbook.
+
 **Recovery when it bites**: trigger CD again (empty commit + push) — it'll do a fresh checkout, pull the right images, and reconcile to the correct version. ~3-5 minutes lost, but no manual fixup needed on the host.
 
 **Detection**: when SSH-debugging, always run `git log --oneline -1` in any operator clone before issuing `docker compose` commands against it. If the latest commit isn't main HEAD, the file is stale.
@@ -74,6 +76,84 @@ Three classes of failure that bite hardest in mid-flight cutovers, when the CD p
 
 ---
 
+## §4. `compose run` orphans + reverse-proxy upstream poisoning
+
+**Symptom**: roughly 50% of authenticated requests to a backend behind nginx-proxy (or Traefik with similar discovery) return 401 with a credible-sounding error like "invalid token" / "audience mismatch", but the JWT is verifiably valid (replaying the *exact same token* via curl from outside returns 200, decoding the JWT shows correct `aud`, `iss`, `exp` is in the future, signature checks against JWKS). Users report intermittent failures; reload sometimes fixes it, sometimes doesn't. Backend logs show 401s with response times all over the map (some <5ms, some 200-400ms — but the slow ones don't correlate with cache misses).
+
+**Cause**: a `docker compose run --rm <service> <one-off-cmd>` from a previous CD run left an orphan container alive. The most common path: `compose run --rm backend npx prisma migrate deploy` — the migration finishes, the `--rm` is supposed to fire, but it doesn't (CI cancelled mid-run, runner OOM, container's pre-stop hook hung, `docker daemon` restarted, etc.). The orphan keeps running. It still has the service's `VIRTUAL_HOST` env (because `compose run` inherits the service's environment by default), so `docker-gen` (or the Traefik label discoverer) registers it in the **upstream pool** for the same hostname as the live backend.
+
+nginx-proxy now round-robins requests between the healthy backend (correct config from the latest deploy) and the orphan (stale config from whenever it was started — `AUTH_AUDIENCE=PLACEHOLDER_BEFORE_FIRST_BOOTSTRAP`, old image SHA, possibly a half-broken state). 50% of requests with valid auth get 200; 50% get 401.
+
+**Three counter-intuitive surprises**:
+
+1. **`docker compose run --rm` is not bulletproof.** The `--rm` flag fires when the container *exits cleanly*. Anything that prevents a clean exit — process crash, `kill -9`, daemon restart, CI workflow cancellation mid-execution — leaves the container behind. Over a project's lifetime, expect at least one orphan per few hundred CD runs.
+2. **`docker compose up -d --remove-orphans` does NOT remove these.** The `--remove-orphans` flag removes containers for *services that no longer exist in the compose file*. A `*-backend-run-<hash>` container belongs to the same service `backend` as the live container — just a different one-off invocation, with a hash suffix in the name. Compose treats them as siblings, not orphans.
+3. **`docker-gen` registers anything with `VIRTUAL_HOST` set, no service-stability check.** Whether the container is the long-running service container or a one-off `compose run` container is invisible to the discovery layer. As long as the env var is there, into the upstream pool it goes.
+
+**Diagnostic — the canonical 5-second check**: if you suspect this, fire 20 parallel requests with the *same known-valid token*:
+
+```bash
+TOKEN="<a fresh valid JWT>"
+for i in $(seq 1 20); do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Origin: https://app.example.com" \
+    https://api.example.com/some-authenticated-endpoint &
+done
+wait | sort | uniq -c
+```
+
+A clean backend returns `20 200`. A poisoned upstream returns a *split* — e.g., `13 200` and `7 401`, or `10 200` and `10 401`. The split ratio matches the round-robin distribution across upstreams. **Inconsistent 401s with a token you've manually verified is valid is the unmistakable signature of upstream pool stale-instance**, not a JWT validation bug. Don't chase jose / aud / iss / JWKS rabbit holes until you've ruled this out.
+
+Then list the upstream pool from inside nginx-proxy:
+
+```bash
+docker exec nginx-proxy cat /etc/nginx/conf.d/default.conf \
+  | sed -n "/upstream <hostname>/,/^[[:space:]]*}/p"
+```
+
+If you see two `server` lines where there should be one (e.g., `# erp-backend` *and* `# jrc-prod-backend-run-3ed3a2e9cdb9`, both pointing at port 3000 on different IPs), that's the smoking gun. Inspect the orphan's env to confirm — usually `AUTH_AUDIENCE`, `DATABASE_URL`, or `IMAGE_TAG`-derived values will be from a stale build.
+
+**Immediate fix**: `docker rm -f <orphan-name>`. nginx-proxy's docker-gen sees the container disappear, regenerates the config, and reloads nginx within a couple seconds. Verify with the parallel-curl check — should now be `20 200`.
+
+**Permanent fix (two-pronged)**:
+
+1. **Invisibilize one-offs to the proxy discoverer.** Override the discovery env vars to empty in every `compose run`:
+
+   ```bash
+   docker compose -f <COMPOSE_FILE> run --rm \
+     -e VIRTUAL_HOST= \
+     -e LETSENCRYPT_HOST= \
+     backend npx prisma migrate deploy
+   ```
+
+   For Traefik: override the relevant labels (`traefik.enable=false`) instead. Even if the `--rm` later fails to fire, the orphan never enters the upstream pool — the worst case becomes "stale container exists but receives no traffic", which is recoverable without user impact.
+
+2. **Defense-in-depth cleanup step before the rolling update.** `--remove-orphans` won't catch these, so add an explicit step in the CD workflow that runs *before* `up -d`:
+
+   ```yaml
+   - name: Remove one-off orphans pre-rolling
+     run: |
+       orphans=$(docker ps -aq --filter "name=<project-prefix>-.*-run-" 2>/dev/null || true)
+       if [ -n "$orphans" ]; then
+         echo "Removing one-off orphans: $orphans"
+         docker rm -f $orphans
+       else
+         echo "No one-off orphans found."
+       fi
+   ```
+
+   Adjust `<project-prefix>` to your compose project name. The pattern `*-run-` matches the `compose run` naming convention. This catches orphans from old runs that pre-date the env override (otherwise you wait for them to time out, which they never do).
+
+**Why this is treacherous**: every layer of the stack reports "healthy". The orphan responds to its own healthcheck (it's a real backend, just with stale config — or a migration container that has long since finished but stayed Up). nginx-proxy's healthchecks pass for the upstream pool. The live backend is fine. The discovery layer is doing exactly what it's designed to do. The only sign anything is wrong is the *statistical* split between 200 and 401 — and on a busy app, that gets lost in the noise unless you specifically look for it.
+
+**Adjacent forms to watch for**:
+- `docker compose run` for ad-hoc DB seed, cache warm, or feature flag flip (anything one-shot).
+- Operators using `docker run --network <project>_<network>` on a dev machine — same VIRTUAL_HOST inheritance if they reuse the service's env-file.
+- Restarted Docker daemon during a long CD run leaving multiple migration containers in `Created` or `Exited` states that are then `docker start`-ed by recovery scripts.
+
+---
+
 ## When you don't see your error here
 
 If your CD failure looks layer-mismatched (build vs runtime, file-on-disk vs published-image, secret-set vs secret-baked) — start by listing the layers and tracing what gets refreshed at each:
@@ -87,5 +167,7 @@ If your CD failure looks layer-mismatched (build vs runtime, file-on-disk vs pub
 | Frontend bundle (VITE_*) | Frontend rebuild step | until rebuild |
 | Backend container env | Compose `up -d` | until recreate |
 | Running container's image | `docker pull` + `up -d` | until recreate |
+| nginx-proxy/Traefik upstream pool | docker-gen / label discoverer | until offending container is removed |
+| `compose run` one-off container | `--rm` on clean exit | indefinitely if exit isn't clean |
 
 The answer is usually that two layers disagree and the "freshness boundary" between them is where the bug lives.

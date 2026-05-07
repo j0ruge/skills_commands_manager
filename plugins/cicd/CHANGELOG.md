@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.8.0] - 2026-05-07
+
+### Adicionado
+
+- **`cd-pipeline-pitfalls.md` §4 (novo, ~80 linhas) — "compose run orphans + reverse-proxy upstream poisoning"**: classe inteira de pegadinha em que um container órfão de `docker compose run --rm` antigo (cujo `--rm` não disparou — CI cancelado, runner OOM, daemon restart, container crash em pre-stop) fica vivo herdando `VIRTUAL_HOST` do serviço. `docker-gen` (nginx-proxy) ou label discoverer (Traefik) o registra no upstream pool junto com o backend saudável. Round-robin manda ~50% das requests pra config stale (image SHA antigo, `AUTH_AUDIENCE` placeholder pré-bootstrap, etc.) → 401 inconsistente em produção, **mesmo com tokens comprovadamente válidos**. Cobre:
+  - Três surpresas counter-intuitivas: (a) `--rm` não é à prova de bala; (b) `docker compose up -d --remove-orphans` NÃO remove `*-run-*` (são "mesmo serviço", suffix-hash; orphan policy só cobre serviços removidos do compose); (c) docker-gen registra QUALQUER container com VIRTUAL_HOST, sem distinguir long-running vs one-off.
+  - **Diagnóstico canônico de 5 segundos**: 20 hits paralelos com mesmo token sabido válido → split de status codes (e.g., `13 200` + `7 401`) = upstream pool poisoned. Antes de mergulhar em jose/JWKS/aud/iss, rodar este check.
+  - **Fix em duas frentes**: (a) `compose run --rm -e VIRTUAL_HOST= -e LETSENCRYPT_HOST= …` invisibiliza one-offs ao discoverer (mesmo se `--rm` falhar, órfão não entra no pool); (b) step pre-rolling em CD que `docker rm -f` em `*-run-*` cobre histórico de runs antigas.
+  - Sintomas adjacentes: `docker run` ad-hoc reusando env-file do serviço; daemon restart durante CD deixando múltiplos `prisma migrate` em estados Created/Exited.
+- **`cd-pipeline-pitfalls.md` §2 — append "runbook canonical path may not exist on disk"**: em deploys via self-hosted runner, o compose path real é o workspace do runner (`/runner/_work/<org>/<repo>/.../infra/docker/`), regenerado por CD run. Runbooks/ADRs frequentemente referenciam path aspiracional (`/opt/<org>/<project>`) da era de deploy manual que nunca foi criado. Operador SSH-debugging segue o runbook e leva "No such file or directory" — sistema não está quebrado, docs estão. Diagnóstico: `docker inspect <container> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`.
+- **Tabela "Layer / Refreshed by / Stale until"** ganhou 2 linhas: `nginx-proxy/Traefik upstream pool` (refreshed quando offending container some) e `compose run one-off container` (refreshed por `--rm` no clean exit, indefinidamente se exit não é clean).
+- **`SKILL.md` Quick Troubleshooting**: nova entrada `[S]` "~50% das requests autenticadas retornam 401 mesmo com JWT comprovadamente válido" → aponta pra `cd-pipeline-pitfalls.md §4`.
+- **`SKILL.md` Lessons Learned**: novo item #34 (`[S]`) — "compose run orphan + nginx-proxy = upstream pool poisoning".
+- **`SKILL.md` description**: 6 triggers novos no frontmatter (`intermittent 401`, `split status codes`, `upstream pool stale`, `compose run orphan`, `docker-gen VIRTUAL_HOST`, `runbook canonical path mismatch`).
+- **`SKILL.md` routing trigger pra `cd-pipeline-pitfalls.md`**: expandido para mencionar §4 explicitamente, com diagnóstico canônico (20 hits paralelos = split = upstream pool poisoned).
+
+### Motivação
+
+Cutover prod do `validade_bateria_estoque` (feature 006, 2026-05-07): após declarar a feature fechada, usuários começaram a ver "Não foi possível carregar os indicadores: Token inválido" na SPA, em ~50% das chamadas ao backend. Diagnóstico inicial seguiu hipóteses naturais (aud claim mismatch, JWKS rotation, ZitadelClaimsMapper rejeitando token) — todas falsas. JWT decodificado batia perfeitamente: `aud` continha o projectId UUID correto, `iss` correto, `exp` no futuro, signature OK; replay externo via curl retornava 200 consistentemente.
+
+A descoberta veio de hammering: 20 hits paralelos com o mesmo token retornaram 7×200 + 3×401, depois 14×200 + 6×401 — split round-robin. Inspeção do upstream do nginx-proxy revelou DOIS containers no pool de `erp.api.battery.jrcbrasil.com`: o `erp-backend` saudável e um órfão `jrc-prod-backend-run-3ed3a2e9cdb9` (sha-0cae6ba, 41h vivo desde uma execução de `compose run --rm backend npx prisma migrate deploy` em CD anterior cujo `--rm` não disparou). O órfão tinha `AUTH_AUDIENCE=PLACEHOLDER_BEFORE_FIRST_BOOTSTRAP` (default antes do primeiro bootstrap), rejeitando 100% dos tokens.
+
+`docker rm -f` do órfão resolveu na hora; nginx-proxy regenerou config automaticamente. Fix permanente foi adicionado ao CD (`-e VIRTUAL_HOST= -e LETSENCRYPT_HOST=` no migration step + step pre-rolling de cleanup de `*-run-*`).
+
+A pegadinha é genérica — qualquer setup CD que use `nginx-proxy` ou Traefik com label discovery + `compose run` para tarefas one-shot está exposto. A skill antes não cobria essa interação. Sessão gastou ~30min investigando hipóteses de JWT antes do diagnóstico de upstream pool aparecer; o "20 hits paralelos = split" agora é a primeira coisa a tentar quando 401 inconsistente aparece em prod com token válido. Lição justificativa do bump minor.
+
+---
+
 ## [2.6.0] - 2026-05-05
 
 ### Adicionado

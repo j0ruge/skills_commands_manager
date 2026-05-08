@@ -214,7 +214,7 @@ grep -nE "^COPY |^ADD " packages/<offending-package>/Dockerfile
 
 The diff is usually obvious: the script writes to `../../../infra/...` and the Dockerfile only has `COPY packages/<self>/ ...`. There's no overlap — the path simply doesn't exist in the image.
 
-**Canonical fix — best-effort wrap**:
+**Canonical fix — best-effort wrap (narrowed to expected errno)**:
 
 ```typescript
 const outFile = resolve(__dirname, '../../../infra/docker/zitadel/local/bootstrap.json');
@@ -222,6 +222,10 @@ try {
   writeFileSync(outFile, JSON.stringify(result, null, 2));
   console.log(`[bootstrap] OK → ${outFile}`);
 } catch (err) {
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+    throw err;  // EACCES, ENOSPC, EROFS, … propagam; só silenciamos o esperado
+  }
   const msg = err instanceof Error ? err.message : String(err);
   console.warn(`[bootstrap] OK (não persistiu summary em ${outFile}: ${msg})`);
 }
@@ -229,6 +233,8 @@ console.log(JSON.stringify(result, null, 2));  // CD logs already capture the co
 ```
 
 In dev: identical behavior (path exists → writes succeed). In container: warn, continue, exit 0. The CD step goes back to a clean green status — and now any future yellow warning means **something genuinely new is broken**, instead of being ambient noise.
+
+**Why narrow the catch — and not just `catch { warn }`**: a generic catch swallows EACCES (perms wrong on the dev workstation), ENOSPC (disk full), and EROFS (read-only filesystem) — none of which are the expected case. In dev these usually indicate a real local problem worth surfacing; in particular, `bootstrap.json` is often consumed downstream (e.g., by a backend `auth-sanity.ts` that compares `AUTH_AUDIENCE` against the project ID) — silencing a write failure means the sanity check then operates on a stale or absent file without alarm. The narrow catch (ENOENT/ENOTDIR only) preserves the prod fix (the path doesn't exist in the container, ENOENT is the *expected* error) while keeping the dev signal honest. The same reasoning applies to any best-effort write: silence only the errno you affirmatively expect, not the whole cone of failure modes.
 
 This is the right shape when persistence is *informational* — the JSON is for operators reading deploy logs or inspecting a dev workspace. The CD log already captures it via the subsequent `console.log(JSON.stringify(...))`.
 
@@ -249,3 +255,64 @@ This is the right shape when persistence is *informational* — the JSON is for 
 3. Remove the soft-failure entirely if the underlying operation can be made deterministic.
 
 Persistent yellow is worse than green because it conditions you to ignore the only signal CI/CD has for "things deserving a glance".
+
+---
+
+## §6. Bind mount uid mismatch on GHA runners — container can't write to host-mounted dir
+
+**Symptom**: in CI, a step that does `docker compose up` against a stack with a host bind mount fails with `permission denied` from inside the container, even though the mount config (`./local-dir:/in-container:rw`) is identical to dev where it works fine. The exact log line varies by service — for Postgres it's `chown: changing ownership of '/var/lib/postgresql/data'`; for any app that writes a file inside the mount it's `EACCES: permission denied, open '<path>'`. Often the resulting partial state cascades into a *different*-looking error on subsequent retries (e.g., a constraint violation on a row written before the EACCES) — which buries the real cause unless you scroll up to the FIRST attempt.
+
+**Cause**: the container process runs as a non-root uid baked into its image (commonly **uid 1000** for vendored upstream images — Postgres, Zitadel, several language runtimes). On GitHub Actions `ubuntu-latest` the workspace is checked out by the runner user **uid 1001** (`runner:docker`) with mode `0755` on directories — uid 1000 has no write permission. Dev machines avoid this entirely because either (a) your user IS uid 1000 (Linux default), so the mount perms align by accident, or (b) macOS/WSL Docker Desktop transparently shims the uid mapping, or (c) your dev scaffolding (`./dev.sh`, `./scripts/setup`, etc.) explicitly creates the bind mount dir with the right perms. None of these compensations exist on a fresh GHA runner.
+
+**Fix — pre-create the bind mount with `chmod 0777` BEFORE `docker compose up`**:
+
+```yaml
+- name: Pre-create writable bind mount
+  run: |
+    mkdir -p ./infra/docker/<service>/local
+    chmod 0777 ./infra/docker/<service>/local
+- name: Boot stack
+  run: docker compose up -d --wait --wait-timeout 120
+```
+
+`chmod 0777` is idiomatic for ephemeral CI bind mounts and avoids hardcoding the container's uid (which could shift if the image changes). Don't try to "fix" by `chown 1000:1000` — same effect, more brittle (and `runner` may not have permission to chown to other uids depending on docker config). Don't try to swap to a named volume in CI without doing it in dev too — bind mounts are commonly load-bearing in dev for inspecting artifacts (`bootstrap.json`, debug dumps) on the host side, so breaking dev to "fix" CI is a regression.
+
+**Diagnosis tell**: when you see a constraint violation / "already exists" / unique-key error on a service that just came up clean in `docker compose down -v` + `up`, **scroll up the container log to the FIRST init/migration/setup attempt**. If that one died with `permission denied` on a write to the bind mount, this is your bug — the partial state from attempt 1 is what attempt 2 trips over. The visible bottom-of-log error is the cascade, not the cause.
+
+**Generalizes to**: any service whose entrypoint writes to a host bind mount during initialization — Postgres data dir, Zitadel admin PAT, init scripts that drop config files, runners writing badge/state files, custom build caches with persisted intermediate output.
+
+---
+
+## §7. `docker compose up -d --wait` scope — passing service names limits the wait
+
+**Symptom**: a CI step doing `docker compose up -d --wait --wait-timeout 120` times out and exits 1 with `dependency failed to start: container <stack>-<svc>-1 is unhealthy`, even though the services your test actually exercises (the API, the DB) reached Healthy minutes ago. The unhealthy service is something on the side — a Login UI, a worker dashboard, a documentation server — that the test never touches but happens to share the compose file.
+
+**Cause**: by default, `compose up --wait` waits for **all** services with healthchecks defined in the compose file. One slow healthcheck (commonly a Next.js / Vite / Webpack-dev-server container that needs to bootstrap before its `wget --spider /` healthcheck passes — easily 60-90s+ on a small `ubuntu-latest` 2-vCPU shared runner) dominates the timeout for the entire stack. The compose file is naturally written for "dev wants everything up", which is the wrong default for the narrower CI use case.
+
+**Fix — list the services your test actually exercises**:
+
+```yaml
+- name: Boot stack
+  run: |
+    docker compose -f compose.yml up -d --wait --wait-timeout 120 \
+      api db migrations
+```
+
+Now compose only waits for the listed services to be Healthy; other services in the file (login UI, mailpit, worker dashboards) **simply aren't started**. Dev keeps the default `up` so everything is available for browser smoke. If your CI specifically needs the slow service healthy (e.g., a Playwright spec that hits the Login UI), bump `--wait-timeout` to ~240s instead — same `wait`, more headroom, but you've consciously paid for it.
+
+**Companion fix — always dump logs for the slow service in your on-failure step**, even when you don't `--wait` for it. Without that, the next time you DO need to debug it you'll have no visibility:
+
+```yaml
+- name: Show stack logs (on failure)
+  if: failure()
+  run: |
+    docker compose -f compose.yml ps
+    for svc in api db migrations login-ui worker; do
+      echo "=== $svc ==="
+      docker compose -f compose.yml logs --no-color --tail=200 "$svc" || true
+    done
+```
+
+`|| true` is important — `docker compose logs <svc>` fails if the service wasn't started, and you don't want the log dump step to itself fail and hide everything.
+
+**Generalizes to**: any compose file that mixes "things your CI test needs" with "things your dev needs". Be explicit about scope when the cost of waiting differs by orders of magnitude.

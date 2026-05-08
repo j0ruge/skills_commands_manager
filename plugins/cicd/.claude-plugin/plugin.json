@@ -1,12 +1,12 @@
 {
   "name": "cicd",
-  "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner — covers CMD-herdado-zerado, env LABELS vs RUNNER_LABELS, EPHEMERAL+restart loop, gpg --dearmor em buildkit, deploy keys per-repo unique, .env leading whitespace, intermittent 401 / upstream pool poisoning por compose run orphan, RUNNER_REGISTRATION_TOKEN como GH secret estática = chicken-and-egg em prod, e container scripts que escrevem output paths fora do WORKDIR — ENOENT mascarado por soft-failure que pinta yellow warning ambiente em todo deploy).",
+  "description": "Unified CI/CD troubleshooting and pipeline configuration for GitHub Actions, Docker, GHCR, and self-hosted runners (both systemd-on-host and containerized via myoung34/github-runner — covers CMD-herdado-zerado, env LABELS vs RUNNER_LABELS, EPHEMERAL+restart loop, gpg --dearmor em buildkit, deploy keys per-repo unique, .env leading whitespace, intermittent 401 / upstream pool poisoning por compose run orphan, RUNNER_REGISTRATION_TOKEN como GH secret estática = chicken-and-egg em prod, container scripts que escrevem output paths fora do WORKDIR — ENOENT mascarado por soft-failure, com narrowing do catch para errno esperado para preservar visibilidade de EACCES/ENOSPC/EROFS em dev, GHA bind mount uid mismatch — container uid 1000 vs runner uid 1001 + mode 0755 → EACCES no init/setup com cascade venenoso em retries, e scope de `docker compose up --wait` — passar service names limita wait a esses, evitando que healthcheck lento de um sibling estoure o timeout do stack inteiro).",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "2.10.0",
+  "version": "2.11.0",
   "category": "development",
-  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys", "registration-token", "chicken-and-egg", "enoent-bootstrap", "soft-failure-fatigue", "yellow-warning"],
+  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys", "registration-token", "chicken-and-egg", "enoent-bootstrap", "soft-failure-fatigue", "yellow-warning", "best-effort-write-narrow-catch", "errnoexception", "gha-bind-mount-uid-mismatch", "compose-wait-scope", "compose-up-wait-services"],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"
 }

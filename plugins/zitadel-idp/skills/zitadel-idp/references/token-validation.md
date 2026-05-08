@@ -298,6 +298,65 @@ The `post_logout_redirect_uri` must match one configured in the OIDC app's `post
 
 `id_token_hint` is recommended (not strictly required) — it tells Zitadel which session to terminate. Without it, the user may need to confirm logout in the Zitadel UI.
 
+## Network reachability to the IdP from the JWT validator
+
+`createRemoteJWKSet(new URL(jwksUrl))` does an ordinary Node `fetch` against the JWKS URL — at instantiation it doesn't fetch (the constructor is synchronous), but every JWKS reload after `cacheMaxAge` (default `600s` / 10 minutes) does. That fetch must succeed from inside the container running the validator, every time the cache expires.
+
+In single-host self-hosted setups where backend, frontend, and Zitadel all run on the same VPS behind a reverse proxy (nginx-proxy/Caddy/Traefik), the backend container's DNS resolution of `idp.<your-domain>` hits the **public** IP of the host. Some VPS providers — and many bare-metal setups — handle hairpin NAT (DNS → external IP → loopback to the local proxy) inconsistently:
+
+- **Stable hairpin**: backend reaches the proxy, JWKS reloads work indefinitely.
+- **Flaky hairpin**: backend can reach the proxy after every restart, but the connection silently fails after a few minutes — when the JWKS cache expires, the reload's TCP handshake never completes, `fetch` times out, `jose` raises a `JOSEError`, the validator throws `InvalidTokenError`, and **every authenticated request returns 401** even though the JWT itself is decoded-perfect (`iss`/`aud`/`exp`/`kid` all valid, the `kid` is verifiably present in the JWKS endpoint when fetched from outside the container).
+
+The pathognomonic symptom is **"backend works for ~10 minutes after restart, then 401-storms forever"**. Pre-fix uptime correlates with the JWKS TTL window — if your backend has been up for >`cacheMaxAge` and starts 401-storming, this is the most likely cause among the three documented in this skill (the others being self-signed JWKS over HTTPS — see "Trusting a self-signed JWKS endpoint" — and stale `clientId`/`AUTH_AUDIENCE` after a Zitadel volume reset).
+
+### Diagnosis (3 commands)
+
+```bash
+# 1. What does the backend see when resolving the IdP hostname?
+docker exec <backend> getent hosts idp.<your-domain>
+# Public IP → hairpin path; bridge IP (172.17.0.1 typically) → host-gateway path.
+
+# 2. Can the backend actually reach the JWKS endpoint right now?
+docker exec <backend> wget -qO- --timeout=10 https://idp.<your-domain>/oauth/v2/keys | head -c 200
+# Should print a valid JWKS JSON. Empty / error → reachability broken.
+
+# 3. Is the JOSE warning firing in logs?
+docker logs <backend> --tail 100 | grep '\[auth\] JOSE'
+# Any `code=ERR_JOSE_*` in the warn lines confirms the failure path.
+```
+
+### Fix — `extra_hosts` mapping the IdP hostname to the docker bridge
+
+In `docker-compose.prod.yml`, on the backend service:
+
+```yaml
+services:
+  backend:
+    # ...
+    extra_hosts:
+      - "idp.<your-domain>:host-gateway"
+```
+
+This makes the container resolve `idp.<your-domain>` to the docker-bridge IP (where the host's nginx-proxy listens on 443) — the same path external traffic takes — without depending on hairpin NAT. The backend reaches the proxy, the proxy routes to the Zitadel container via the shared `nginx-proxy` network, and JWKS reloads succeed indefinitely.
+
+This pattern applies to **any container that talks to a service co-located on the same host**, not just IdP. Common cases: the bootstrap/seed container, the runner that runs CD jobs, observability sidecars. If you have multiple co-located containers calling the IdP via FQDN, every one of them needs the same `extra_hosts` block — it's a per-service setting, not host-wide.
+
+### Logging tip — emit the JOSE error code via a structured logger, not `console.error`
+
+When the JWKS reload fails (or any non-token-expiry error inside `jwtVerify`), the catch block of your validator is the only place that knows what actually went wrong. Don't swallow it; emit through your structured logger at **`warn` level, not `error`**:
+
+```typescript
+if (err instanceof joseErrors.JOSEError) {
+  const code = 'code' in err && typeof err.code === 'string' ? err.code : 'n/a';
+  this.config.logger?.warn({ code, message: err.message }, '[auth] JOSE error');
+  throw new InvalidTokenError('Token inválido', { cause: err });
+}
+```
+
+Why `warn` and not `error`: `JOSEError` also fires for **malformed tokens from clients** (attacker probing endpoints, old SPA bundles holding stale tokens, clock skew on the client side). If you log every JOSEError as `error`, you've added a log-spam vector in production. `warn` allows operators to filter via `LOG_LEVEL=info` if necessary, while keeping the diagnostic information available when needed.
+
+The `code` field (`ERR_JWS_SIGNATURE_VERIFICATION_FAILED`, `ERR_JWKS_NO_MATCHING_KEY`, `ERR_JOSE_GENERIC`, etc.) is greppable and stable across `jose` minor versions — it's the fast path to triage between "network reached the JWKS but the key is wrong" vs "network never reached the JWKS at all".
+
 ## Going further
 
 - API endpoint reference: `references/api-cheatsheet.md`

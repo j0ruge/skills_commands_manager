@@ -255,6 +255,53 @@ Pior ainda em projetos de dev de longa duração: cada sessão que termina sem `
 
 **Diagnostic when you can't tell which cause**: turn on `LOG_LEVEL=trace` (or equivalent) on jose and curl the JWKS endpoint from the backend host with `curl --cacert "$(mkcert -CAROOT)/rootCA.pem" https://<external-domain>/oauth/v2/keys`. If curl with the local CA succeeds but the backend can't reach JWKS, it's cause 1. If JWKS works fine and `jwt verify` still fails, decode the live access token and compare its `aud` to `AUTH_AUDIENCE` — mismatch is cause 2 ou 3 (cheque `pgrep -af` da cmdline do dev runner pra ver quantos processos tem rodando — `>1` é cause 3).
 
+### 401 storm starting ~10 min after backend restart, with apparently-valid JWT
+
+**Symptom**: Right after every backend restart, authenticated requests work fine for ~10 minutes. Then, abruptly, *every* `/api` call starts returning `401`. The dashboard, queries, mutations — all of them. Logging out and back in produces a fresh JWT but the new token also fails immediately. Nothing changed about the request shape, the token signature, or the `aud`/`iss`/`exp` — they all still verify by hand. The pattern is **time-correlated to the backend's uptime**, not to anything the user did.
+
+If you let the symptom continue, the SPA's silent-renew machinery starts firing repeatedly, eventually triggering Zitadel's RT reuse detection — which **revokes the entire session**. After that point, even fresh logins die instantly because the new tokens are issued under a session Zitadel just marked as compromised. The error cascade looks like 401-storm-revokes-session (see Recipe in `spa-recipes.md`), but the actual root cause is upstream.
+
+**Cause — Backend container can't reach the JWKS endpoint after the cache TTL expires (Quirk 36)**
+
+`jose.createRemoteJWKSet` caches the JWKS for `cacheMaxAge: 600s` (default 10 minutes). Within that window, every JWT verification reuses the cached keys — no network call, no failure mode. After the TTL, the next `jwtVerify()` triggers a `reload()` that does an ordinary Node `fetch` against `JWKS_URL`. If that fetch fails, jose raises a `JOSEError`, and the validator's catch block throws `InvalidTokenError` → 401.
+
+In single-host self-hosted setups (backend, frontend, Zitadel all on the same VPS), the backend container resolves `idp.<domain>` to the host's **public** IP via DNS. On VPS providers with unreliable hairpin NAT (DNS → external IP → loopback to local nginx-proxy), the reload fetch silently fails — the TCP handshake never completes. The result is the time-correlated symptom: works for the cache window, then 401-storms.
+
+**Diagnose in 60 seconds**:
+
+```bash
+# 1. What does the backend resolve?
+docker exec <backend> getent hosts idp.<domain>
+# Public IP (e.g. 203.0.113.42)  → hairpin NAT path; this is the bug.
+# Bridge IP   (e.g. 172.17.0.1)  → host-gateway path; not this cause.
+
+# 2. Can it reach JWKS right now?
+docker exec <backend> wget -qO- --timeout=10 https://idp.<domain>/oauth/v2/keys | head -c 200
+# Empty / timeout → reachability broken.
+
+# 3. Confirm the JOSE error is firing:
+docker logs <backend> --tail 100 | grep '\[auth\] JOSE'
+# Any `code=ERR_JOSE_*` line right after the 10-min mark confirms.
+```
+
+**Fix — `extra_hosts` mapping the IdP hostname to the docker bridge** (in `docker-compose.prod.yml`, on the backend service):
+
+```yaml
+services:
+  backend:
+    # ...
+    extra_hosts:
+      - "idp.<domain>:host-gateway"
+```
+
+This makes the backend resolve `idp.<domain>` to the docker bridge IP — the same path external traffic takes, where the host's nginx-proxy listens on 443. JWKS reloads succeed indefinitely.
+
+**Apply the same mapping to ANY co-located container that talks to the IdP**: bootstrap/seed containers, observability sidecars, the runner that runs CD jobs, etc. It's a per-service setting in compose — easy to forget on a new container and rediscover the symptom 10 min later.
+
+**Why `warn`, not `error`, in the validator's catch block**: the same `JOSEError` path also fires for malformed tokens from clients (attacker probing, old SPA bundles holding stale tokens, clock skew on the client). Logging at `error` is a log-spam vector; `warn` keeps the diagnostic available without creating noise. See `token-validation.md §"Logging tip"`.
+
+This is the third documented cause of "401-storm with apparently-valid JWT" in this skill — quirks 12 (self-signed JWKS over HTTPS, NODE_EXTRA_CA_CERTS missing), 13 (stale `clientId`/`AUTH_AUDIENCE` after volume reset), and now 36 (backend can't reach JWKS after TTL via hairpin NAT). Same symptom, different network/state layers — the diagnose-in-3-commands ladder above distinguishes them.
+
 ### `signinRedirect()` does nothing — clicking "Entrar" / "Login" produces no console error, no navigation, no network request
 
 **Symptom**: SPA's login button is wired to `auth.signinRedirect()` from `react-oidc-context` (or equivalent). Clicking it: nothing happens. No console error, no warning, no redirect. DevTools network tab shows zero new requests after the click. Repeating the click does nothing.

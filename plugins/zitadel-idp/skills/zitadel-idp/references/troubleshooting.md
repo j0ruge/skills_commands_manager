@@ -730,6 +730,77 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/app/packages/idp/src/infrastr
 
 **Fix**: add `COPY packages/idp/src packages/idp/src` and `COPY packages/idp/tsconfig.json packages/idp/` in the runtime stage, and audit the YAML COPY line. Verify with: `docker run --rm --entrypoint sh <image> -c 'ls /app/packages/idp/src && ls /config/'`.
 
+## CI / smoke-e2e errors (GHA runner)
+
+The smoke-e2e job that runs Zitadel + bootstrap inside GitHub Actions has its own cluster of pitfalls — none of which manifest in dev (host machine perms / generous timeouts / your own password). When `continue-on-error: true` is set on the job, these can rot for months without anyone noticing because the run-level conclusion stays "success".
+
+### `migration failed name=03_default_instance err.parent="open /current-dir/admin.pat: permission denied"` followed by `unique_constraints_pkey` cascade
+
+**Symptom**: `docker compose up -d --wait` against `infra/docker/docker-compose.zitadel.yml` exits 1 with `dependency failed to start: container docker-zitadel-1 is unhealthy`. The Zitadel logs show TWO failures back-to-back on `restart: always`:
+
+1. **First boot**: `EACCES open /current-dir/admin.pat: permission denied` during `03_default_instance` migration → `setup failed, skipping cleanup`.
+2. **Subsequent boots** (the symptom that's actually visible at the bottom of the logs): `duplicate key value violates unique constraint "unique_constraints_pkey" detail: Key (instance_id, unique_type, unique_field)=(, instance_domain, 127.0.0.1.sslip.io) already exists.` — looks like Quirk 28 (#8910 / #9293) but isn't.
+
+**Cause**: Quirk 38 — `ZITADEL_FIRSTINSTANCE_PATPATH=/current-dir/admin.pat` writes to a path inside a host bind mount (`./zitadel/local:/current-dir:rw`). The Zitadel container process runs as **uid 1000** (image default); on a GitHub Actions `ubuntu-latest` runner the host directory is created post-checkout owned by **runner:docker (uid 1001)** with mode `0755`, so uid 1000 can't write — EACCES. The first boot's *partial* setup nevertheless persisted `instance_domain=127.0.0.1.sslip.io` into the eventstore (Zitadel logs `setup failed, skipping cleanup` — it skips cleanup, not the partial state). Every subsequent retry replays the migration with that record already there, so they fail with `unique_constraints_pkey` instead of EACCES — the original cause is buried 30+ lines up in the logs.
+
+**Diagnose**: when you see `unique_constraints_pkey` on `03_default_instance`, **always scroll up to the FIRST migration attempt**. If that one failed with `permission denied` on `admin.pat` (or any other file under `/current-dir/`), you're hitting Quirk 38, not Quirk 28. The cure is different.
+
+**Fix** (CI-only — dev is not affected because the host dir gets your user's perms when `dev.sh` or whatever scaffolds it):
+
+```yaml
+# .github/workflows/<your-ci>.yml — step inserted BEFORE `docker compose up`
+- name: Pre-create writable bind mount for Zitadel admin.pat
+  run: |
+    mkdir -p infra/docker/zitadel/local
+    chmod 0777 infra/docker/zitadel/local
+```
+
+`chmod 0777` is idiomatic for ephemeral CI bind mounts and avoids hardcoding a uid that could shift if the image changes. Don't try to "fix" by `chown 1000:1000` — same effect, more brittle. Don't try to swap to a named volume in CI without also doing it in dev — the `bootstrap.json` artifact (consumed by your auth-sanity check, etc.) lives in that bind mount on the host side, and breaking the dev path to "fix" CI is a regression.
+
+After applying the fix and re-running, you should see Zitadel logs end with `setup completed` + the `ZITADEL` ASCII banner + `server is listening address=[::]:8080` instead of the migration error.
+
+### `Bootstrap fails with COMMAND-VoaRj "Password must contain upper case"` on `AddHumanUser`
+
+**Symptom**: Bootstrap script gets past `[org] created`, `[project] created`, `[role] created`, `[app] created` and then dies on the seed user step:
+
+```text
+[bootstrap] FALHOU: Zitadel 400 /zitadel.user.v2.UserService/AddHumanUser:
+{"code":"invalid_argument","message":"Password must contain upper case (COMMA-VoaRj)",...}
+```
+
+**Cause**: Quirk 39 — Zitadel's default password policy on a fresh instance requires **all four character classes** (uppercase, lowercase, digit, symbol). A common CI shortcut to generate ephemeral passwords is `openssl rand -hex 16` — which only emits lowercase `[0-9a-f]` and trips this rule deterministically. The error code `COMMA-VoaRj` ("password must contain upper case") is the FIRST class missing in `[0-9a-f]`; if you "fix" it by adding only an uppercase prefix you may then trip the next class missing (`COMMA-...` for digit or symbol).
+
+**Fix**: use a structured generator that guarantees all four classes:
+
+```bash
+# Bash one-liner — 32-char password that guarantees upper+lower+digit+symbol.
+RAND_TAIL="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 28)"
+export ZITADEL_SEED_USER_PASSWORD="Aa1!${RAND_TAIL}"
+```
+
+The `Aa1!` prefix covers all four classes deterministically; the 28-char alphanum tail brings entropy. Same pattern works for any CI-generated password against a Zitadel-shaped policy. (Don't use `openssl rand -base64` — base64 includes `=` padding and `/+` which Zitadel's default policy may or may not accept depending on version; alphanum + structured prefix is more portable.)
+
+If you've **changed the default policy** on the instance and want CI to mirror it, mirror in the script too — but don't just generate hex and hope for the best.
+
+### `zitadel-login` container never goes Healthy in CI; `up --wait --wait-timeout 120` times out
+
+**Symptom**: stack boots fine, `zitadel-db` Healthy, `zitadel-init` Exited (success), `zitadel` Healthy, then `Container docker-zitadel-login-1 Started` followed by minutes of silence and finally `dependency failed to start: container docker-zitadel-login-1 is unhealthy`. Other services were healthy long before the timeout — only `zitadel-login` (the Login UI v2 Next.js container, image `ghcr.io/zitadel/zitadel-login:vX.Y.Z`) fails to come up in time.
+
+**Cause**: Quirk 40 — `zitadel-login` is a Next.js app whose healthcheck (`wget --spider http://localhost:3000/`) only passes once Next.js has done first-render bootstrap. On a small CI runner (`ubuntu-latest` shared, 2 vCPU) that takes ~90s+ from container start; with the default compose `start_period: 30s` + `interval: 10s × retries: 12` the healthcheck would only abandon at ~210s, but `--wait-timeout 120` cuts it short first. **Bootstrap and integration tests don't actually need Login UI** — `bootstrap-zitadel.ts` reads `login-client.pat` from the named volume populated by the `zitadel` service's FirstInstance setup, and any direct REST hits the `zitadel:8080` API, not the UI. So the wait is pure cost.
+
+**Fix** — scope `--wait` to the services the test actually exercises:
+
+```yaml
+- name: Boot Zitadel stack
+  run: |
+    docker compose -f infra/docker/docker-compose.zitadel.yml up -d --wait --wait-timeout 120 \
+      zitadel-db zitadel-init zitadel
+```
+
+Compose only waits for the listed services to be healthy; `zitadel-login` and any other slow sibling (`mailpit` — irrelevant unless the test itself opens email) are simply not started. In dev, `./dev.sh` (or whatever scaffolds your local stack) keeps the default `up` so the Login UI is available for browser smoke. If your CI does need Login UI healthy (e.g., a Playwright login spec), bump `--wait-timeout` to ~240s instead — same `wait`, more headroom.
+
+Also add a defensive `docker compose logs zitadel-login` in the on-failure step — without it, when the wait times out you see only `is unhealthy` from the orchestrator, not the Next.js boot output.
+
 ## When you don't see your error here
 
 1. Check Zitadel logs first: `docker logs <container> 2>&1 | tail -100`. Most setup errors print at INFO or ERROR level.

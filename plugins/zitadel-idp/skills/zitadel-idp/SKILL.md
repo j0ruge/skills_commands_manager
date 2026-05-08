@@ -1,6 +1,6 @@
 ---
 name: zitadel-idp
-description: Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 27 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, v2.66→v4 upgrade runbook, login UI v2 separate container, API v1→v2 Connect protocol mapping, contextual orgId header→body). Triggers — zitadel, oidc-self-hosted, login UI, silent-renew, JWKS, masterkey, zitadel v4 upgrade, v2.66 to v4, api v1 to v2, connect protocol, login-ui-v2 container, schema migration zitadel.
+description: Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 40 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, v2.66→v4 upgrade runbook, login UI v2 separate container, API v1→v2 Connect protocol mapping, contextual orgId header→body, JWKS hairpin NAT, frontend 401-storm defense-in-depth, CI bind mount perms cascade into unique_constraints_pkey, default password policy 4-class, Login UI v2 healthcheck slow on small CI runners). Triggers — zitadel, oidc-self-hosted, login UI, silent-renew, JWKS, masterkey, zitadel v4 upgrade, v2.66 to v4, api v1 to v2, connect protocol, login-ui-v2 container, schema migration zitadel, smoke-e2e CI, admin.pat EACCES.
 ---
 
 # Zitadel IdP — Field Guide
@@ -43,7 +43,7 @@ The SKILL.md body intentionally stays short. Drill into the relevant reference b
 
 The references are designed to be readable in isolation — open the one you need without slogging through the rest.
 
-## The thirty-seven quirks (the headline list)
+## The forty quirks (the headline list)
 
 These are the issues that consistently bite first-time Zitadel integrators. Each has a dedicated section in the references; this list is the trigger map so you know which file to open.
 
@@ -120,6 +120,37 @@ These are the issues that consistently bite first-time Zitadel integrators. Each
 36. **Backend container that validates JWT needs `extra_hosts: idp.<domain>:host-gateway` when IdP is on the same host with unreliable hairpin NAT** — `jose.createRemoteJWKSet(new URL(jwksUrl))` does an ordinary Node `fetch` on every JWKS reload (default `cacheMaxAge: 600s`). When the backend container resolves `idp.<domain>` via public DNS, it gets the host's external IP — and on VPS providers where hairpin NAT (DNS → external IP → loopback to local nginx-proxy) is flaky, every reload after the 10-minute TTL fails with a network error. The failure surfaces as `JOSEError` from the catch block, which the validator throws as `InvalidTokenError` → 401. **Symptom: backend works perfectly for ~10 minutes after each restart, then 401-storms every authenticated request even though JWTs are decoded-by-hand correct (`iss`/`aud`/`exp`/`kid` all valid; the `kid` is verifiably present in the JWKS endpoint when fetched from outside the container).** Family of quirks 12 (self-signed JWKS) and 13 (volume reset stale clientId) — same symptom, different cause; this is the third documented cause of "401-storm with apparently-valid JWT". **Fix**: add `extra_hosts: ["idp.<domain>:host-gateway"]` to the backend service in `docker-compose.prod.yml` so the container resolves the IdP hostname to the docker-bridge IP — same path external traffic takes. **Diagnostic in 3 commands**: `docker exec <backend> getent hosts idp.<domain>` (should be the bridge IP), `docker exec <backend> wget -qO- $JWKS_URL | head -c 200` (should be valid JWKS), `docker logs <backend> --tail 100 | grep '\[auth\] JOSE'` (any `code=ERR_JOSE_*` confirms the JWKS-after-TTL failure mode). → `token-validation.md §"Network reachability to the IdP from the JWT validator"` + `troubleshooting.md §"401 storm starting ~10 min after backend restart"`.
 
 37. **Frontend defense-in-depth against the 401 → silent-renew → RT-reuse → session-revoke cascade requires THREE coordinated layers, not just dedupe** — Zitadel has refresh-token rotation with reuse detection enabled by default; if the SPA fires `signinSilent` twice with the same RT (race between concurrent 401-retry callers OR race between 401-retry and `addAccessTokenExpiring` handler), Zitadel detects reuse and **revokes the entire session** — every access token AND refresh token in that session becomes invalid. After that, re-login creates a fresh session but if the underlying root cause persists, a new storm revokes that too → infinite loop. The three layers that close the cascade: **(L1) Dedupe lives in `ApiClient`, not in the provider** — instance field `pendingRenew: Promise<string|null>|null` cleared in `.finally()`; expose `apiClient.refreshToken()` public method that returns the deduped Promise; survives provider remount (test harnesses, Storybook), is testable in isolation, AND is shared between 401-retry path and `addAccessTokenExpiring` handler. Provider-level `useRef` dedupe is fragile because the expiring handler typically calls `signinSilent()` directly, bypassing the dedupe. **(L2) TanStack Query `retry` predicate filters `ApiError 401`** — 401 is not transient (the user needs re-auth, not retry), and retrying amplifies the storm by N requests/refresh attempts. Predicate: `(failureCount, error) => error instanceof ApiError && error.status === 401 ? false : failureCount < N`. **(L3) Listener for the `apiclient:unauthorized` CustomEvent in `<AuthProvider>` with `isAuthRoute()` early-return + `state: { returnTo }` on `signinRedirect`** — without the guard, a 401 bubbling up from `/auth/callback` or `/login` itself triggers another `signinRedirect` → IdP rejects → 401 → loop; without `state.returnTo` the user lands on home/`/` after re-auth instead of the page they were on. The three layers are independent and addressing only one of them leaves a known leak path. → `spa-recipes.md §"Recipe — Defense in depth against 401-storm-revokes-session"`.
+
+38. **CI bind mount perms make `ZITADEL_FIRSTINSTANCE_PATPATH` fail with EACCES, then *cascades* into `unique_constraints_pkey` on retry — looks like Quirk 28 but isn't** — `ZITADEL_FIRSTINSTANCE_PATPATH=/current-dir/admin.pat` writes via the Zitadel container's uid (default 1000) into a host bind mount (`./zitadel/local:/current-dir:rw`). On a GitHub Actions `ubuntu-latest` runner the host directory is created post-checkout owned by `runner:docker (uid 1001)` with mode `0755` — uid 1000 can't write. The first boot fails on `03_default_instance` migration with `open /current-dir/admin.pat: permission denied`, but Zitadel's `setup failed, skipping cleanup` leaves *partial* state (the `instance_domain=127.0.0.1.sslip.io` record) in the eventstore. Every subsequent retry under `restart: always` then fails with `unique_constraints_pkey` on the same migration — looking exactly like Quirk 28 (#8910/#9293) at the bottom of the logs, but caused by a host-perm issue, not by the upstream LoginClient envs. **Diagnose**: ALWAYS scroll up to the FIRST migration attempt — if it failed with `permission denied`, this is Quirk 38, not 28; the cure is different. **Fix** (CI-only — dev's host pasta gets your user's perms via your scaffolding):
+
+    ```yaml
+    - name: Pre-create writable bind mount for Zitadel admin.pat
+      run: |
+        mkdir -p infra/docker/zitadel/local
+        chmod 0777 infra/docker/zitadel/local
+    ```
+
+    `chmod 0777` is idiomatic for ephemeral CI bind mounts and avoids hardcoding the container uid. Don't try to swap to a named volume in CI without doing it in dev too — `bootstrap.json` and other host-readable artifacts depend on the bind mount layout. → `troubleshooting.md §"migration failed name=03_default_instance err.parent=...permission denied"` + `docker-compose-bootstrap.md §"Smoke-e2e plumbing checklist for GHA"`.
+
+39. **Default Zitadel password policy requires all FOUR character classes — `openssl rand -hex` is lowercase-only and trips it deterministically** — fresh instances enforce upper + lower + digit + symbol on `AddHumanUser` (and any password-bearing API). Common CI shortcut `openssl rand -hex 16` only emits `[0-9a-f]` and dies with `400 invalid_argument: Password must contain upper case (COMMA-VoaRj)` on the seed user step. "Fix" by adding only an uppercase prefix and you trip the next class missing. **Fix**: structured generator with a 4-class prefix — `Aa1!` covers all four classes deterministically; the random tail brings entropy:
+
+    ```bash
+    RAND_TAIL="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 28)"
+    export ZITADEL_SEED_USER_PASSWORD="Aa1!${RAND_TAIL}"
+    ```
+
+    Same pattern works against any password-policy-shaped service. Avoid `openssl rand -base64` (padding `=` and slash variability) — alphanum + structured prefix is more portable. If you've changed the default policy, mirror in the script too. → `troubleshooting.md §"Bootstrap fails with COMMAND-VoaRj"` + `docker-compose-bootstrap.md §"Smoke-e2e plumbing checklist for GHA"`.
+
+40. **`zitadel-login` (Login UI v2 Next.js container) takes 90+ seconds to first healthcheck render on small CI runners — `up --wait` for the WHOLE stack times out before bootstrap or REST tests get to start** — its healthcheck (`wget --spider http://localhost:3000/`) only passes after Next.js bootstrap completes; on `ubuntu-latest` shared (2 vCPU) that's ~90s+. With `--wait-timeout 120` and `start_period: 30s` the wait abandons before the container goes Healthy — even though `zitadel`, `zitadel-init`, and `zitadel-db` were Healthy long before. Bootstrap and integration tests usually don't need Login UI — `bootstrap-zitadel.ts` reads `login-client.pat` from the named volume populated by the `zitadel` service, and REST tests hit `zitadel:8080` directly. **Fix** — scope `--wait` to only the services tests actually exercise:
+
+    ```yaml
+    - name: Boot Zitadel stack
+      run: |
+        docker compose -f infra/docker/docker-compose.zitadel.yml up -d --wait --wait-timeout 120 \
+          zitadel-db zitadel-init zitadel
+    ```
+
+    Compose only waits for the listed services to be Healthy; `zitadel-login` and `mailpit` are simply not started. Dev's default `up` keeps everything available for browser smoke. If your CI specifically needs Login UI healthy (e.g., a Playwright login spec), bump `--wait-timeout` to ~240s — same `wait`, more headroom. Always include `zitadel-login` in your on-failure log dump (`docker compose logs zitadel-login || true`) for debugging, even when you don't `--wait` for it. → `troubleshooting.md §"zitadel-login container never goes Healthy in CI"` + `docker-compose-bootstrap.md §"Smoke-e2e plumbing checklist for GHA"`.
 
 ## Migration v2.66 → v4 + API v2
 

@@ -458,6 +458,84 @@ docker run --rm --entrypoint sh <image> -c 'ls /app/packages/idp/src; ls /config
 
 Already mentioned in §1 (FirstInstance env table), but the **why for CI/CD** is worth calling out: without `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED=false`, the operator's first console login is forced into a password change. Result: the value in `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD` secret no longer matches the actual password. After any volume wipe (cutover, disaster recovery), FirstInstance recreates the user *with the stale secret value*, the operator tries the changed password (their muscle memory) and gets `password.check.failed`, debugging session ensues. Setting CHANGEREQUIRED=false makes the secret the immutable source of truth — wipe + redeploy + login-with-secret-value just works, every time.
 
+## §"Smoke-e2e plumbing checklist for GHA"
+
+Bringing a long-disabled smoke-e2e job back to green tends to expose 4-5 layers of unrelated breakage that have rotted under `continue-on-error: true`. The order below is the order failures surface — fix one, the next becomes visible. Each item links to the underlying quirk in `troubleshooting.md` where applicable.
+
+1. **Pre-create the Zitadel bind mount with `chmod 0777`** (Quirk 38). Without this, the `admin.pat` write in `03_default_instance` migration fails with EACCES and cascades into a misleading `unique_constraints_pkey` error.
+
+   ```yaml
+   - name: Pre-create writable bind mount for Zitadel admin.pat
+     run: |
+       mkdir -p infra/docker/zitadel/local
+       chmod 0777 infra/docker/zitadel/local
+   ```
+
+2. **Scope `docker compose up --wait` to the services you actually exercise** (Quirk 40). Listing only `zitadel-db zitadel-init zitadel` skips the slow Login UI v2 Next.js healthcheck, which doesn't matter for bootstrap or REST integration tests.
+
+   ```yaml
+   - name: Boot Zitadel stack
+     run: |
+       docker compose -f infra/docker/docker-compose.zitadel.yml up -d --wait --wait-timeout 120 \
+         zitadel-db zitadel-init zitadel
+   ```
+
+3. **Use a structured password generator for the seed user** (Quirk 39). `openssl rand -hex` is lowercase-only and trips the default 4-class policy; prefix with `Aa1!` to guarantee upper/lower/digit/symbol.
+
+   ```yaml
+   - name: Bootstrap Zitadel
+     working-directory: packages/idp
+     run: |
+       RAND_TAIL="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 28)"
+       export ZITADEL_SEED_USER_PASSWORD="Aa1!${RAND_TAIL}"
+       npx tsx scripts/bootstrap-zitadel.ts
+   ```
+
+4. **Apply Prisma (or your ORM's) migrations to the ephemeral Postgres** before integration tests. `prisma generate` produces `_generated/client` (otherwise vitest collect dies with `ERR_MODULE_NOT_FOUND`); `prisma migrate deploy` against the test DB gives the schema (otherwise SELECTs hit `relation does not exist`):
+
+   ```yaml
+   - name: Prisma generate
+     env:
+       DATABASE_URL: postgresql://ci@localhost:5432/ci?schema=idp  # parseable; generate doesn't connect
+     run: npm run prisma:generate --workspace=@your/idp
+   - name: Apply Prisma migrations to ephemeral Postgres
+     working-directory: packages/idp
+     env:
+       DATABASE_URL: postgresql://postgres@localhost:5432/jrc?schema=idp
+     run: npx prisma migrate deploy
+   ```
+
+5. **Capture the bootstrap output into `$GITHUB_ENV`** so integration tests with `envReady()` guards actually run instead of silently skipping. The `bootstrap.json` written by the script after the `chmod 0777` from step 1 is now host-readable; pull `projectId` and the path to `admin.pat`:
+
+   ```yaml
+   - name: Capture Zitadel envs from bootstrap output
+     run: |
+       PROJECT_ID="$(jq -r '.projectId' infra/docker/zitadel/local/bootstrap.json)"
+       {
+         echo "ZITADEL_API_URL=http://127.0.0.1.sslip.io:8080"
+         echo "ZITADEL_PROJECT_ID=${PROJECT_ID}"
+         echo "OIDC_AUDIENCE=${PROJECT_ID}"
+         echo "ZITADEL_PAT_FILE=${GITHUB_WORKSPACE}/infra/docker/zitadel/local/admin.pat"
+       } >> "$GITHUB_ENV"
+   ```
+
+6. **Always dump container logs in the on-failure step** — `up --wait` only reports `is unhealthy` to stdout; the actual reason (EACCES, password policy, slow render) lives in `docker compose logs <service>`. Include `zitadel-login` in the dump even when you don't `--wait` for it, so future debug attempts have visibility:
+
+   ```yaml
+   - name: Show Zitadel stack logs (on failure)
+     if: failure()
+     run: |
+       docker compose -f infra/docker/docker-compose.zitadel.yml ps
+       for svc in zitadel zitadel-init zitadel-db zitadel-login; do
+         echo "=== $svc ==="
+         docker compose -f infra/docker/docker-compose.zitadel.yml logs --no-color --tail=200 "$svc" || true
+       done
+   ```
+
+**Order matters**: don't try to fix step 4 (Prisma) before step 1 (bind mount perms). The earlier failure masks every later layer until it's resolved — debugging step 4 against a Zitadel that crashed during boot is wasted effort.
+
+**`continue-on-error: true` is a trap when these layers rot together**: the run-level conclusion stays "success" even though the smoke job is silently red. Either commit to keeping the job green (and add issue tracking with a clock when it goes red) or accept that the job is purely informational and move tests that genuinely matter into the `build` job's blocking pipeline.
+
 ## §9. Where to go next
 
 - Programmatic configuration: `references/api-cheatsheet.md` (v1) + `references/api-v1-to-v2-mapping.md` (v2)

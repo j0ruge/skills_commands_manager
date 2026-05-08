@@ -2,6 +2,20 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-05-08 — Container script writing output paths outside WORKDIR — soft-failure that hides forever — bump 2.9.0 → 2.10.0
+
+Source: project `validade_bateria_estoque`, post-§7 recovery (cutover prod 2026-05-08). The §7 chicken-and-egg recovery from v2.9.0 worked exactly as documented (~5min from `0 runners` diagnosis to job picked up), and the first successful deploy in ~19h surfaced **a separate latent bug** that had been hiding behind yellow warnings since feature 005 — the `idp-bootstrap` step exits 1 on every deploy with `ENOENT '/app/infra/docker/zitadel/local/bootstrap.json'`, but `continue-on-error: true` + `::warning::` mark it as soft-failure so the stack stays healthy. Operators stopped reading the yellow warning after a few deploys.
+
+Root cause: `bootstrap-zitadel.ts:1099` resolves `outFile = resolve(__dirname, '../../../infra/docker/zitadel/local/bootstrap.json')` — in dev the source tree mounted/checked-out has the upward path; in prod the Dockerfile only copies `packages/idp/`, so the upstream paths don't exist in the image. Every Zitadel operation (org/project/app/roles/user/grants/label-policy/custom-texts) completes BEFORE the `writeFile`, so each deploy correctly applies IdP state — it just blows up cosmetically at the end.
+
+This generalizes beyond bootstrap-de-IdP: any script bake'd into a container that writes to a path resolved upward from its own location falls into the same gotcha. `release-notes-emit`, `migration-summary`, `seed-data-export`, `audit-log-export` — all candidates for the same pattern.
+
+Captured in **new `cd-pipeline-pitfalls.md` §5** with: canonical symptom (the `[bootstrap] FALHOU: ENOENT` log line + `##[warning]` follow-up), 60-second diagnosis (`grep writeFile/outFile in scripts/` × `grep ^COPY in Dockerfile` = diff = bug), canonical fix (best-effort try/catch wrap + `console.log` of the JSON for CD logs to capture), 4 alternative fixes with trade-offs, and a meta-principle on **persistent yellow warnings being worse than green** — they condition operators to ignore CD's only "look here" signal. The principle generalizes to any step that emits `::warning::` on every deploy: finish the fix instead of normalizing the warning.
+
+Also fixes a **drift in `SKILL.md` `metadata.version`** — was at 2.8.0 since v2.9.0 didn't bump that field; now 2.10.0 in sync with `plugin.json` and `marketplace.json`.
+
+
+
 ## 2026-05-07 — CD cutover pitfalls: build-time vs runtime, operator clones, `--profile run` side-effects + multi-job token exhaustion — bump 2.6.1 → 2.7.0
 
 Source: project `validade_bateria_estoque`, Onda 3 of feature 006 (cutover prod). The existing skill v2.6.1 covered the runner build-time and registration mechanics solidly, but a real production cutover surfaced **four classes of CD-time pitfalls** that bit during mid-flight debugging — each costing 15-60 minutes the first time and recurring across the day:

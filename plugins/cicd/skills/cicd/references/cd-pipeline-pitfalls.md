@@ -171,3 +171,81 @@ If your CD failure looks layer-mismatched (build vs runtime, file-on-disk vs pub
 | `compose run` one-off container | `--rm` on clean exit | indefinitely if exit isn't clean |
 
 The answer is usually that two layers disagree and the "freshness boundary" between them is where the bug lives.
+
+---
+
+## §5. Container script writing output outside WORKDIR — soft-failure that hides forever
+
+**Symptom**: A CD step (`bootstrap`, `seed`, `migrate-summary`, `release-notes-emit`, etc.) emits something like:
+
+```text
+[bootstrap] FALHOU: ENOENT: no such file or directory, open '/app/infra/docker/zitadel/local/bootstrap.json'
+##[error]Process completed with exit code 1.
+##[warning]IdP bootstrap falhou após retry — investigar via runbook. Stack permanece UP com config anterior.
+```
+
+…but the operations the script was *supposed* to perform — DB rows, IdP entities, role grants, label policy uploads — all completed successfully *before* the error. The CD job is marked `success` (because the offending step has `continue-on-error: true` + a follow-up step that emits `::warning::`), so the stack stays healthy and other deploys piggyback on the same yellow warning. After 2-3 deploys the yellow gradient blends into normal operation visually, and any **new** warning gets missed in the noise.
+
+**Cause**: The script (Node, Python, Bash) resolves an output path relative to its own location (`__dirname`, `__file__`, `$(dirname "$0")`) that walks **upward into the source tree** — e.g.:
+
+```typescript
+// packages/idp/scripts/bootstrap-zitadel.ts
+const outFile = resolve(__dirname, '../../../infra/docker/zitadel/local/bootstrap.json');
+//                                  └─ 3 levels up out of packages/idp/dist/scripts/
+//                                     into the monorepo root, then back down into infra/
+writeFileSync(outFile, JSON.stringify(result, null, 2));
+```
+
+In dev (host with the full source tree mounted or checked-out as cwd) the upward path exists, `writeFileSync` succeeds, everyone is happy. In prod the script runs **inside a Docker container whose Dockerfile only copies `packages/<self>/`** — the upstream paths (`infra/docker/...`, monorepo root, sibling packages) simply don't exist in the image. The `writeFile` fires after every Zitadel/DB operation completed and explodes there.
+
+**Fast diagnosis (60 seconds)**:
+
+```bash
+# 1. Find what the script tries to write
+grep -nE "writeFile|fs\.writeFile|outFile|to_csv|toFile|with open.*'w'" \
+  packages/<offending-package>/scripts/*.{ts,js,py} | head -10
+
+# 2. Check what the Dockerfile actually copies into the image
+grep -nE "^COPY |^ADD " packages/<offending-package>/Dockerfile
+
+# 3. Diff: any path the script writes to that's NOT under one of the
+#    COPY destinations (or not a runtime-writable mount like /tmp/) is the bug.
+```
+
+The diff is usually obvious: the script writes to `../../../infra/...` and the Dockerfile only has `COPY packages/<self>/ ...`. There's no overlap — the path simply doesn't exist in the image.
+
+**Canonical fix — best-effort wrap**:
+
+```typescript
+const outFile = resolve(__dirname, '../../../infra/docker/zitadel/local/bootstrap.json');
+try {
+  writeFileSync(outFile, JSON.stringify(result, null, 2));
+  console.log(`[bootstrap] OK → ${outFile}`);
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.warn(`[bootstrap] OK (não persistiu summary em ${outFile}: ${msg})`);
+}
+console.log(JSON.stringify(result, null, 2));  // CD logs already capture the content
+```
+
+In dev: identical behavior (path exists → writes succeed). In container: warn, continue, exit 0. The CD step goes back to a clean green status — and now any future yellow warning means **something genuinely new is broken**, instead of being ambient noise.
+
+This is the right shape when persistence is *informational* — the JSON is for operators reading deploy logs or inspecting a dev workspace. The CD log already captures it via the subsequent `console.log(JSON.stringify(...))`.
+
+**Alternatives — when persistence is genuinely required**:
+
+| Approach | When to use | Trade-off |
+|---|---|---|
+| Writable container path (`/tmp/`, `/var/run/<app>/`) | Need the file for a follow-up step inside the same container, or to `cat` from a pre-stop hook. | File is lost when container exits. |
+| Env-driven explicit path (`process.env.OUTPUT_PATH ?? '/tmp/x.json'`) | Want operator to control persistence per-deploy. | Operator has to know the env exists. |
+| Volume bind mount in compose | Need the file to survive on the host and be readable by other tooling. | The mount becomes a deployment contract — losing it later breaks bootstrap silently. |
+| Add the path to `Dockerfile` `COPY` (only the empty dir) | The script genuinely needs the in-image path to exist (rare). | Couples the image to source-tree layout — every monorepo refactor risks breaking it. |
+
+**Why `continue-on-error: true` + `::warning::` is the trap (and the right tool used wrong)**: it's a great pattern for steps that genuinely *shouldn't* block deploy on non-critical failure (the IdP bootstrap step in the case study above is genuinely idempotent — every Zitadel op completed before the writeFile blew up, so the stack is in the desired state). But because the warning paints yellow on every single deploy, the gradient saturates after a few cycles and operators stop reading it. The signal-to-noise of CD warnings degrades from "investigate" to "expected".
+
+**Rule of thumb**: if a step emits `::warning::` on every deploy, you've already paid the operational cost — finish the fix. Either:
+1. Make the step actually exit 0 (best-effort wrap above), OR
+2. Change the warning to `::notice::` (lower visual priority, signals "I know this happens"), OR
+3. Remove the soft-failure entirely if the underlying operation can be made deterministic.
+
+Persistent yellow is worse than green because it conditions you to ignore the only signal CI/CD has for "things deserving a glance".

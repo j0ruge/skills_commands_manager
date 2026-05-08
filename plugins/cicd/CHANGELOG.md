@@ -2,6 +2,30 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.10.0] - 2026-05-08
+
+### Adicionado
+
+- **`cd-pipeline-pitfalls.md` §5 (novo, ~80 linhas) — "Container script writing output outside WORKDIR — soft-failure that hides forever"**: classe de bug em CD onde um script bake'd no container (Node, Python, Bash) resolve um output path relativo ao próprio `__dirname`/`__file__`/`$(dirname "$0")` que **caminha pra cima na árvore de fontes** (ex.: `__dirname/../../../infra/docker/.../bootstrap.json`). Em dev (host com source tree completo) o path existe e o write funciona; em prod (container com Dockerfile que só copia `packages/<self>/`) o path simplesmente não existe na imagem → `ENOENT` exit 1 **depois** de todas as operações lógicas terem sucesso. CD trata como soft-failure (`continue-on-error: true` + `::warning::`), stack permanece UP, MAS o yellow warning a cada deploy satura visualmente após 2-3 ciclos e operadores param de ler — qualquer warning genuinamente novo passa despercebido. Cobre:
+  - **Sintoma canônico**: linha de log `[bootstrap] FALHOU: ENOENT: no such file or directory, open '/app/.../bootstrap.json'` seguida de `##[error]Process completed with exit code 1` e `##[warning]<step> falhou após retry — Stack permanece UP com config anterior`.
+  - **Diagnóstico em 60s**: `grep -nE "writeFile|fs\.writeFile|outFile|to_csv|toFile" packages/<offending>/scripts/*.{ts,js,py}` → cruzar com `grep -nE "^COPY |^ADD " packages/<offending>/Dockerfile`. Diff = paths que o script grava E não estão sob nenhum COPY destination = bug.
+  - **Fix canônico — best-effort wrap**: `try { writeFileSync(outFile, ...); console.log('OK → ' + outFile); } catch (err) { console.warn('OK (não persistiu summary: ...)'); } console.log(JSON.stringify(result, null, 2))` — em dev comportamento idêntico, em container warn-and-continue exit 0, e o JSON segue dumpado em stdout pra logs do CD capturarem.
+  - **4 alternativas com tabela de trade-offs**: `/tmp/` writable, env-driven `process.env.OUTPUT_PATH`, volume bind-mount no compose (vira contrato de deployment), `Dockerfile COPY` da estrutura de pasta vazia (acopla imagem ao layout do source tree).
+  - **Princípio sobre soft-failure persistente**: `::warning::` é o tool certo pra steps idempotentes que não devem bloquear deploy, mas se a step pinta yellow em **todo** deploy você já pagou o custo operacional — finishe o fix (best-effort wrap, `::notice::` em vez de `::warning::`, ou determinístico). Persistent yellow é pior que green porque condiciona operador a ignorar o único sinal que CI/CD tem pra "merece um glance".
+- **`SKILL.md` Quick Troubleshooting**: row novo `[S]` mapeando "CD step emits yellow `::warning::` on every deploy + ENOENT in script that finished its real work first" → §5.
+- **`SKILL.md` description**: append "container scripts writing output paths outside WORKDIR (`__dirname/../../...` ENOENT) being soft-failed forever as ambient yellow warnings" + triggers novos (`ENOENT bootstrap`, `soft-failure yellow warning fatigue`, `container script outside WORKDIR`).
+- **`SKILL.md` metadata.version**: drift fix 2.8.0 → 2.10.0 (v2.9.0 não havia bumpado essa metadata).
+- **`plugin.json`**: bump 2.9.0 → 2.10.0 + description estendida + keywords novas (`enoent-bootstrap`, `soft-failure-fatigue`, `yellow-warning`).
+- **`marketplace.json`**: bump idem + description estendida.
+
+### Motivação
+
+Cutover prod do `validade_bateria_estoque` (2026-05-08): após o destrancar do CD via §7 chicken-and-egg recovery, o primeiro deploy bem-sucedido em ~19h destrancou também a visibilidade dos logs do step `idp-bootstrap` — que vinham falhando soft há semanas com `ENOENT '/app/infra/docker/zitadel/local/bootstrap.json'`. O bug existia desde a feature 005 mas o yellow warning passava despercebido em meio aos warnings legítimos de deprecation (Node.js 20 actions deprecated em todos os jobs). Análise do código revelou o pattern: `bootstrap-zitadel.ts:1099` resolve `outFile = resolve(__dirname, '../../../infra/docker/zitadel/local/bootstrap.json')` — em dev o source tree mounted tem o path, em prod o Dockerfile só copia `packages/idp/` então o path simplesmente não existe na imagem. Todas as operações Zitadel (org/project/app/roles/user/grants/label-policy/custom-texts) completavam ANTES do writeFile, então cada deploy aplicava as mudanças no IdP corretamente — só que falhava cosmeticamente no fim.
+
+PR #10 do `validade_bateria_estoque` aplicou o fix canônico (try/catch best-effort + console.log dumpa o JSON). A lição generaliza além de bootstrap-de-IdP: qualquer script bake'd em container que escreve em path resolvido upward de `__dirname` cai nesse mesmo gotcha — `release-notes-emit`, `migration-summary`, `seed-data-export`, etc. A skill antes não codificava esse pattern, e o trap do soft-failure persistente (yellow warnings que viram ruído ambiente) é um meta-padrão operacional que vale destacar — o `::warning::` é o tool certo pra steps idempotentes, mas se acende em todo deploy o custo operacional já foi pago e o fix deve ser finalizado, não normalizado.
+
+---
+
 ## [2.9.0] - 2026-05-07
 
 ### Adicionado

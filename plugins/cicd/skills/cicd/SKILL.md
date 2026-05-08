@@ -1,8 +1,8 @@
 ---
 name: cicd
 metadata:
-  version: 2.8.0
-description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34) and reverse-proxy upstream poisoning by `compose run` orphans. Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys, intermittent 401, split status codes, upstream pool stale, compose run orphan, docker-gen VIRTUAL_HOST, runbook canonical path mismatch.
+  version: 2.10.0
+description: GitHub Actions / Docker / GHCR pipeline troubleshooting and config — auto-routes backend (Prisma/Biome) vs frontend (Vite). Covers self-hosted runners (systemd and containerized via myoung34), reverse-proxy upstream poisoning by `compose run` orphans, RUNNER_REGISTRATION_TOKEN chicken-and-egg deadlock recovery, and container scripts writing output paths outside WORKDIR (`__dirname/../../...` ENOENT) being soft-failed forever as ambient yellow warnings. Triggers — CI/CD, GitHub Actions, workflow failing, GHCR auth, self-hosted runner, deploy keys, intermittent 401, split status codes, upstream pool stale, compose run orphan, docker-gen VIRTUAL_HOST, runbook canonical path mismatch, registration token expirado, gh-runner crashloop, chicken-and-egg, ENOENT bootstrap, soft-failure yellow warning fatigue, container script outside WORKDIR.
 ---
 
 # CI/CD Skill — GitHub Actions, Docker & GHCR (Unified)
@@ -73,6 +73,7 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | `[S]` | `network declared as external, but could not be found` | Incorrect nginx-proxy network name in secret         | `docker network ls \| grep proxy` and fix `NGINX_NETWORK_NAME`                        |
 | `[S]` | `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`                   | DNS does not point to the server                     | `dig domain +short` should resolve to the server IP                                   |
 | `[S]` | Deploy queued indefinitely                             | Self-hosted runner offline                           | `systemctl status actions.runner.*` on the server (host runner) **OR** `docker ps \| grep runner` (containerized — see `self-hosted-runner-docker.md` §7 if in `Restarting` with `404 /actions/runner-registration`) |
+| `[S]` | CD step emits yellow `::warning::` on every deploy ("ENOENT" or similar in a script that finished its real work first) | Script writes output path resolved upward from `__dirname` — exists in dev source tree, missing in container image (Dockerfile only copies `packages/<self>/`); `continue-on-error: true` masks indefinitely | `cd-pipeline-pitfalls.md` §5 — wrap the write in try/catch best-effort and emit the artifact via `console.log` so CD logs capture it |
 | `[S]` | Deploy blocked                                         | Concurrency group with previous run                  | Wait or cancel previous run via `gh run cancel`                                       |
 | `[S]` | `--max-warnings 0` fails in ESLint                     | Pre-existing warnings                                | Fix warnings or use `eslint-disable`                                                  |
 | `[B]` | `manifest unknown` in service container                | Discontinued Docker image                            | Switch to official image (e.g., `postgres:17`)                                        |

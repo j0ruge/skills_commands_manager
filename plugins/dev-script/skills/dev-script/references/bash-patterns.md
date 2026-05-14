@@ -151,6 +151,88 @@ test -s infra/.../bootstrap.json || { log_error "Bootstrap did not produce boots
 
 Don't trust exit code alone — verify the expected output file is present and non-empty.
 
+## Port discovery — find-next-free with peer coordination
+
+There are two valid strategies when a service port is busy at boot, and choosing wrong leads to silent failures (see `pitfalls.md` §P17). Pick by ownership:
+
+| Strategy | When the port owner is… | Behavior |
+|---|---|---|
+| **Reclaim** (next section) | …a previous run of *this* dev script (orphan) — script owns the port | Kill the holder, bind freshly |
+| **Discovery** (this section) | …**anything else** the script can't safely assume to own — another project's dev launcher, a system service, a container the user wants to keep, a process from another user | Find the next free port and propagate it to peers |
+
+The discovery strategy is non-destructive and the right default for service ports a multi-process launcher coordinates (backend + frontend + reverse proxy + …). Use reclaim only for ports the script demonstrably opened itself (e.g., a `pgrep -af` match on a stack-specific cmdline pattern).
+
+```bash
+# Walk upward from base_port; return the first free port within max_tries.
+# Fail with non-zero exit if exhausted, so the caller can abort with a clear error.
+find_available_port() {
+  local base_port="$1"
+  local max_tries="${2:-10}"
+  local port="$base_port"
+  local attempt=0
+
+  while [[ $attempt -lt $max_tries ]]; do
+    if ! ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+      echo "$port"
+      return 0
+    fi
+    ((port++))
+    ((attempt++))
+  done
+
+  return 1
+}
+
+# Adjusts service port variables in-place if their default is busy.
+discover_free_ports() {
+  if ss -tlnp 2>/dev/null | grep -q ":${BACKEND_PORT} "; then
+    log_warn "Port ${BACKEND_PORT} (backend) busy — searching alternative…"
+    BACKEND_PORT="$(find_available_port "$((BACKEND_PORT + 1))")" \
+      || { log_error "No free port for backend."; exit 1; }
+    log_warn "Backend will use: ${BACKEND_PORT}"
+  fi
+  if ss -tlnp 2>/dev/null | grep -q ":${FRONTEND_PORT} "; then
+    log_warn "Port ${FRONTEND_PORT} (frontend) busy — searching alternative…"
+    FRONTEND_PORT="$(find_available_port "$((FRONTEND_PORT + 1))")" \
+      || { log_error "No free port for frontend."; exit 1; }
+    log_warn "Frontend will use: ${FRONTEND_PORT}"
+  fi
+}
+```
+
+### Peer coordination — passing the chosen port to dependent services
+
+A discovered port is useless if peers still target the default. Backend at 3001 with Vite proxy hardcoded to 3000 = broken proxy. Frontend at 8081 with backend CORS allowing only 8080 = CORS failures. Propagate the chosen ports via **per-subshell env vars**, not `export` — this avoids two problems at once:
+
+1. **Name collisions**: Node, Vite, Next.js, Nest, etc. all read `process.env.PORT`. A global `export PORT=3001` would also leak into the frontend subshell where it means a different port.
+2. **Polluting the user's interactive shell** after the launcher exits.
+
+```bash
+# Backend gets its own PORT plus the frontend's URL for CORS.
+# Frontend gets its own PORT plus the backend's port for the dev proxy (Vite, Next, etc.).
+( cd "$BACKEND_DIR" && \
+    PORT="$BACKEND_PORT" \
+    APP_WEB_URL="http://localhost:$FRONTEND_PORT" \
+    npm run dev 2>&1 | sed -u "s/^/$(echo -e "$PREFIX_BACK") /" ) &
+PIDS+=($!)
+
+( cd "$FRONTEND_DIR" && \
+    PORT="$FRONTEND_PORT" \
+    API_PORT="$BACKEND_PORT" \
+    npm run dev 2>&1 | sed -u "s/^/$(echo -e "$PREFIX_FRONT") /" ) &
+PIDS+=($!)
+```
+
+The exact env var names depend on the stack — read each peer's config (Vite proxy `target`, backend CORS allowlist, OIDC redirect URI, reverse-proxy upstream) and emit one inline assignment per peer-dependency edge. If a service reads its peer's URL/port from a `.env` field, **the inline subshell var wins over the file** (dotenv defaults to `override: false`; Vite reads `process.env.*` directly). That keeps committed `.env` files untouched and the runtime override scoped to the launcher.
+
+### Synergy with `strictPort: true`
+
+Vite's `strictPort: true` (and equivalents like Next.js `--port` without auto-fallback) feels like it conflicts with discovery — actually it's the right combo. Pre-flight discovery picks a port the OS confirms is free; `strictPort` makes Vite bind exactly that port instead of silently falling forward to 5174/8081/etc. on its own. Without strictPort, Vite's silent fallback desynchronizes the launcher's summary banner, the proxy `API_PORT`, and the actual bind — debugging that drift is much harder than letting Vite hard-fail when its assumed port is taken (which can't happen if discovery ran first).
+
+### Race window
+
+There's a small TOCTOU window between `find_available_port` returning a port and the service actually binding it — another process could grab it in between. In practice the launcher is the only thing racing for those ports during local dev, so the risk is negligible. If it bites in a CI matrix or a busy shared host, retry the whole discover-then-spawn sequence (caller-side loop) rather than blocking the port via a sentinel socket — sentinel sockets create their own cleanup problems.
+
 ## Port reclaim with a fallback chain
 
 ```bash

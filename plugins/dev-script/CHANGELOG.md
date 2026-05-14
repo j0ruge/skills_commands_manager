@@ -1,5 +1,41 @@
 # Changelog — `dev-script`
 
+## 0.4.0 — 2026-05-14
+
+Lessons from a session against the LouvorFlow monorepo where the user's `dev.sh` "hung" on every cold start whenever port 8080 was held by a foreign process. The diagnosis exposed a gap in the v0.3.1 skill: it advocated kill-and-reclaim as the *only* strategy for service ports, with no acknowledgment of the scenario where the port owner is something the script can't (or shouldn't) kill.
+
+### Added
+
+- **`references/bash-patterns.md` §"Port discovery — find-next-free with peer coordination"** (new section, placed *before* the existing port-reclaim section so readers see the choice). Covers:
+  - `find_available_port()` — iterative bump with `ss -tlnp | grep ":${port} "`, configurable max-tries, non-zero exit on exhaustion so callers can abort with a clear error.
+  - `discover_free_ports()` — composes the primitive across multiple service-port variables (`BACKEND_PORT`, `FRONTEND_PORT`, …) and mutates them in place if busy.
+  - **Peer-coordination pattern** with per-subshell env vars: `( cd "$DIR" && PORT=$X PEER_URL=…:$Y npm run dev ) &`. Solves two problems at once — env var name collisions (`PORT` is read by Node, Vite, Nest, Next, etc. — all of them) and pollution of the user's interactive shell. Inline subshell vars also win over `dotenv` defaults (`override: false`), so committed `.env` files stay untouched.
+  - **Strategy rubric**: discover vs. reclaim — discover when the port owner is unknown/foreign (default for multi-process launchers); reclaim only when the script can prove ownership via stack-specific `pgrep -af` match.
+  - **`strictPort: true` synergy** note: counter-intuitively the right combo with pre-flight discovery — discovery picks a confirmed-free port, strictPort enforces the choice instead of letting Vite silently fall forward to 5174 (which would desync proxy + summary banner from the actual bind).
+  - **TOCTOU caveat**: small window between discovery and bind, retry-the-sequence is the right mitigation, sentinel sockets are not.
+
+  *Symptom prevented*: launcher silently uses the wrong port for one service while peers target the default, producing CORS / proxy / OIDC redirect-URI failures that look like config bugs rather than port mismatches.
+
+- **`references/pitfalls.md` §"P17 — Foreign port owner + `strictPort` = silent 'script hang'"** — documents the 3-step failure cascade (kill silently fails against foreign owner → Vite/Next strictPort hard-fails → parent `wait` keeps tracking the surviving backend child = visually identical to a hang). Includes the diagnostic recipe: `bash -x` the launcher and look for the gap between the last "service started" log and the `wait` call; cross-check with `ss -tlnp` to find services whose bound PID isn't a child of the launcher.
+
+  *Symptom prevented*: user reports "dev.sh trava no frontend" with no obvious error; 30 minutes of debugging chases the wrong layer (Docker? Vite config? `set -e`?) before the cascade becomes visible.
+
+### Changed
+
+- **`SKILL.md` §"Design Principle 6"** evolved from a single-strategy "Port reclaim has a fallback chain" to a two-strategy "Two port strategies, picked by ownership". Discovery (find-next-free) is the right default for service ports a multi-process launcher coordinates; reclaim (kill-and-reclaim) stays for orphans the script demonstrably owns. Includes the rubric, the failure mode that conflating them produces (P17), and pointers to both bash-patterns sections.
+- **`SKILL.md` metadata version 0.3.1 → 0.4.0**, **`.claude-plugin/plugin.json` 0.3.1 → 0.4.0**, **marketplace.json** description expanded with "two-strategy port handling", **keywords** gained `port-discovery`, `find-available-port`, `strict-port`, `peer-coordination`. Triggers list gained `find available port`, `port discovery`, `script hangs`, `strictPort`.
+
+### Not changed / out of scope
+
+- `assets/dev.sh.tmpl` and `assets/dev.ps1.tmpl` — not modified. Discovery isn't universally desirable (some projects genuinely want fixed ports for deterministic dev URLs), and threading both strategies into the template forces every consumer to either ship dead code or commit to one approach. Same policy as v0.3.0's monorepo-regex gotcha: the pattern lives in `references/` with copy-pasteable snippets, the template stays lean. The skill picks the strategy during Phase 1 detection based on detected peer-dependencies (does the frontend proxy to a backend? does the backend's CORS allowlist a specific frontend URL? — those are signals discovery is needed; otherwise reclaim is fine).
+- `references/powershell-patterns.md` — PowerShell equivalents (`Get-NetTCPConnection -State Listen` for probing, `Get-Process` for cleanup) will be added in a follow-up if/when a Windows session surfaces a parallel scenario. The bash-side pattern is independently useful and the lesson didn't come from a PowerShell context.
+- `references/tls-https-recipe.md` — TLS plumbing unchanged; the new patterns live in the process-management layer.
+- `references/idempotency-and-state.md` — idempotency story unchanged; port discovery is orthogonal to state-file drift.
+
+### Verification
+
+- Proven against the LouvorFlow `dev.sh`: with port 8080 occupied by `python3 -m http.server 8080`, the prior `kill_stale_ports` silently failed and `vite` with `strictPort: true` hard-failed while the parent shell stayed in `wait` on the surviving backend — the reported "trava" symptom. After applying discovery + peer-coordination (`PORT=$FRONTEND_PORT` + `API_PORT=$BACKEND_PORT` injected per subshell, plus `APP_WEB_URL=http://localhost:$FRONTEND_PORT` so backend CORS follows), the launcher transparently shifted the frontend to 8081, propagated 8081 to the backend CORS, kept the Vite proxy targeting the correct backend port, and started both services cleanly with the summary banner showing the actual bound ports.
+
 ## 0.3.0 — 2026-05-04
 
 Lessons from a session against the JRC `validade_bateria_estoque` LAN-HTTPS stack — three places where the v0.2.0 reference still left enough rope to hang yourself, including one regression that hit four times across separate sessions before the root cause clicked.

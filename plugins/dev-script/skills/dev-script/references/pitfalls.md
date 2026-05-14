@@ -259,3 +259,19 @@ Linux-only scripts can ignore this; cross-platform scripts must handle it.
 Real-world hit count from JRC: 4 sessions over 5 days, each spending 15-60 minutes diagnosing "I reset the IdP and now nothing works", every time blaming a different layer (mkcert cert? .env? bootstrap?). The 3-layer defense was the only thing that broke the cycle — any single layer continued to fail because the other two leaked state across runs.
 
 **How to detect the trap**: if your project hits the same 401-storm symptom twice across separate sessions, stop debugging the symptom and run `pgrep -af '<your-runner-pattern>' | wc -l`. Anything > 1 is the smoking gun.
+
+## P17 — Foreign port owner + `strictPort` = silent "script hang"
+
+**Symptom**: User reports `./dev.sh` "hangs forever" on first run. Terminal shows the Vite line ending in `Port 8080 is in use by another process` followed by nothing. Ctrl+C does eventually quit. `ps -ef` shows the backend is happily running on its port — only the frontend never came up. The script is not actually stuck on any operation; it's stuck on `wait`.
+
+**Cause** (3-step cascade):
+
+1. The launcher's `kill_port`/`kill_stale_ports` runs against 8080. The port is held by **someone else's** legitimate process — a coworker's dev server, a Docker container the user wants to keep, a system service. `kill` either silently fails (different UID, missing capability) or the holder ignores `SIGTERM`. The port-clear function logs success or stays quiet and returns.
+2. Vite spawns with `strictPort: true` (correct setting for prod-like dev, see `bash-patterns.md` §"Synergy with `strictPort: true`"), tries to bind 8080, fails fast, exits with an error. The Vite subshell terminates.
+3. The launcher's `wait` is still tracking the backend PID, which is alive and well. From the parent's perspective nothing has changed — it just sits at `wait` indefinitely. Visually identical to a hang.
+
+The cascade is invisible because each step looks like it "worked": kill returned (silently), Vite reported the error to its own stdout but the parent didn't propagate the failure, `wait` is doing exactly what it was asked.
+
+**Fix in the dev script**: don't try to reclaim service ports owned by foreign processes — discover an alternative instead. See `bash-patterns.md` §"Port discovery — find-next-free with peer coordination". The rubric: reclaim is for orphans the script itself spawned (pgrep-matchable to your stack); discovery is for service ports where the owner is unknown. With pre-flight discovery, step 1 above is replaced by "port busy → use 8081 instead", peers are notified via subshell env vars (so the Vite proxy / backend CORS land on the right port), and step 2 never triggers.
+
+**Detecting the trap without fixing it first**: run the launcher under `bash -x` and look for the gap between the last "service started" log line and the `wait` call. If there's no error in between but one of the services never appears in `ss -tlnp`, the cascade is in flight. Also: if your launcher prints a summary banner with port numbers, but `ss -tlnp` shows one of those ports bound by a PID that isn't a child of the launcher, the corresponding service silently lost the bind race.

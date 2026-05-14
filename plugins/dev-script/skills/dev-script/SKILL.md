@@ -1,8 +1,8 @@
 ---
 name: dev-script
 metadata:
-  version: 0.3.1
-description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, port-reclaim with pgrep fallback, HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Triggers — dev script, single-command dev, local stack, mkcert, kill port, runtime drift.
+  version: 0.4.0
+description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free port discovery for foreign-owned ports / kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Triggers — dev script, single-command dev, local stack, mkcert, kill port, find available port, port discovery, runtime drift, script hangs, strictPort.
 ---
 
 # dev.script — Local Dev Stack Launcher Generator
@@ -130,9 +130,14 @@ Spinlock with a timeout (max 30–60s, then fail with the exact URL/command that
 
 The corollary: **never leave orphans**. If the script started 3 child processes, all 3 must die when the user hits Ctrl+C. Pid-array tracking + group-kill handles this — the alternative (`pkill -f vite`) is fragile.
 
-### 6. Port reclaim has a fallback chain
+### 6. Two port strategies, picked by ownership
 
-`fuser → lsof → ss` (or `Get-NetTCPConnection` on Windows). Different distros and container setups expose port-to-pid resolution differently; one method failing should fall through to the next. Without this fallback, the script silently leaves a stale process on the port and users see "port already in use" at start.
+Service ports get hit by two different failure modes that need different responses. Pick by who owns the port:
+
+- **Discovery (find-next-free)** — when the port owner is unknown or known to be foreign (another project's dev launcher, a system service, a Docker container the user wants to keep, a coworker's process). Walk upward from the default with `find_available_port` and propagate the chosen port to peer services via per-subshell env vars (so the Vite proxy `API_PORT`, backend CORS `APP_WEB_URL`, OIDC redirect URIs all land on the right value). Non-destructive; right default for multi-process launchers where peers depend on each other's ports. Pairs well with `strictPort: true` downstream — pre-flight picks a free port, strictPort enforces the choice (no silent Vite fallback to 5174 that desyncs the proxy).
+- **Reclaim (kill the holder)** — only when the script can prove it owns the port (e.g., a previous run of *this* launcher left orphans matchable by a stack-specific `pgrep -af` pattern). Fallback chain `fuser → lsof → ss` (or `Get-NetTCPConnection` on Windows) covers distros and container setups that expose port-to-pid resolution differently.
+
+Conflating the two is the source of pitfall §P17: kill-reclaim against a foreign owner silently fails, then `strictPort: true` makes the downstream service hard-fail, and the parent's `wait` stays alive on remaining children — visually identical to a hang. See `references/bash-patterns.md` §"Port discovery" and §"Port reclaim with a fallback chain" for both code recipes and the rubric for choosing between them.
 
 ### 7. LAN access ⇒ HTTPS
 

@@ -45,6 +45,125 @@ Prefer `docker/login-action@v3` over manual `docker login` because:
 echo "$TOKEN" | docker login ghcr.io -u USERNAME --password-stdin
 ```
 
+> **See also: §1a** below for the **TLS handshake timeout** variant — same step, different root cause (network layer instead of credentials).
+
+---
+
+## 1a. `TLS handshake timeout` on GHCR (Self-Hosted Runner)
+
+**Message:**
+
+```text
+Error: Error response from daemon: Get "https://ghcr.io/v2/": net/http: TLS handshake timeout
+```
+
+**Distinction from §1:** `unauthorized` is a credential issue — TLS completed and GHCR rejected the token. `TLS handshake timeout` is the opposite: TCP to `ghcr.io:443` connected, but the TLS handshake itself never finished. Credentials are irrelevant here — the connection never got that far. People conflate the two and waste time rotating PATs when the real fix is network-layer.
+
+**Localization trick:** in a typical CD workflow with `ci`/`build-and-push` on `ubuntu-latest` and `deploy` on `self-hosted`, only the deploy step fails. That asymmetry alone proves GHCR is healthy and the problem is the runner host's outbound network — not a transient at GitHub.
+
+**Probable causes, ordered:**
+
+1. **MTU mismatch** (most common). TLS handshake exchanges Certificate / CertificateVerify frames that are larger than typical HTTP traffic, so a path with reduced MTU (VPN, cloud overlay, double-encapsulation) drops fragments silently. TCP works fine for small packets, then TLS hangs.
+2. **Outbound firewall doing TLS inspection** — corporate middleboxes that proxy TLS can time out or break ALPN.
+3. **Transient ghcr.io flake** — rare. The build-and-push leg would also flake intermittently if this were it.
+4. **Docker daemon with stale iptables rules** on newer kernels (nftables backend mismatch) silently dropping large outbound packets.
+
+**Diagnosis (SSH into the runner host):**
+
+```bash
+# 1. Confirm the same symptom outside docker — isolates daemon vs network
+curl -v --max-time 15 https://ghcr.io/v2/ 2>&1 | head -30
+# Hangs at "TLS handshake" → confirms network-layer, not docker.
+
+# 2. Reproduce via docker login with the actual credentials
+docker logout ghcr.io
+echo "$GITHUB_PAT" | docker login ghcr.io -u <user> --password-stdin
+# Same error → not a token problem.
+
+# 3. Check MTU on the egress interface and docker0
+ip link show | grep -E "mtu|docker0"
+# eth0/ens* default is 1500; VPN/overlay often shows 1450, 1420, 1300.
+# If docker0 MTU > path MTU to ghcr.io, handshake frames fragment and drop.
+
+# 4. Path to ghcr.io
+traceroute -n -T -p 443 ghcr.io 2>&1 | head -15
+
+# 5. Outbound proxy?
+env | grep -iE "^(http|https|no)_proxy"
+cat /etc/docker/daemon.json 2>/dev/null
+```
+
+**Fix A — bash retry wrapper around the deploy login (recommended, defense in depth):**
+
+`docker/login-action@v3` has no built-in retry. Wrap `docker login` in a bash loop with backoff inside the `deploy` job — this absorbs transient flakes regardless of root cause. Apply only to deploy jobs on self-hosted; leave `build-and-push` on `ubuntu-latest` using the action as-is.
+
+```yaml
+- name: Login to GHCR (with retry on TLS handshake timeout)
+  env:
+    GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    GHCR_USER: ${{ github.actor }}
+  run: |
+    set +e
+    for attempt in 1 2 3; do
+      echo "::group::Login attempt $attempt/3"
+      echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+      rc=$?
+      echo "::endgroup::"
+      if [ $rc -eq 0 ]; then
+        echo "Login succeeded on attempt $attempt"
+        exit 0
+      fi
+      echo "Login attempt $attempt failed (exit $rc)"
+      if [ $attempt -lt 3 ]; then
+        backoff=$((attempt * 10))
+        echo "Retrying in ${backoff}s..."
+        sleep $backoff
+      fi
+    done
+    echo "::error::GHCR login failed after 3 attempts"
+    exit 1
+```
+
+Why not the popular `nick-fields/retry@v3` action? Adding a third-party action for one step is heavier than 20 lines of bash, and the bash form keeps credentials in `--password-stdin` with no extra hops. Use the action if the project already standardizes on it.
+
+**Fix B — lower Docker daemon MTU (root cause if §3 diagnosis showed mismatch):**
+
+On the runner host:
+
+```bash
+# /etc/docker/daemon.json
+{
+  "mtu": 1400
+}
+```
+
+```bash
+sudo systemctl restart docker
+```
+
+`1400` is conservative and covers most VPN/cloud overlay paths. After restart, every container the runner creates inherits the lowered MTU. Re-trigger the failing CD run.
+
+**Fix C — if behind a corporate proxy doing TLS inspection:**
+
+Configure Docker daemon to use the proxy explicitly (proxies that handle TLS inspection cleanly perform better than transparent intercept):
+
+```bash
+# /etc/systemd/system/docker.service.d/http-proxy.conf
+[Service]
+Environment="HTTPS_PROXY=https://proxy.corp:8443"
+Environment="NO_PROXY=localhost,127.0.0.1"
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart docker
+```
+
+**Decision tree:**
+
+- Symptom intermittent (1 in N deploys) → start with Fix A (retry).
+- Symptom 100% reproducible + MTU mismatch in §3 → Fix B.
+- Diagnosis shows proxy on the host → Fix C, then re-test.
+
 ---
 
 ## 2. `network declared as external, but could not be found`

@@ -2,6 +2,31 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.12.0] - 2026-05-13
+
+### Adicionado
+
+- **`troubleshooting-shared.md` §1a (novo, ~110 linhas) — "`TLS handshake timeout` on GHCR (Self-Hosted Runner)"**: nova classe documentada de falha em `docker login ghcr.io` que é **frequentemente confundida com §1 (`unauthorized`)** mas tem causa raiz oposta. `unauthorized` = TLS completou + GHCR rejeitou credencial (fix: rotacionar PAT). `TLS handshake timeout` = TCP conectou mas handshake nem completou — credencial é irrelevante porque a conexão nem chegou nessa etapa. Cobre:
+  - **Distinção operacional vs §1**: cross-link bidirecional entre as duas seções pra forçar o leitor a confirmar qual sintoma realmente bateu.
+  - **Isolation key**: workflow típico tem `ci` + `build-and-push` em `ubuntu-latest` e `deploy` em `self-hosted`. Se só o deploy falha, GHCR está saudável — problema é a rede outbound do host runner. Essa assimetria sozinha já elimina causas "GitHub está fora" e foca o diagnóstico no host.
+  - **4 causas ranqueadas por probabilidade**: (1) **MTU mismatch** em VPN/overlay drop dos frames de Certificate/CertificateVerify (mais comum); (2) firewall corporativo com TLS inspection lento/incompleto; (3) flake transiente do ghcr.io (raro); (4) Docker daemon com iptables legacy em kernel mais novo.
+  - **5 comandos de diagnóstico SSH-na-máquina**: `curl --max-time 15 https://ghcr.io/v2/`, `docker logout && docker login` (reproduz fora do workflow), `ip link show | grep mtu`, `traceroute -T -p 443 ghcr.io`, `env | grep proxy` + `cat /etc/docker/daemon.json`.
+  - **Fix A — bash retry wrapper (recomendado, defesa em profundidade)**: snippet completo de step YAML que substitui `docker/login-action@v3` por loop bash com 3 tentativas e backoff 10s/20s. Aplicado apenas no deploy job — build-and-push em ubuntu-latest continua usando a action. Inclui justificativa pra não usar `nick-fields/retry@v3` (overhead pra step única; 20 linhas de bash com `--password-stdin` mantêm a credencial sem hops extras).
+  - **Fix B — Docker daemon MTU=1400 (root cause)**: snippet `/etc/docker/daemon.json` + restart. Valor conservador que cobre maioria dos VPN/cloud overlays.
+  - **Fix C — proxy explícito**: systemd drop-in pra Docker daemon quando o host está atrás de proxy corporativo com TLS inspection (proxies explícitos tipicamente lidam melhor que intercept transparente).
+  - **Árvore de decisão final**: intermitente → Fix A; 100% reproduzível + MTU mismatch confirmado → Fix B; proxy detectado → Fix C.
+- **`SKILL.md` Quick Troubleshooting**: row novo `[S]` cobrindo "TLS handshake timeout on docker login" com a isolation key (build OK / deploy fail) e ponteiro pra §1a.
+- **`SKILL.md` Lessons Learned**: row #36 condensando o pattern — "GHCR TLS handshake timeout vs unauthorized — não são o mesmo bug".
+- **`SKILL.md` description + metadata.version**: bump 2.11.0 → 2.12.0 + descrição estendida + triggers novos (`GHCR TLS handshake timeout`, `docker login retry`, `MTU mismatch`, `TLS inspection proxy`).
+- **`plugin.json`**: bump 2.11.0 → 2.12.0 + description estendida + keywords novas (`tls-handshake-timeout`, `docker-login-retry`, `mtu-mismatch`, `tls-inspection-proxy`).
+- **`marketplace.json`**: bump idem + description estendida.
+
+### Motivação
+
+Deploy do LouvorFlow CD-staging-backend (2026-05-13) falhou no step `Logging into ghcr.io` do job `deploy` (self-hosted) com `Error: Error response from daemon: Get "https://ghcr.io/v2/": net/http: TLS handshake timeout`. O instinto inicial foi conferir credenciais — porque a seção de GHCR existente na skill só cobria `unauthorized`. Mas TCP conectava (senão seria "dial tcp") e build-and-push em ubuntu-latest passava no mesmo run, isolando a falha no host do runner staging. Custou tempo pra reconhecer que era network-layer (MTU/firewall) e não credencial.
+
+O pattern generaliza: qualquer self-hosted runner em VPN, cloud overlay, ou rede corporativa com TLS inspection eventualmente bate nesse erro, e a skill antes não diferenciava os dois sintomas do GHCR. Codificar a distinção + a isolation key (build OK / deploy fail) + os dois fixes canônicos (retry wrapper imediato, MTU 1400 como root cause) economiza ~30min de investigação errada por incidente. Bonus: o retry wrapper em bash puro elimina a dependência de uma action de terceiros pra um problema cuja solução cabe em 20 linhas, e fica idempotente entre re-runs.
+
 ## [2.10.0] - 2026-05-08
 
 ### Adicionado

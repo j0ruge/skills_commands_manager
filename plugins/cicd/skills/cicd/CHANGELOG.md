@@ -2,6 +2,30 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-05-13 — GHCR `TLS handshake timeout` distinguished from `unauthorized` — bump 2.11.0 → 2.12.0
+
+Source: project `LouvorFlow`, CD-staging-backend run from commit `415b345` (2026-05-13). The `deploy` job on `[self-hosted, staging]` failed at the docker login step with `Error: Error response from daemon: Get "https://ghcr.io/v2/": net/http: TLS handshake timeout`. The existing skill only documented the `unauthorized` variant — operator instinct was to rotate the PAT, but credentials were healthy: build-and-push on `ubuntu-latest` in the same workflow run pushed the image successfully. The asymmetry alone proved GHCR was up and the credential was valid; the failure was network-layer on the runner host.
+
+### What changed
+
+- **`troubleshooting-shared.md` §1a (new, ~110 lines)** — full section "`TLS handshake timeout` on GHCR (Self-Hosted Runner)" sitting right next to §1 with bidirectional cross-link so neither symptom can be misdiagnosed as the other again.
+  - Explains the TCP-OK / TLS-fail distinction (credentials are irrelevant because the connection never reached the auth phase).
+  - Documents the **isolation key**: build-and-push on `ubuntu-latest` passes + deploy on `self-hosted` fails → runner host network, not GHCR.
+  - Ranks 4 probable causes (MTU mismatch, TLS-inspection proxy, transient flake, iptables legacy on new kernels).
+  - 5 SSH diagnostic commands to run on the runner host.
+  - **Fix A** — bash retry wrapper (3 attempts, 10s/20s backoff) drop-in replacement for `docker/login-action@v3` in the deploy job only. 20 lines. Explains why not to add `nick-fields/retry@v3` for a single step.
+  - **Fix B** — `mtu: 1400` in `/etc/docker/daemon.json` + restart docker. Root-cause fix when MTU mismatch is confirmed in diagnosis.
+  - **Fix C** — explicit HTTPS_PROXY for hosts behind corporate TLS-inspection middleboxes.
+  - Decision tree: intermittent → Fix A; reproducible + MTU mismatch → Fix B; proxy detected → Fix C.
+- **`SKILL.md` Quick Troubleshooting** — new `[S]` row with the symptom string, the isolation key, and pointer to §1a.
+- **`SKILL.md` Lessons Learned** — row #36 "GHCR TLS handshake timeout vs unauthorized — não são o mesmo bug" condensing the distinction.
+- **`SKILL.md` description + metadata.version**: bump 2.11.0 → 2.12.0 + extended description + new triggers.
+- **`plugin.json` + `marketplace.json`**: version bump + extended description + new keywords (`tls-handshake-timeout`, `docker-login-retry`, `mtu-mismatch`, `tls-inspection-proxy`).
+
+### Why it matters
+
+Any self-hosted runner sitting behind a VPN, cloud overlay, or corporate firewall with TLS inspection eventually hits this. Before this change the skill conflated the two GHCR symptoms under `unauthorized`, sending operators down the credential-rotation path while the real fix was MTU or a retry wrapper. The retry wrapper in pure bash also eliminates a third-party-action dependency for a problem whose solution fits in 20 lines and is idempotent across re-runs. Estimated savings: ~30 minutes per incident, plus future credential-rotation churn avoided.
+
 ## 2026-05-08 — Best-effort write narrow catch + GHA bind mount uid mismatch + compose `--wait` scope — bump 2.10.0 → 2.11.0
 
 Source: project `validade_bateria_estoque`, PR #10 (mergeada 2026-05-08, merge commit `13eed8d`). After v2.10.0 documented the ENOENT-bootstrap + soft-failure-yellow-warning trap, a code review on the canonical fix (Copilot, on `bootstrap-zitadel.ts:1106-1112`) pointed out a refinement worth folding back, and the work to bring an `smoke-e2e` CI job from red to green surfaced 2 more unrelated CI patterns that fit this skill's scope.

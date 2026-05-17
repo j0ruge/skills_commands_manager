@@ -29,7 +29,7 @@
     {
       "name": "codereview",
       "source": "./plugins/codereview",
-      "version": "1.10.1",
+      "version": "1.11.0",
       "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex). Stack-agnostic with TypeScript/React defaults and dotnet preset.",
       "category": "quality",
       "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "gitleaks", "credentials", "hardcoded-secrets", "deterministic-scan"],

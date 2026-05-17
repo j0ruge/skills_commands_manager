@@ -2,6 +2,29 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.11.0] - 2026-05-17
+
+### Changed (coderabbit_pr v3.3.1 → v3.4.0 — byte-exact verification for control-character findings)
+
+- **Phase 3.1 gained step 1.1 "Byte-exact verification for control-character claims"** before classifying invisible-character/NUL-byte findings as false positives. When the reviewer mentions `\0`, `0x00`, `^@`, BOM, zero-width chars, non-printable bytes, embedded escape sequences, or anything described as "invisible/control character", the `Read` tool renders those bytes as plain whitespace — `\0create\0` is visually indistinguishable from ` create ` (regular spaces). Confirm against the actual bytes via `awk 'NR==<line>' <file> | od -c | head`, `tr -cd '\000' < <file> | wc -c`, `xxd <file> | grep -i <pattern>`, or `python -c "print(repr(open('<file>').read()))"` as fallback.
+- **Skill description updated** to surface the byte-exact verification step in the triggering metadata, so users searching for "NUL", "BOM", "invisible character", or "control character" review feedback get a sharper triggering signal.
+
+### Why
+
+Session resolving PR #62 of `LouvorFlow`: Copilot flagged NUL bytes (`\^@`) embedded in a CommandItem `value` attribute (`` value={`\0create\0${search.trim()}`} ``). My initial analysis used `Read` to inspect line 297 — it rendered the NUL bytes as plain spaces, so the line looked like a harmless leading-space sentinel `` value={` create ${search.trim()}`} ``. Classified the finding as false positive, posted a public "not applicable — Copilot misinterpreted a space as NUL" comment on the thread, and resolved it.
+
+Confirming after the fact with `od -c` showed `\0create\0` — the bytes were real, exactly as Copilot reported. Had to retract the comment publicly, push a follow-up commit replacing the NUL sentinel with `__create__:`, and re-explain the situation. Embarrassing waste of cycles, public retraction noise in the PR, and worse: produced a false-positive verdict on a legitimate, deterministic reviewer finding.
+
+The generalization for `coderabbit_pr`: NUL bytes, BOM markers, zero-width characters, embedded escape sequences, and other non-printable bytes are exactly the kinds of issues that reviewers — especially deterministic parsers like Copilot's — will flag. And those are exactly the cases where `Read` is unreliable: it returns a *normalized text rendering*, not a byte-faithful one, and there is no warning when bytes were collapsed. Same principle as the v1.10.0 "verify before trust" applied to a different surface: don't outsource truth to a normalized view when the finding hinges on the underlying bytes. The cost of `od -c <file> | head` is essentially zero; the cost of a wrong "not applicable" verdict is a public retraction.
+
+### Migration notes
+
+- No breaking changes. Skill continues to resolve PR comments end-to-end.
+- New sub-step (1.1) adds at most one `od -c` invocation per item where the reviewer explicitly cites control characters or invisible bytes. For the median PR (no such findings) the change is a no-op.
+- If `od`/`xxd`/`tr` are not available (rare on developer workstations, but possible in stripped containers or some Windows shells), fall back to Python: `python -c "print(repr(open('<file>').read()))"` — `repr()` escapes control characters faithfully and works anywhere Python is installed.
+
+---
+
 ## [1.10.0] - 2026-05-05
 
 ### Changed (coderabbit_pr v3.2.0 → v3.3.0 — verify-before-trust)

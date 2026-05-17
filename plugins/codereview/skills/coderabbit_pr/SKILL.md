@@ -1,8 +1,8 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.3.1
-description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code, applies fixes, runs regression tests, resolves GitHub conversations. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
+  version: 3.4.0
+description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code (with byte-exact inspection when reviewers cite invisible/control characters), applies fixes, runs regression tests, resolves GitHub conversations. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
 ---
 
 ## User Input
@@ -191,6 +191,13 @@ Process ALL checklist items across ALL reviewer files. Group items by file to mi
 For each item (or group of items in the same file):
 
 1. **Read the current code** at the referenced file and line (with ~30 lines of context)
+1.1. **Byte-exact verification for control-character claims** — when the reviewer mentions NUL bytes (`\0`, `0x00`, `^@`), BOM, zero-width characters, non-printable bytes, embedded escape sequences, or anything described as "invisible/control character", the `Read` tool will render those bytes as plain whitespace and silently mislead the analysis. The screen output of `\0create\0` is indistinguishable from ` create ` (regular spaces) — both look like leading-space sentinels. Before classifying such a finding as false positive, confirm against the actual bytes:
+   - Inspect a specific line: `awk 'NR==<line>' <file> | od -c | head`
+   - Count NUL bytes in a whole file: `tr -cd '\000' < <file> | wc -c`
+   - Search for arbitrary byte patterns: `xxd <file> | grep -i <pattern>`
+   - Fallback when `od`/`xxd`/`tr` are unavailable: `python -c "print(repr(open('<file>').read()))"` — `repr()` produces a byte-faithful representation that escapes control characters.
+
+   The `Read` view is a normalized text rendering, not byte-faithful. Trust `od`/`xxd` over `Read` whenever the finding hinges on what specific bytes are present. Same anti-trust principle as 1.5 (verify referenced state) applied to a different surface: don't outsource truth about bytes to a normalized view.
 1.5. **Verify referenced state** — if the reviewer cites a file path, line number, runtime behavior, or references an external artifact ("as documented in X", "see previous session", a cached plan, an old issue, "this was fixed in commit Y"), confirm against the current state BEFORE accepting the diagnosis. PR diff and live code are authoritative; reviewer comments may have been written against a snapshot that is now obsolete (force-pushed, rebased, or simply old). If the cited file/line/behavior no longer matches what the reviewer described, mark the item as `[x]` — "Reviewer claim no longer applies: <what changed>" and move on. This is the same anti-silencing principle from Phase 4.0 baseline applied in another direction: do not propagate a reviewer's diagnosis without primary evidence that it still holds.
 2. **Check project specs/docs** if the comment questions a design decision. Many "issues" flagged by AI reviewers are actually by-design choices documented in specs, data models, or CLAUDE.md. Before marking as "Fixed", verify the reviewer isn't wrong.
 3. **Recalibrate severity**: AI reviewers often default to MEDIUM or don't assign severity at all (Copilot, Codex). After reading the code and understanding the real impact, **reassign the severity** based on actual risk:

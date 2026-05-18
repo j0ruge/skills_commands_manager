@@ -454,6 +454,71 @@ Update via Console (Project → Settings; App → Token Settings) or API. Roles 
 
 **Fix**: if your endpoint should accept service tokens, relax the `sub` requirement and check role/scope claims instead. If not, this is correct behavior — return 401.
 
+### Seed user JWT missing role added later to YAML
+
+**Symptom**: a pre-existing seed user can't access a new app that the YAML clearly grants them — backend returns 401 (`role_nao_reconhecida` or equivalent). A *brand-new* user provisioned via the same bootstrap works fine. Re-running the bootstrap doesn't help: log shows `ALREADY_EXISTS` on the grant and moves on.
+
+**Cause** (Quirk 41): the bootstrap creates initial grants but doesn't reconcile `roleKeys` on grants it already created. When you evolve the YAML to add a second app + role (`quote.admin` alongside the existing `battery.admin`), the user's existing grant stays at its day-0 `roleKeys` indefinitely. Easily confused with quirks 11 (access vs id token), 12/13/36 (the "401-storm with apparently-valid JWT" family — same backend symptom), or 28 (Login UI v2). The diagnostic is to decode the JWT and inspect `urn:zitadel:iam:org:project:roles` — if the new role's key is absent, this is the grant gap.
+
+**Fix immediately** — search-then-PUT (Quirk 8 pattern):
+
+```bash
+ZITADEL=https://192.168.0.1.sslip.io:8443  # or your authority
+PAT=$(cat /path/to/admin.pat)
+USER_ID=<user UUID>
+ORG_ID=<org UUID>
+
+# 1) find the grantId
+GRANT_ID=$(curl -sSk -X POST "$ZITADEL/management/v1/users/grants/_search" \
+  -H "Authorization: Bearer $PAT" -H "Content-Type: application/json" \
+  -H "x-zitadel-orgid: $ORG_ID" \
+  -d "{\"queries\":[{\"userIdQuery\":{\"userId\":\"$USER_ID\"}}]}" \
+  | jq -r '.result[0].id')
+
+# 2) PUT replaces roleKeys — send the FULL desired list
+curl -sSk -X PUT "$ZITADEL/management/v1/users/$USER_ID/grants/$GRANT_ID" \
+  -H "Authorization: Bearer $PAT" -H "Content-Type: application/json" \
+  -H "x-zitadel-orgid: $ORG_ID" \
+  -d '{"roleKeys":["battery.admin","quote.admin"]}'
+```
+
+User must re-login to get a fresh JWT — `addAccessTokenExpiring`/silent-renew also pulls new claims, so a session refresh works too.
+
+**Fix durably**: extend the bootstrap to walk `seedUser[].roles` and PUT-reconcile each grant whose current `roleKeys` is a strict subset of the YAML-declared set. The pattern mirrors `assignRole/revokeRole` (Quirk 8), just applied to seed reconciliation rather than ad-hoc CRUD. Until that lands, the manual fix above is fast (~30s per user) and survives re-runs of the unpatched bootstrap.
+
+### Browser 401 storm on cross-origin API, same backend OK via `curl`
+
+**Symptom**: SPA in browser fails 100% of authenticated requests with 401; **same backend probed via `curl -H "Authorization: Bearer <JWT>"` returns 200 fine** (no Origin → no preflight). Identical user-facing symptom to the 401-storm family (Quirks 12, 13, 36, 37) but the diagnostic asymmetry between browser and curl is the giveaway.
+
+**Cause** (Quirk 42): the backend has no CORS middleware (or has it AFTER `authJwt`). For cross-origin requests with custom headers (`Authorization` qualifies), browsers ALWAYS send a preflight `OPTIONS` first. The preflight never carries the Bearer token (that's by spec). With no early CORS short-circuit, OPTIONS reaches `authJwt` → 401 `jwt_ausente`. The browser sees the 401 + missing `Access-Control-Allow-Origin` header and abandons the actual request. The auth middleware is *technically* working correctly; the bug is that it's seeing preflights it shouldn't see.
+
+**Why MSW/supertest tests pass**: MSW intercepts `fetch` at the JS layer; supertest skips the network entirely. Neither issues a real CORS preflight. The bug is invisible to integration tests — only a real browser (manual smoke, Playwright E2E) exercises it.
+
+**Fix**: install a CORS middleware as the FIRST app-level middleware, before `authJwt` and even before `express.json()`. Inline implementation (no extra dep, function 4-20 lines per CLAUDE-style strict mode):
+
+```ts
+// presentation/middleware/cors.ts
+export function createCors(opts: { allowedOrigins: string }) {
+  const allow = new Set(opts.allowedOrigins.split(",").map(s => s.trim()).filter(Boolean));
+  return function corsMiddleware(req, res, next) {
+    const origin = req.header("origin");
+    if (origin && allow.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "authorization, content-type, idempotency-key");
+      res.setHeader("Access-Control-Max-Age", "600");
+    }
+    if (req.method === "OPTIONS") { res.status(204).end(); return; }
+    next();
+  };
+}
+```
+
+Wire in composition: `app.use(createCors({ allowedOrigins: env.CORS_ALLOWED_ORIGINS }))` immediately after `app.disable("x-powered-by")`. Env default `http://localhost:5173` for dev; prod is comma-joined list of the public SPA origins. The `cors` npm package works too — what matters is *first*.
+
+**Prevention**: add a Playwright smoke that authenticates via the real Zitadel and hits at least one `/api/*` endpoint. Even one spec catches this on the first commit that introduces it.
+
 ## SMTP / invitation errors
 
 ### Invitation emails not arriving

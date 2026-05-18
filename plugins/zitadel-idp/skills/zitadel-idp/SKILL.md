@@ -1,6 +1,6 @@
 ---
 name: zitadel-idp
-description: Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 40 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, v2.66→v4 upgrade runbook, login UI v2 separate container, API v1→v2 Connect protocol mapping, contextual orgId header→body, JWKS hairpin NAT, frontend 401-storm defense-in-depth, CI bind mount perms cascade into unique_constraints_pkey, default password policy 4-class, Login UI v2 healthcheck slow on small CI runners). Triggers — zitadel, oidc-self-hosted, login UI, silent-renew, JWKS, masterkey, zitadel v4 upgrade, v2.66 to v4, api v1 to v2, connect protocol, login-ui-v2 container, schema migration zitadel, smoke-e2e CI, admin.pat EACCES.
+description: Self-hosted Zitadel OIDC field guide — bundles working docker-compose, idempotent bootstrap (TS) and reset script, plus 42 documented quirks (FirstInstance, JWT/JWKS over self-signed HTTPS, login UI v1 branding, masterkey-via-flag, post-reset 401 storms, v2.66→v4 upgrade runbook, login UI v2 separate container, API v1→v2 Connect protocol mapping, contextual orgId header→body, JWKS hairpin NAT, frontend 401-storm defense-in-depth, CI bind mount perms cascade into unique_constraints_pkey, default password policy 4-class, Login UI v2 healthcheck slow on small CI runners, seed user grant reconciliation gap on YAML evolution, browser→backend CORS preflight 401 mimicking JWT failure). Triggers — zitadel, oidc-self-hosted, login UI, silent-renew, JWKS, masterkey, zitadel v4 upgrade, v2.66 to v4, api v1 to v2, connect protocol, login-ui-v2 container, schema migration zitadel, smoke-e2e CI, admin.pat EACCES, user grant not applied, CORS preflight 401, Playwright self-signed Zitadel.
 ---
 
 # Zitadel IdP — Field Guide
@@ -43,7 +43,7 @@ The SKILL.md body intentionally stays short. Drill into the relevant reference b
 
 The references are designed to be readable in isolation — open the one you need without slogging through the rest.
 
-## The forty quirks (the headline list)
+## The forty-two quirks (the headline list)
 
 These are the issues that consistently bite first-time Zitadel integrators. Each has a dedicated section in the references; this list is the trigger map so you know which file to open.
 
@@ -105,7 +105,7 @@ These are the issues that consistently bite first-time Zitadel integrators. Each
 
 29. **OIDC `client_id` is the numeric `clientId` from `oidcConfiguration`, NOT the deterministic `applicationId` UUID you supplied** — even when you pass your own `applicationId` (UUID v7) in `CreateApplicationRequest` for idempotency, Zitadel auto-generates a *separate* numeric `clientId` (e.g. `371898282416275459`) for OAuth/OIDC. The `applicationId` is the resource handle for v2 APIs (`UpdateApplication`, `GetApplication`, `DeleteApplication`); the `clientId` is what `/oauth/v2/authorize?client_id=…` requires. Frontend `VITE_OIDC_CLIENT_ID` MUST be the numeric value. **Symptom**: OIDC authorize returns `400 invalid_request "Errors.App.NotFound"` with the UUID; SPA login fails right after a clean cutover even though the bootstrap log shows `[app] created appId=<uuid>`. **Fix in CD**: bootstrap output exposes both (`appId=… clientId=…`); a CD step extracts the numeric `clientId` from `oidcConfiguration` of the bootstrap response and overwrites `VITE_OIDC_CLIENT_ID` (image-rebuild required — VITE_* are baked at build time). Backend `AUTH_AUDIENCE` for JWT validation can be the deterministic `projectId` (it appears in the JWT `aud` claim alongside the clientId). → `troubleshooting.md §"OIDC client_id mismatch — Errors.App.NotFound"`.
 
-30. **`ZITADEL_BOOTSTRAP_ENV`-style env that picks dev-vs-prod deterministic IDs from YAML must be set explicitly in CD — silent default to `dev` is a footgun** — when your bootstrap script has `applications[].ids.dev` and `applications[].ids.prod` blocks and selects between them via `process.env.ZITADEL_BOOTSTRAP_ENV ?? 'dev'`, a CD pipeline that doesn't set the env creates prod entities with **dev IDs**. The frontend secret has prod IDs, so the SPA's `client_id` doesn't match anything in the IdP — same `Errors.App.NotFound` symptom as Quirk 29 but with a different root cause and trickier fix (already-created entities have wrong IDs and must be wiped + recreated). **Mitigations**: (1) require the env at script start, throw on undefined rather than defaulting; (2) set `ZITADEL_BOOTSTRAP_ENV: prod` (or equivalent) explicitly on the bootstrap container in `docker-compose.prod.yml`; (3) document the env in the runbook. → `troubleshooting.md §"Wrong-environment IDs in prod IdP"`.
+30. **`ZITADEL_BOOTSTRAP_ENV`-style env that picks dev-vs-prod deterministic IDs from YAML must be set explicitly in CD — silent default to `dev` is a footgun** — when your bootstrap script has `applications[].ids.dev` and `applications[].ids.prod` blocks and selects between them via `process.env.ZITADEL_BOOTSTRAP_ENV ?? 'dev'`, a CD pipeline that doesn't set the env creates prod entities with **dev IDs**. The frontend secret has prod IDs, so the SPA's `client_id` doesn't match anything in the IdP — same `Errors.App.NotFound` symptom as Quirk 29 but with a different root cause and trickier fix (already-created entities have wrong IDs and must be wiped + recreated). **Mitigations**: (1) require the env at script start, throw on undefined rather than defaulting; (2) set `ZITADEL_BOOTSTRAP_ENV: prod` (or equivalent) explicitly on the bootstrap container in `docker-compose.prod.yml`; (3) document the env in the runbook. **Related**: `bootstrap.json` (or equivalent output file) is **only refreshed when the bootstrap actually runs** — after editing the YAML to add a new `applications[]` entry, a downstream consumer who reads `bootstrap.json` to extract `clientId` will see the *previous* boot's snapshot until bootstrap is re-executed (the new app simply won't appear). Always re-run bootstrap before extracting IDs from its output; consider `--dry-run` semantics if extraction must be cheap. → `troubleshooting.md §"Wrong-environment IDs in prod IdP"`.
 
 31. **`ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false` at FirstInstance time breaks the chicken-and-egg of Quirks 25 + 28 in CD cutovers** — when the upstream Login UI v2 auto-provisioning bug (Quirk 28) blocks `/ui/v2/login`, *and* the operator can't login to the console to create the IAM_OWNER PAT manually because the OIDC redirect to `/ui/v2/login` 404s — the cleanest break is to set the feature flag in **DefaultInstance** config (env on the `zitadel` server) so the instance is born with `loginV2.required=false` from boot zero. The OIDC authorize endpoint then redirects to `/ui/login` (v1, embedded in the binary) immediately, no PAT required. Bootstrap's `PUT /v2/features/instance` call against the same flag becomes a no-op idempotency check. **Why this is better than waiting for bootstrap to flip the flag**: bootstrap needs a PAT, PAT requires console login, console login redirects to broken `/ui/v2/login` → without DefaultInstance pre-config, you're stuck. With it, the loop opens at the right place. → `docker-compose-bootstrap.md §"DefaultInstance feature flags pre-config"`.
 
@@ -139,7 +139,7 @@ These are the issues that consistently bite first-time Zitadel integrators. Each
     export ZITADEL_SEED_USER_PASSWORD="Aa1!${RAND_TAIL}"
     ```
 
-    Same pattern works against any password-policy-shaped service. Avoid `openssl rand -base64` (padding `=` and slash variability) — alphanum + structured prefix is more portable. If you've changed the default policy, mirror in the script too. → `troubleshooting.md §"Bootstrap fails with COMMAND-VoaRj"` + `docker-compose-bootstrap.md §"Smoke-e2e plumbing checklist for GHA"`.
+    Same pattern works against any password-policy-shaped service. Avoid `openssl rand -base64` (padding `=` and slash variability) — alphanum + structured prefix is more portable. If you've changed the default policy, mirror in the script too. **Operational note**: the bootstrap script reads `ZITADEL_SEED_USER_PASSWORD` from env (fail-fast with `ZITADEL_SEED_USER_PASSWORD ausente ou curta (<12)` when missing or short). Dev workflows that wrap bootstrap with `dev.sh` typically generate it once and persist into `.env` at the repo root — so `dev.sh` users never see this. CI re-runs and human re-executions of `docker compose --profile bootstrap run` directly must export the env explicitly (look in `.env` if a `dev.sh` already provisioned it, OR generate fresh with the `Aa1!` pattern above). → `troubleshooting.md §"Bootstrap fails with COMMAND-VoaRj"` + `docker-compose-bootstrap.md §"Smoke-e2e plumbing checklist for GHA"`.
 
 40. **`zitadel-login` (Login UI v2 Next.js container) takes 90+ seconds to first healthcheck render on small CI runners — `up --wait` for the WHOLE stack times out before bootstrap or REST tests get to start** — its healthcheck (`wget --spider http://localhost:3000/`) only passes after Next.js bootstrap completes; on `ubuntu-latest` shared (2 vCPU) that's ~90s+. With `--wait-timeout 120` and `start_period: 30s` the wait abandons before the container goes Healthy — even though `zitadel`, `zitadel-init`, and `zitadel-db` were Healthy long before. Bootstrap and integration tests usually don't need Login UI — `bootstrap-zitadel.ts` reads `login-client.pat` from the named volume populated by the `zitadel` service, and REST tests hit `zitadel:8080` directly. **Fix** — scope `--wait` to only the services tests actually exercise:
 
@@ -151,6 +151,45 @@ These are the issues that consistently bite first-time Zitadel integrators. Each
     ```
 
     Compose only waits for the listed services to be Healthy; `zitadel-login` and `mailpit` are simply not started. Dev's default `up` keeps everything available for browser smoke. If your CI specifically needs Login UI healthy (e.g., a Playwright login spec), bump `--wait-timeout` to ~240s — same `wait`, more headroom. Always include `zitadel-login` in your on-failure log dump (`docker compose logs zitadel-login || true`) for debugging, even when you don't `--wait` for it. → `troubleshooting.md §"zitadel-login container never goes Healthy in CI"` + `docker-compose-bootstrap.md §"Smoke-e2e plumbing checklist for GHA"`.
+
+41. **Idempotent bootstrap **creates initial user grants but does NOT reconcile existing ones** when the YAML evolves** — most declarative bootstraps shaped like `seedUser: { roles: [...] }` do `POST /management/v1/users/{u}/grants` on first run, then on re-runs detect the existing grant and treat as no-op (`ALREADY_EXISTS`). The problem appears when **you add a new app + role to the YAML** (e.g., a second SPA `quote.admin` alongside an existing `battery.admin`): the bootstrap creates the new app fine, but doesn't notice the existing user grant's `roleKeys` array is now missing the new role. JWTs for that user keep going out with only the *old* role set; the new SPA's `parseClaims`/`requireRole` returns 401 (`role_nao_reconhecida`). **Symptom**: brand-new user is created cleanly via API, but a pre-existing seed user — exactly the operator most likely to be testing first — can't access the new app despite the YAML clearly granting it. Easily confused with quirks 11 (access vs id token claims), 12/13/36 (the "401-storm with apparently-valid JWT" family) and 28 (Login UI v2 blocking). **Diagnostic**: decode the JWT and inspect `urn:zitadel:iam:org:project:roles` — if the new role's key is absent, bootstrap didn't reconcile. **Fix immediately**: search-then-PUT the grant:
+
+    ```bash
+    # 1) find grantId (Quirk 8 — global search, filter by userIdQuery)
+    curl -k -X POST "$ZITADEL/management/v1/users/grants/_search" \
+      -H "Authorization: Bearer $PAT" -H "x-zitadel-orgid: $ORG_ID" \
+      -d '{"queries":[{"userIdQuery":{"userId":"'"$USER_ID"'"}}]}'
+
+    # 2) update with ALL desired roles (PUT replaces, not merges)
+    curl -k -X PUT "$ZITADEL/management/v1/users/$USER_ID/grants/$GRANT_ID" \
+      -H "Authorization: Bearer $PAT" -H "x-zitadel-orgid: $ORG_ID" \
+      -d '{"roleKeys":["battery.admin","quote.admin"]}'
+    ```
+
+    **Fix durably**: extend the bootstrap to walk `seedUser.roles` AND `seedUser[].roles` (multi-user variant), do search-then-PUT per grant when the desired `roleKeys` is a strict superset of current. Same pattern as `assignRole/revokeRole` (Quirk 8) but applied to seed reconciliation, not just CRUD. → `troubleshooting.md §"Seed user JWT missing role added later to YAML"`.
+
+42. **Browser SPA → backend Express needs CORS — preflight `OPTIONS` hits `authJwt` and 401s, mimicking quirks 12/13/36** — a typical OIDC SPA stack pairs `localhost:5173` (Vite) with `localhost:3000` (Express). That's cross-origin (different ports), so every `Authorization`-bearing request triggers a preflight `OPTIONS` that the browser will NOT skip. If the backend has no CORS middleware (or has it AFTER the auth chain), the preflight hits `authJwt` → no Bearer header (preflights never carry one) → 401 `jwt_ausente`. The browser sees the 401 + missing `Access-Control-Allow-Origin`, aborts the actual request, and the SPA observes "every API call fails 401" — **identical symptom to the 401-storm family** (Quirks 12/13/36/37). Easy to misdiagnose as JWT signature/audience/issuer mismatch, especially when integration tests (which use MSW or supertest and never hit a real network preflight) all pass green. **Symptom**: SPA in browser fails 100% of authenticated requests with 401; **same backend probed via `curl -H "Authorization: Bearer <JWT>" http://localhost:3000/api/...` returns 200 fine** (no Origin header → no preflight → straight to authJwt with the Bearer). That asymmetry is the diagnostic. **Fix**: add a minimal CORS middleware as the FIRST app-level middleware (before auth, body parsing, pino-http), short-circuiting `OPTIONS` with 204 + headers:
+
+    ```ts
+    // packages/backend/src/modules/<m>/presentation/middleware/cors.ts
+    export function createCors(opts: { allowedOrigins: string }) {
+      const allow = new Set(opts.allowedOrigins.split(",").map(s => s.trim()).filter(Boolean));
+      return function (req, res, next) {
+        const origin = req.header("origin");
+        if (origin && allow.has(origin)) {
+          res.setHeader("Access-Control-Allow-Origin", origin);
+          res.setHeader("Vary", "Origin");
+          res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "authorization, content-type, idempotency-key");
+          res.setHeader("Access-Control-Max-Age", "600");
+        }
+        if (req.method === "OPTIONS") { res.status(204).end(); return; }
+        next();
+      };
+    }
+    ```
+
+    Wire in composition **before** `authJwt`: `app.use(createCors({ allowedOrigins: env.CORS_ALLOWED_ORIGINS }))`. Env default `http://localhost:5173` for dev; prod adds the public SPA domain (comma-separated). The `cors` npm package is also fine — what matters is that it runs first. **Why MSW/supertest tests don't catch this**: they intercept `fetch` at the JS level (MSW) or skip the network entirely (supertest), so no actual CORS preflight is ever issued. The bug is invisible until a real browser is in the loop — exactly what real E2E (Playwright, manual smoke) finds. Adding a Playwright smoke that hits at least one `/api/*` endpoint authenticated catches this on first commit. → `troubleshooting.md §"Browser 401 storm on cross-origin API, same backend OK via curl"`.
 
 ## Migration v2.66 → v4 + API v2
 

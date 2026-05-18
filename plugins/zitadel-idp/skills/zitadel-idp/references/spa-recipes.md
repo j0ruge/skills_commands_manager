@@ -364,3 +364,92 @@ Each layer addresses a different race:
 - **L3 alone** (only the listener) is the catch-all when the other two failed; without L1 + L2, you reach L3 every storm and the user sees `/login` constantly.
 
 The three together make the SPA recover gracefully from a 401 storm whether the cause is transient (network blip), persistent (IdP misconfiguration — see quirk 36 about backend missing `extra_hosts` for the IdP), or downstream (session revoked by another tab).
+
+## Recipe — E2E browser tests (Playwright) against self-signed Zitadel
+
+### When to use
+
+You're writing Playwright specs that drive a real login flow against your local Zitadel — typically over `mkcert`/dev CA — and want them to be the "did login wire up correctly" backstop instead of relying solely on manual smokes. This recipe is the browser-side counterpart of Quirk 12 (`NODE_EXTRA_CA_CERTS` for the backend's JWKS fetch).
+
+### Why the obvious thing fails
+
+The SPA loads from `http://localhost:5173` (Vite default, a `crypto.subtle`-eligible secure context per Quirk 16). The OIDC `authority` is `https://192.168.0.1.sslip.io:8443` (Caddy + mkcert). When `signinRedirect()` runs, `oidc-client-ts` issues a `fetch` for `<authority>/.well-known/openid-configuration` — and **Chromium under Playwright validates the cert independently of your host's trust store**. Even if `mkcert -install` made the cert work in your real browser, the Playwright-launched browser doesn't see it.
+
+What you see: the SPA renders the login page, you fill the email, click "Entrar", and **nothing visible happens**. No console error (the typical `react-oidc-context` consumer `void`s the promise), no network navigation, no Zitadel redirect. The test times out waiting for `waitForURL` to match the IdP's `/ui/login` page. DevTools console (`page.on('console', ...)` in your spec) shows `net::ERR_CERT_AUTHORITY_INVALID` against the discovery URL — the only hint, and only if you remembered to capture it.
+
+### The fix
+
+Set `ignoreHTTPSErrors: true` on the Playwright context, ideally in `playwright.config.ts` so every spec inherits it:
+
+```ts
+// playwright.config.ts
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./e2e",
+  use: {
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
+    // Zitadel local roda atrás de Caddy + mkcert (HTTPS self-signed).
+    // Sem isso, fetch da discovery falha com ERR_CERT_AUTHORITY_INVALID
+    // dentro da SPA e signinRedirect() engole o erro silenciosamente
+    // (Quirk 16). Counterpart browser-side do Quirk 12 (NODE_EXTRA_CA_CERTS
+    // no backend).
+    ignoreHTTPSErrors: true,
+  },
+  // ...
+});
+```
+
+For one-off contexts (e.g., a setup spec that captures `storageState`), pass it to `browser.newContext({ ignoreHTTPSErrors: true })`.
+
+### Logging in real users
+
+Zitadel Login UI v1 has two steps: username (`input[name="loginName"]`) then password (`input[name="password"]`). With `login_hint` in the `/oauth/v2/authorize` query (`oidc-client-ts` sends it when you `signinRedirect({ login_hint })`), Zitadel **prefills the username and renders the password step directly**, leaving `loginName` as a `class="hidden"` input. Specs that always try to fill `loginName` first will time out waiting for visibility:
+
+```ts
+async function loginAsAdmin(page, email, password) {
+  await page.goto("/login");
+  await page.getByPlaceholder("seu.nome@empresa.com").fill(email);
+  await page.getByRole("button", { name: /Entrar/ }).click();
+
+  // Redirect to Zitadel
+  await page.waitForURL(/sslip\.io.*\/ui\/login/, { timeout: 15_000 });
+
+  // Step 1 (conditional): when login_hint isn't sent, fill loginName visibly.
+  // When login_hint IS sent, this input is hidden — skip cleanly.
+  const loginName = page.locator('input[name="loginName"]').first();
+  if (await loginName.isVisible().catch(() => false)) {
+    await loginName.fill(email);
+    await page.keyboard.press("Enter");
+  }
+
+  // Step 2: password.
+  const pwd = page.locator('input[name="password"]').first();
+  await pwd.waitFor({ state: "visible", timeout: 15_000 });
+  await pwd.fill(password);
+  await page.keyboard.press("Enter");
+
+  // Wait for the SPA callback to settle on the post-login route.
+  await page.waitForURL(/localhost:5173\/(?:$|cotacoes|home)/, { timeout: 20_000 });
+}
+```
+
+Read the password from `process.env.E2E_ADMIN_PASSWORD` (or equivalent — never commit). For the seed user that `dev.sh` provisions, the password is persisted in the IdP project's `.env` (`ZITADEL_SEED_USER_PASSWORD`); reuse it via env when running specs.
+
+### `storageState` reuse: why it's tricky with `InMemoryWebStorage`
+
+Playwright's `context.storageState({ path })` captures cookies + localStorage. Reusing it across tests with `test.use({ storageState })` typically skips login — but if your SPA uses `InMemoryWebStorage` for the OIDC `userStore` (the security-recommended default — see Recipe 1 above), the *cookie* survives but the *User* object doesn't. On context start the SPA enters boot-time `signinSilent` via iframe, and within Playwright's headless Chromium this iframe call frequently doesn't settle inside the 5s watchdog. `<SessionResolving>` then renders indefinitely and the test fails on a misleading "heading not found" assertion.
+
+Two pragmatic options:
+
+1. **Re-login per test.** Costs ~3s per test but is reliable. Acceptable for a small spec suite (5-10 tests).
+2. **Skip the SPA's auth gate in test mode.** Build a dev-only short-circuit (env-gated, e.g. `if (import.meta.env.MODE === 'test' && window.__E2E_TOKEN__)`) that registers the token without going through `signinRedirect`. More work but scales.
+
+**Don't** rely on Playwright's `storageState` alone when `InMemoryWebStorage` is in play — the result is non-deterministic.
+
+### Validation
+
+- Login spec passes against fresh Zitadel and against `--reset-zitadel`'d Zitadel without modification.
+- Console messages capture (`page.on('console', m => console.log(m.text()))`) shows no `ERR_CERT_AUTHORITY_INVALID` for `sslip.io` URLs.
+- Headless and headed runs produce the same result (some cert validation paths differ between them — `ignoreHTTPSErrors` covers both).
+- A second spec that depends on the first being logged-in still works after the first runs (no cross-test session bleed-over).

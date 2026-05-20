@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.12.0] - 2026-05-20
+
+### Changed (codereview SKILL.md v1.8.1 → v1.9.0 — Phase A output discipline + secrets-gate fallback)
+
+- **Phase A prompt reescrito com return template literal** (mesma forma do `## Output Format` que já existia na Phase B sonnet). O prompt agora abre com um aviso explícito de "the orchestrator only sees the agent's final assistant message — tool-call outputs are NOT propagated to the caller" e termina com um template literal que o agente preenche (`BASE_BRANCH:`, `DIFF_STAT:`, `COMMIT_LOG:`, `FILES:`, `COUNTS:`, `SECRETS_PRESCAN:`, `END_OF_PHASE_A_REPORT`). Substitui o "Return as a structured list + 8 bullets" abstrato anterior, que dependia de o modelo lembrar de paste-back os outputs.
+- **Orchestrator-side fallback obrigatório** documentado logo abaixo do prompt da Phase A. Se a resposta do agente for < ~500 chars, faltar a string `SECRETS_PRESCAN:`, faltar `END_OF_PHASE_A_REPORT`, ou for uma frase-status do tipo "done"/"complete"/"results above"/"structured results returned", o orquestrador é obrigado a re-executar os 8 passos no main session via Bash em paralelo e rodar o `scan_secrets.sh` ele mesmo. Ausência de payload de secrets é tratada como "scan não rodou" (warn + re-run), nunca como "scan limpou".
+
+### Why
+
+Sessão de codereview no branch `SQ-22_aplicar_design_navigational_horizon` do repo `sales_quote`: o agente Phase A (haiku, 9 tool uses, 81s) rodou os 8 passos via tool calls com sucesso mas devolveu como final message apenas `"Phase A complete. Structured results returned above."` — sem nenhum dos dados estruturados que o prompt pediu. O orquestrador (Opus) ficou cego: nem o diff stat, nem a classificação, nem o `SECRETS_PRESCAN` JSON chegaram. Tive que rodar `git status`, `git diff --name-only`, `git diff --stat`, `git log` e pipe-ar para `scan_secrets.sh` manualmente em paralelo no main session — anulando completamente o benefício do model routing haiku → opus que a v1.6.0 introduziu.
+
+Comparação direta entre os prompts mostra a causa raiz: a Phase B sonnet (que funcionou — 8 agentes em paralelo, todos devolveram findings estruturadas) termina com `## Output Format` + template literal numbered list + edge case explícito (`"No findings for {FILE_PATH}"`). A Phase A haiku terminava com `"Return as a structured list"` abstrato + bullets de campos. Em modelos menores (haiku) com prompts de 40+ linhas e múltiplos passos, "lista estruturada" não é instrução forte o suficiente — o modelo trata os tool-call outputs como "já entregues" e o final message vira um status executivo. A interface do Agent tool em Claude Code só propaga a última mensagem do agente, não o transcript; um final message status-only equivale a uma resposta vazia.
+
+Pior do que perder o context routing: o gate F de secrets depende do JSON do `scan_secrets.sh` chegar ao Phase C. Se o agente Phase A "esquecer" de paste-back o JSON, o orquestrador não tem como aplicar o gate — a skill pode silenciosamente reportar "Secrets PASS" mesmo com findings reais existindo no diff. É o mesmo modo de falha do v1.9.0 do `coderabbit_pr` (não esconder failures atrás de uma view normalizada) aplicado a outra surface: não confiar que dados existem só porque uma etapa anterior "deveria ter produzido".
+
+O fix tem duas pernas, deliberadamente redundantes:
+
+1. **Prompt mais robusto** — template literal ancorando o formato, warning sobre o que o caller realmente vê, end-marker (`END_OF_PHASE_A_REPORT`) para o orquestrador detectar truncamento. Reduz a probabilidade do agente errar, mas não elimina.
+2. **Fallback obrigatório no orquestrador** — validação programática da resposta + re-execução completa no main session quando o agente under-reportar. Garante que mesmo se o prompt falhar, a skill nunca produz um relatório com secrets-gate degradado silenciosamente.
+
+### Migration notes
+
+- Sem breaking changes. Comando público `/codereview` inalterado, args inalterados, output final do relatório inalterado.
+- A nova Phase A consome ~30-50 tokens a mais no prompt (template literal). Para o median PR é overhead desprezível; para PRs pequenos (≤3 CODE files) o threshold de v1.6.0 já roteia tudo para o main session sem agente.
+- Quando o fallback dispara (agente under-reportou), o orquestrador roda os passos no main session — custo equivalente a antes do model routing existir. Trade-off intencional: prefiro pagar o custo de re-execução do que produzir um relatório com gate de secrets cego.
+
+---
+
 ## [1.11.0] - 2026-05-17
 
 ### Changed (coderabbit_pr v3.3.1 → v3.4.0 — byte-exact verification for control-character findings)

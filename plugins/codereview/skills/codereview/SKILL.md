@@ -1,7 +1,7 @@
 ---
 name: codereview
 metadata:
-  version: 1.8.1
+  version: 1.9.0
 description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Stack-agnostic with TypeScript/React defaults and dotnet preset. Triggers — code review, pre-PR, secrets scan, ggshield, accessibility audit.
 ---
 
@@ -63,19 +63,36 @@ Regardless of failures, always produce a final report listing all files analyzed
 
 ### Phase A: Git Context & File Classification + Secrets Pre-Scan (haiku agent)
 
-**Spawn a haiku agent** to gather all git context, classify files, AND run the deterministic secrets pre-scan. The agent runs these commands and returns structured results.
+**Spawn a haiku agent** to gather all git context, classify files, AND run the deterministic secrets pre-scan.
 
-```
+> **Output discipline — read this carefully before writing the prompt.**
+> The orchestrator only sees the agent's **final assistant message**. Tool-call
+> outputs (bash, git, scripts) are visible to the agent **but not propagated to
+> the caller**. If the agent ends with "done", "results above", or any other
+> meta-statement instead of the raw data, the orchestrator gets nothing — and
+> the secrets gate silently degrades because `secrets_prescan` never arrives.
+>
+> This has happened in practice with shorter / busier agent runs: the agent
+> performs all 8 steps via tool calls, but the final message is a status
+> summary instead of the data. To prevent that, the prompt below uses a
+> **literal return template** the agent fills in, and pairs it with an
+> orchestrator-side fallback (below the prompt).
+
+```text
 Agent(model: "haiku", prompt: "
-Run these git commands and return the results in a structured format:
+Run these git commands and return the results VERBATIM in the template at
+the bottom. Tool outputs you produce are NOT visible to the caller — only
+your final assistant message is. Therefore your final message MUST contain
+the raw command outputs filled into the template. Do NOT summarize. Do NOT
+say 'done' or 'results above'. Paste the actual bytes.
 
-1. Verify git repo: git rev-parse --is-inside-work-tree
+1. Verify git repo:  git rev-parse --is-inside-work-tree
 2. Detect base branch (try: origin HEAD symbolic-ref, then main, then master)
 3. Get current branch: git rev-parse --abbrev-ref HEAD
-4. Find merge base: git merge-base {BASE_BRANCH} HEAD
+4. Find merge base:  git merge-base {BASE_BRANCH} HEAD
 5. List changed files: git diff {MERGE_BASE}...HEAD --name-only
-6. Diff stats: git diff {MERGE_BASE}...HEAD --stat
-7. Commit log: git log {MERGE_BASE}..HEAD --oneline --no-decorate
+6. Diff stats:       git diff {MERGE_BASE}...HEAD --stat
+7. Commit log:       git log {MERGE_BASE}..HEAD --oneline --no-decorate
 
 Then classify each changed file into categories:
 - EXCLUDED: lock files, node_modules, dist, build, .next, min files, binaries, .claude/
@@ -97,21 +114,65 @@ Report each as: WITH_TESTS / STALE_TESTS / NO_TESTS
    Where {SKILL_DIR} is the absolute path to this skill (the directory containing SKILL.md).
    The script applies the canonical regex catalog from pass 6.10, plus ggshield/gitleaks
    if available on PATH. Output is JSON: {findings:[...], scanners:[...], errors:[...]}.
-   Capture the raw JSON verbatim and include it as `secrets_prescan` in your return.
+   Capture the raw JSON verbatim under SECRETS_PRESCAN below.
    Do NOT filter, paraphrase, or 'improve' the JSON — Phase C consumes it as the
    AUTHORITATIVE source for the Secrets Detection table and the F-grade gate.
 
-Return as a structured list:
-- BASE_BRANCH, BRANCH_NAME, MERGE_BASE
-- DIFF_STAT (insertions/deletions)
-- COMMIT_LOG
-- File list with: path, category, test_status (for CODE files)
-- Count of files per category
-- secrets_prescan: {findings:[...], scanners:[...], errors:[...]}  ← raw JSON from step 8
+## RETURN TEMPLATE — paste your final message in this exact shape
+
+BASE_BRANCH: <name>
+BRANCH_NAME: <name>
+MERGE_BASE:  <sha>
+
+DIFF_STAT:
+<paste full `git diff --stat` output here>
+
+COMMIT_LOG:
+<paste full `git log ... --oneline` output here>
+
+FILES:
+- path: <relative path>
+  category: CODE | UI_LIB | TESTS | CONFIG | DOCS | STYLES | EXCLUDED
+  test_status: WITH_TESTS | STALE_TESTS | NO_TESTS    (only for CODE)
+- ...
+
+COUNTS:
+  CODE: N
+  UI_LIB: N
+  TESTS: N
+  CONFIG: N
+  DOCS: N
+  STYLES: N
+  EXCLUDED: N
+
+SECRETS_PRESCAN:
+<paste the raw JSON output of scan_secrets.sh here, verbatim, including the
+braces; if the script crashed, paste {\"findings\":[],\"scanners\":[],\"errors\":[\"<message>\"]}>
+
+END_OF_PHASE_A_REPORT
 ")
 ```
 
 Pass any `$ARGUMENTS` overrides (baseDir, fileExtensions, frameworkPatterns, etc.) to the agent.
+
+**Orchestrator-side fallback (MANDATORY):** Before consuming the agent's
+response, validate that it actually contains the data. If **any** of the
+following is true, the agent under-reported and the orchestrator MUST
+re-execute the data-gathering steps itself in the main session:
+
+- The response is shorter than ~500 characters.
+- The response does not contain the literal string `SECRETS_PRESCAN:`.
+- The response does not contain `END_OF_PHASE_A_REPORT`.
+- The response is a status sentence ("done", "complete", "results above",
+  "structured results returned", etc.) without the template fields.
+
+In any of those cases, run the eight steps in the main session as Bash
+calls (in parallel where independent), capture the outputs directly, and
+pipe the diff through `scan_secrets.sh` yourself. **Never** skip the
+secrets pre-scan because the agent forgot to include it — the F-grade
+gate depends on a real JSON payload existing, and an absent payload must
+be treated as "scan did not run" (warn the user and re-run), not as
+"scan returned clean".
 
 **Why a deterministic script instead of LLM-simulated regex**: pass 6.10 listed regex patterns and Phase B sonnet agents were asked to "apply" them, but LLMs are not regex engines — substring-match shapes like `initialPassword: 'foo'` (where `password` appears as a suffix of `initialPassword`) are easy to miss. The script in `scripts/scan_secrets.py` runs real Python `re` against the unified diff, applies the exception list (env lookups, placeholders, `.env.example` files) deterministically, and integrates `ggshield`/`gitleaks` if installed. Phase C still merges in the per-file sonnet findings from pass 6.10 as supplemental, but the script's output is the authoritative gate.
 

@@ -29,10 +29,10 @@
     {
       "name": "codereview",
       "source": "./plugins/codereview",
-      "version": "1.12.0",
-      "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex). Stack-agnostic with TypeScript/React defaults and dotnet preset.",
+      "version": "1.13.0",
+      "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, and **contract drift in tests** (exported enum/tuple/schema grew without its literal `expect(X).toEqual([...])` assertion getting updated — silent rot that surfaces later as 'pre-existing failure from another feature'). Multi-reviewer PR comment resolver (CodeRabbit, Copilot, Gemini, Codex). Stack-agnostic with TypeScript/React defaults and dotnet preset. v1.13.0 also forces the final report's Overall Grade table + Recommended Actions block to always render — even on zero-findings, focus-area, or token-tight runs.",
       "category": "quality",
-      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "gitleaks", "credentials", "hardcoded-secrets", "deterministic-scan"],
+      "keywords": ["code-review", "pre-pr", "quality", "testing", "security", "review", "coderabbit", "copilot", "gemini", "codex", "pr-comments", "dotnet", "csharp", "wpf", "toctou", "race-condition", "accessibility", "a11y", "multi-reviewer", "model-routing", "secrets-detection", "gitguardian", "ggshield", "gitleaks", "credentials", "hardcoded-secrets", "deterministic-scan", "contract-drift", "stale-test", "exported-const-drift", "test-vs-source-of-truth"],
       "platforms": ["claude-code", "cursor"]
     },
     {

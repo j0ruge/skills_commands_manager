@@ -2,6 +2,54 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.13.0] - 2026-05-22
+
+### Changed (codereview SKILL.md v1.9.0 → v1.10.0 — new detection pass 6.5.3 + mandatory Overall Grade rendering)
+
+**Part 1 — new detection pass 6.5.3 "Contract Drift in Tests":**
+
+- **Novo sub-pass 6.5.3 em `references/detection-passes.md`** logo após 6.5.2 (Project Documentation Sync). Detecta drift entre constantes exportadas (`export const X = [...] as const`, schemas Zod/Yup/literal-union) modificadas no diff e os testes que asserem essa constante com literal-by-literal (`expect(X).toEqual([...])`, `toStrictEqual`, `toMatchObject`, `assertEquals`, `deepEqual`). Severidade: **HIGH** quando o símbolo é parte de contrato público (Zod em `shared-api-types`, enum cross-package, constante espelhada em OpenAPI); **MEDIUM** para constantes internas usadas como fixture-validation; **LOW** quando o teste asserta um superset do export (passa mas precisa cleanup). Pass é skipado quando o teste também está no diff com update casado.
+- **Nova linha "Contract Tests" na Documentation Sync table** do `references/report-template.md`, com status `OK / DRIFTED` e exemplo concreto (`FORMA_PAGAMENTO`: test asserts 4 items, export has 7). Status `DRIFTED` exporta a finding para a Findings Table principal.
+- **Skill description ganhou triggers** "contract drift", "stale test contract", "exported const drift", "test-vs-source-of-truth drift" para casar pedidos de review que mencionem esse cenário.
+
+**Part 2 — mandatory final-report sections (Overall Grade + Recommended Actions):**
+
+- **Phase C step 9 no `SKILL.md` recebeu bloco novo "Mandatory final sections"** explicitando que `### Overall Grade` e `### Recommended Actions` NUNCA podem ser omitidos, truncados ou substituídos por prosa. Lista os quatro modos de falha conhecidos (token pressure, zero-findings happy path, focus-area run, long-running review com muitas findings) e exige um self-check antes do return: a resposta tem que conter ambos os headers exatamente uma vez cada.
+- **`references/report-template.md` ganhou call-out "ALWAYS rendered"** em cima da tabela Overall Grade e da seção Recommended Actions, com instruções específicas para cada modo de falha: rationale terse (`"clean"`, `"3 HIGH"`, `"n/a"`) sob pressão de contexto, grade `—` + rationale "Not analyzed" para focus-area, `_None._` sob cada bucket vazio de Recommended Actions. Render explícito de buckets vazios é importante porque uma "Must Fix" ausente lê como "relatório incompleto", não como "sem critical findings".
+
+### Why (Part 1 — 6.5.3)
+
+Sessão `/speckit-implement` da feature 012 (`SQ-33_codigo_unico_cotacao_sqn_jdb`) no repo `sales_quote`: ao rodar a suite completa do monorepo, vi `packages/shared/api-types/src/__tests__/contracts.test.ts > FORMA_PAGAMENTO contém os 4 valores canônicos` falhando. Reproduzi em baseline via `git stash + rerun` → também falha → declarei "drift pré-existente de outra feature, não introduzido por esta task" no resumo final do speckit-implement.
+
+O usuário pediu `ultrathink` + `superpowers:systematic-debugging` sobre essa decisão. Em ~5 min e 3 greps:
+- `grep "export const FORMA_PAGAMENTO" enums.ts` → tupla tem 7 valores + docstring "Conjunto completo restaurado em SQ-22 (rollback do R-022 da spec 011)".
+- `grep -n "FORMA_PAGAMENTO" contracts.test.ts:70` → `expect(FORMA_PAGAMENTO).toEqual([...4 items])`.
+- `git log --all --oneline -S 'BOLETO_90_DIAS' -- enums.ts` → commit `58f9d4a feat(SQ-22)` adicionou os 3 boletos legados ao tipo e à tupla. Mesma branch tocou `contracts.test.ts` em commit posterior (`5f3179a`) só para renomear VALIDADA→APROVADA. O `toEqual` ficou stale.
+
+Conclusão: a PR do SQ-22 era exatamente o lugar onde um codereview pré-PR deveria ter pegado isso. O diff modificou `FORMA_PAGAMENTO` (4 → 7 valores) com docstring explicando o motivo, e o `contracts.test.ts` em mesma branch continuou afirmando 4. Cross-check trivial: grep do símbolo no codebase → encontra `expect(FORMA_PAGAMENTO).toEqual([` → comparar literal asserted vs export atual → mismatch → flag HIGH. Nenhum dos passes existentes 6.1–6.10 captura isso: 6.5.2 (Documentation Sync) cobre OpenAPI / README / CLAUDE.md / MEMORY.md, mas não testes-como-contrato. 6.4 (Type Safety) cobre `any` e casts, não drift de literal. 6.10 (Secrets) é outro escopo. Gap real.
+
+O 6.5.3 fecha o gap deterministicamente, sem heurística LLM frágil: o pass é um grep simples + comparação de length/content. O pattern é universal (Vitest, Jest, Mocha, xunit, NUnit — qualquer framework com asserções de igualdade profunda contra constantes importadas). Custo: 1 grep extra por export modificado no diff, com short-circuit cedo se nenhum match. Para diffs sem export modificado é no-op total.
+
+O nome do pass — "Contract Drift in **Tests**" — é deliberado: drift de docs já era coberto por 6.5.2; o que faltava é o caso onde o artefato stale é uma asserção de teste em vez de uma linha de doc. A doc fica stale silenciosamente (alguém lê e fica confuso); o teste fica stale silenciosamente também (passa em todas as branches até a próxima refatoração tocar o símbolo, aí o CI lit up e parece "drift de outra feature"). A segunda forma é mais perigosa porque cada novo contribuinte que vê o vermelho repete o ciclo de `git stash` + dismiss. O sub-pass quebra esse loop no review original.
+
+### Why (Part 2 — Overall Grade mandatory render)
+
+Feedback do usuário em paralelo a este retrofit: "quero também que a tabela que apresenta o resultado e o Grade de cada parte analisada volte a SEMPRE aparecer, essa tabela muitas vezes não tem aparecido". Inspeção da Phase C step 9 mostrou que `Overall Grade` aparecia na lista de seções junto com várias outras, mas SEM o modificador `(always present)` que `Secrets Detection table` tinha desde a v1.8.0. Resultado: sob pressão de contexto / zero findings / focus-area run, o opus omite a tabela e fecha o relatório com prosa do tipo "Looks clean, grade A" — perdendo o entry point que o humano usa para triagem.
+
+Mesma família de bug que motivou a v1.12.0 (Phase A agent fazendo todo o trabalho via tool calls mas devolvendo "results above" como final message): a skill confia na disciplina implícita do modelo de "sempre emitir todas as seções", e essa disciplina falha em condições previsíveis. O fix da v1.12.0 foi prompt mais rígido + orchestrator-side fallback. O fix análogo aqui é (a) elevar `Overall Grade` e `Recommended Actions` ao status explícito de "MANDATORY — NEVER omit", (b) listar os modos de falha conhecidos com instruções concretas para cada um, (c) exigir self-check programático antes do return ("a resposta contém `### Overall Grade` e `### Recommended Actions`?"). Mesmo princípio do "verify-before-trust" da v1.10.0 aplicado à camada de output assembly.
+
+A regra do `_None._` em buckets vazios de Recommended Actions é especialmente importante: render do header com bucket vazio comunica "checado, sem entradas"; ausência do header comunica "esqueci de checar isso". Para a UX humana, são respostas qualitativamente diferentes.
+
+### Migration notes
+
+- Sem breaking changes. Comando público `/codereview` inalterado, args inalterados, modelo de routing inalterado.
+- Phase A (haiku) e Phase B (sonnet) ganham, na execução, 1 grep extra por export modificado no diff (`grep -rn "expect({SYMBOL})\.toEqual\|toStrictEqual\|toMatchObject" .`). Para diffs sem export modificado, no-op. Para o mediano (1-2 exports modificados), <500ms extra.
+- Phase C (opus) cross-reference já trata findings de 6.5.x sem mudança — só precisa reconhecer 6.5.3 como categoria válida na Documentation Sync table.
+- A tabela Documentation Sync no relatório ganha uma linha nova quando há finding 6.5.3 (e fica oculta quando não há, igual às demais linhas N/A — comportamento da `render N/A` da tabela já está estabelecido).
+- A nova regra do Part 2 (Overall Grade + Recommended Actions sempre presentes) é puramente prescritiva — não muda formato nem args. Em relatórios que já incluíam essas seções, no-op observável. Em relatórios que omitiam (zero findings / focus-area / token-tight), passam a incluir um bloco mínimo com rationale terse — overhead < 20 tokens.
+
+---
+
 ## [1.12.0] - 2026-05-20
 
 ### Changed (codereview SKILL.md v1.8.1 → v1.9.0 — Phase A output discipline + secrets-gate fallback)

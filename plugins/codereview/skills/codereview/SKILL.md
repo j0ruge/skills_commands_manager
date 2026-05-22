@@ -1,8 +1,8 @@
 ---
 name: codereview
 metadata:
-  version: 1.9.0
-description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync. Stack-agnostic with TypeScript/React defaults and dotnet preset. Triggers — code review, pre-PR, secrets scan, ggshield, accessibility audit.
+  version: 1.10.0
+description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, and **contract drift in tests** (exported enum/tuple/schema grew or reshaped without its `expect(X).toEqual([...])` assertion getting updated — silent rot that surfaces later as "pre-existing failure from another feature"). The final report ALWAYS includes the Overall Grade table and Recommended Actions block — even on zero-findings happy path, focus-area runs, or token-tight reviews. Stack-agnostic with TypeScript/React defaults and dotnet preset. Triggers — code review, pre-PR, secrets scan, ggshield, accessibility audit, contract drift, stale test contract, exported const drift, test-vs-source-of-truth drift, grade table missing.
 ---
 
 ## User Input
@@ -276,8 +276,19 @@ After all sonnet agents return, the main model:
    - Bug/Security/Performance/Types summary
    - Test coverage table
    - Documentation sync table
-   - Overall grade (A-F per grading scale)
-   - Recommended actions
+   - **Overall Grade table** (ALWAYS present; see "Mandatory final sections" below)
+   - Recommended actions (ALWAYS present, even when empty — show "_None._" under each bucket)
+
+**Mandatory final sections — must NEVER be omitted, truncated, or replaced by prose:**
+
+The report MUST end with the **Overall Grade table** followed by the **Recommended Actions** block. These two sections are the user-facing summary — without them, the rest of the report is unactionable. Common failure modes to defend against:
+
+1. **Token pressure**: when context is tight, the model may "summarize in prose" instead of rendering the full grade table. Forbidden — even under tight context, emit the table with terse one-word rationales (`"clean"`, `"3 HIGH"`, `"n/a"`).
+2. **Zero-findings happy path**: when no findings exist, the model may skip straight to "looks good, grade A" without the table. Forbidden — render every row, fill grade column with `A` and rationale `—` or `clean`.
+3. **Focus-area run**: when `$ARGUMENTS` specified a focus area, the model may render only the focused row. Forbidden — render every row; non-analyzed rows get grade `—` with rationale `Not analyzed (focused review on {area})`.
+4. **Long-running review with many findings**: when the Findings table is large, the model may stop after listing findings. Forbidden — the grade table is the entry point the human reads first; without it the report cannot be triaged.
+
+Before finishing the response, self-check that the response contains both `### Overall Grade` and `### Recommended Actions` headers exactly once each. If either is missing, append it before returning. Same self-check applies to the `### 🛑 Secrets Detection` section already covered in step 8.
 
 ### Special Cases
 

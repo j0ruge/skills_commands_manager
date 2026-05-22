@@ -116,6 +116,9 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 | Frontend Rules | OK / N/A | .claude/rules/frontend-react.md | — |
 | CLAUDE.md | OK / N/A | CLAUDE.md | — |
 | MEMORY.md | OK / N/A | MEMORY.md | — |
+| Contract Tests | OK / DRIFTED | src/__tests__/contracts.test.ts | `FORMA_PAGAMENTO`: test asserts 4 items, export has 7 |
+
+> The **Contract Tests** row is produced by pass 6.5.3 (Contract Drift in Tests). Render `DRIFTED` when an exported constant in the diff is asserted by a test with a stale literal shape. When status is `DRIFTED`, the corresponding finding goes into the main Findings Table as HIGH (or MEDIUM for internal-only constants) — see `references/detection-passes.md` pass 6.5.3 for severity rules.
 
 **Docstring coverage of changed CODE files**: {WITH_DOCS}/{Total_changed_functions} functions/methods have up-to-date documentation ({percentage}%)
 
@@ -126,6 +129,13 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 ---
 
 ### Overall Grade
+
+**This table is mandatory and ALWAYS rendered**, including:
+- when there are zero findings (every row gets grade `A` and rationale `clean` or `—`);
+- when `$ARGUMENTS` specified a focus area (non-analyzed rows get grade `—` and rationale `Not analyzed (focused review on {area})`);
+- when context budget is tight (use terse one-word rationales like `"3 HIGH"`, `"n/a"`, `"clean"` — never collapse the table into prose).
+
+If the response is about to end without this table, append it before returning. The human reads this first to triage; an omitted table means the report cannot be acted on.
 
 Rate each criterion A through F:
 
@@ -152,17 +162,22 @@ Rate each criterion A through F:
 
 ### Recommended Actions
 
+**This section is mandatory and ALWAYS rendered**, including when the corresponding bucket is empty. Render every bucket header and put `_None._` under empty buckets — do not omit the bucket itself. The user uses this section as the actionable to-do list; an omitted "Must Fix" bucket reads as "this report was incomplete", not as "no criticals".
+
 **Must Fix (CRITICAL)**:
 
 - List each critical finding with file:line and concrete fix instruction
+- If none: `_None._`
 
 **Should Fix (HIGH)**:
 
 - List each high finding with file:line and suggested approach
+- If none: `_None._`
 
 **Consider Fixing (MEDIUM/LOW)**:
 
 - Brief summary of improvements, grouped by theme
+- If none: `_None._`
 
 ---
 

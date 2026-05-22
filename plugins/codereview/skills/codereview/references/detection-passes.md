@@ -238,6 +238,29 @@ When the diff introduces new API endpoints, data models, configuration, features
 
 **Skip this sub-pass** if the project has no documentation files at all (no README, no OpenAPI, no rules files). Don't penalize projects that haven't started documenting.
 
+**6.5.3 Contract Drift in Tests**
+
+Tests that assert literal-by-literal contracts about exported constants (enums, tuples, schema shapes) silently rot when the exported value gains or loses members and the test is not updated in the same PR. The test keeps passing on every other branch until the drift produces a real conflict — at which point the failure looks "pre-existing / from another feature" and gets dismissed instead of root-caused.
+
+Apply this sub-pass whenever the diff modifies an exported constant of the form `export const X = [...] as const` (or a Zod / Yup / TS literal-union schema). For each such symbol `X` modified:
+
+1. Grep the codebase (not just the diff) for usages: `expect(X).toEqual(`, `expect(X).toStrictEqual(`, `expect(X).toMatchObject(`, `assertEquals(X,`, `assert.deepEqual(X,`, and equivalent in the project's test framework.
+2. For each hit, compare the asserted literal's length and content against the current export.
+3. If the asserted literal is **shorter** than the current export (test asserts old contract; export grew) **or** has different members (test asserts old contract; export was reshaped) → flag.
+
+**Severity:**
+- **HIGH** when the exported symbol is part of a public API contract (Zod schema in `shared-api-types`, exported enum used cross-package, OpenAPI-mirrored constant). A stale assertion here means the suite is no longer guarding the contract — CI will go red on the next refactor that touches it, the failure will look unrelated, and someone will dismiss it as drift.
+- **MEDIUM** when the constant is internal (single-module, not exported beyond the package) and the test is exercising it as fixture validation rather than contract guard.
+- **LOW** when the asserted literal is *longer* than the current export (test still passes — superset; flag only as cleanup suggestion).
+
+**Output format**: include the constant symbol, the test file path, and a one-line diff showing `asserted [N items] vs current export [M items]`. Example: `FORMA_PAGAMENTO: test asserts [4 items: BOLETO_30_DIAS, BOLETO_60_DIAS, ANTECIPADO, A_VISTA] but export has [7 items]`.
+
+**Why this pass exists**: the v1.13.0 case that motivated this sub-pass — a contracts test in `@sales-quote/shared-api-types` asserted `FORMA_PAGAMENTO.toEqual([...4 items])` while the exported tuple had 7. The PR that restored the 3 legacy values (with an explicit docstring documenting the rollback) did not touch the test. The test stayed red on every branch for weeks. Each new contributor's `npm test` lit up the same red row; each one reproduced "fails on baseline too" via `git stash` and dismissed it. Static review at the originating PR's review time would have caught it deterministically — the diff modified the const, the test asserted the old shape, and a grep across the codebase makes the mismatch trivially visible. This is the same family as 6.5.2 (project docs drift when code changes) generalized to test artifacts that assert literal contracts.
+
+**Skip this sub-pass** when:
+- The constant being modified is not exported (purely internal symbol with no test consumers).
+- The test file is also in the diff with a matching update (the developer already kept them in sync — confirm by re-reading the test diff, not just file path).
+
 ### 6.6 Race Conditions & TOCTOU (Time-of-Check to Time-of-Use)
 
 Race conditions occur when code checks a state and then acts on it in separate operations, allowing another process/request to change the state in between.

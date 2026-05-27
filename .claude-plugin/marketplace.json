@@ -97,6 +97,15 @@
       "category": "development",
       "keywords": ["zitadel", "idp", "oidc", "auth", "pkce", "jwt", "self-hosted", "bootstrap", "login-ui", "branding", "silent-renew", "react-oidc-context", "management-api", "troubleshooting", "firstinstance", "jwks", "private-labeling", "masterkey", "zitadel-v2", "zitadel-v4", "v2.66-to-v4", "api-v1-to-v2", "connect-protocol", "login-ui-v2", "schema-migration", "v4.15", "proto-aligned", "createapplication", "oidcConfiguration", "cd-cutover", "bootstrap-env", "client-id-numeric", "defaultinstance", "nginx-proxy-virtual-path", "eventstore-password-diagnose", "extra-hosts", "hairpin-nat", "jwks-reload", "jose-error-after-ttl", "refresh-token-dedupe", "rt-rotation", "rt-reuse-detection", "session-revoke", "tanstack-query-retry-401", "apiclient-unauthorized-event", "smoke-e2e", "gha-bind-mount-eacces", "admin-pat", "unique-constraints-pkey-cascade", "password-policy-4-class", "comma-voarj", "login-ui-v2-healthcheck-slow", "compose-up-wait-scope"],
       "platforms": ["claude-code", "cursor"]
+    },
+    {
+      "name": "pdf-generation",
+      "source": "./plugins/pdf-generation",
+      "version": "1.0.0",
+      "description": "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF.",
+      "category": "development",
+      "keywords": ["pdf", "pdf-generation", "pdfmake", "pdf-lib", "pdfkit", "puppeteer", "react-pdf", "template-analysis", "layout-design", "conditional-columns", "invoice", "proposal", "report", "revision-control", "bold-parser"],
+      "platforms": ["claude-code", "cursor"]
     }
   ]
 }

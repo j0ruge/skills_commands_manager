@@ -297,3 +297,42 @@ function buildSummary(conditions: ConditionData, totals: TotalsData): object {
   };
 }
 ```
+
+## Pitfalls — pdfmake v0.3.x + TypeScript
+
+### `pdfmake/interfaces` não resolve em `moduleResolution: "NodeNext"`
+
+`@types/pdfmake` declara tipos em `pdfmake/interfaces`, mas o `package.json` do pdfmake **não exporta** o subpath `./interfaces`. Com `moduleResolution: "NodeNext"`, o import falha:
+
+```
+error TS2307: Cannot find module 'pdfmake/interfaces'
+```
+
+**Fix**: criar um shim local com os tipos necessários:
+
+```typescript
+// pdf/pdfmake-types.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export type Content = Record<string, any> | string | Content[];
+export type TableCell = Record<string, any> | string | number;
+export type ContentText = Record<string, any>;
+```
+
+Importar `from "./pdfmake-types.js"` nos arquivos de seção em vez de `from "pdfmake/interfaces"`.
+
+### Font path em monorepos — usar `require.resolve`
+
+Paths relativos (`node_modules/pdfmake/fonts/...`) falham em monorepos com hoisting. Resolver via `require.resolve`:
+
+```typescript
+import { createRequire } from "node:module";
+import path from "node:path";
+
+function resolveRobotoFont(filename: string): string {
+  const require = createRequire(import.meta.url);
+  const root = path.dirname(require.resolve("pdfmake/package.json"));
+  return path.join(root, "fonts", "Roboto", filename);
+}
+```
+
+Funciona independentemente de onde `node_modules/pdfmake` foi instalado (raiz do monorepo, workspace-level, etc.).

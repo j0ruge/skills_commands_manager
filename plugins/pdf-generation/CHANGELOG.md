@@ -1,5 +1,19 @@
 # Changelog — pdf-generation
 
+## v1.1.0 — 2026-05-27
+
+### Added
+
+- **references/pdfmake-patterns.md § Pitfalls**: nova seção documentando dois gotchas reais de produção:
+  1. **`pdfmake/interfaces` não resolve em `moduleResolution: "NodeNext"`** — `@types/pdfmake` declara os tipos, mas o `package.json` do pdfmake não exporta o subpath. Fix: shim local `pdfmake-types.ts`.
+  2. **Font path quebra em monorepos** — `require.resolve("pdfmake/package.json")` + `path.dirname()` é a forma robusta; paths relativos (`node_modules/pdfmake/...`) falham com hoisting.
+
+### Origin
+
+Ambos os pitfalls custaram tempo de debug durante a implementação real do PDF da Proposta Comercial no projeto `sales_quote` (feature 015). São universais para qualquer setup pdfmake + TypeScript NodeNext em monorepo.
+
+---
+
 ## v1.0.0 — 2026-05-27
 
 ### Added

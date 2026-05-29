@@ -413,3 +413,23 @@ pdfmake.addFonts({
 `addFonts()` aceita silenciosamente (não há validação). Mas no momento de `getBuffer()`, o `fontkit` falha porque AFM são **apenas métricas, sem glifos** — o erro borbulha como erro 500 genérico no endpoint, sem indicação clara da causa.
 
 **Conclusão**: pdfmake requer **TTF/OTF**. As Standard PDF Fonts (Helvetica, Times, Courier) não são acessíveis via `addFonts()`. Se precisar dessas fontes, considere usar `pdf-lib` diretamente, ou bundle uma versão TTF (ex: `Helvetica-Neue.ttf` se licenciado, ou Nimbus Sans no espírito Helvetica).
+
+### Header/footer em `content[]` não repetem — use os slots `header`/`footer`
+
+Sintoma: o cabeçalho (logo, título, barra de número) e/ou o rodapé com numeração aparecem na **página 1** e somem da **página 2** em diante.
+
+**Causa**: os nós de header/footer foram empurrados para dentro do array `content[]` do `docDefinition`. `content[]` é o **fluxo** do documento — renderiza uma vez, na ordem, e não se repete por página. Quem repete por página são os **slots dedicados** `header`/`footer` do `docDefinition`, que aceitam função `(currentPage, pageCount) => Content`.
+
+```typescript
+// ❌ ERRADO — renderiza uma vez no topo; pág. 2+ fica sem header
+const docDefinition = { content: [ buildHeader(), ...sections ] };
+
+// ✅ CERTO — header/footer rodam por página (ver "Dynamic Header with Logo and Revision")
+const docDefinition = {
+  header: (currentPage, pageCount) => buildHeader(currentPage),
+  footer: (currentPage, pageCount) => buildFooter(currentPage, pageCount),
+  content: [ ...sections ],
+};
+```
+
+**Por que escapa dos testes**: em uma cotação de **1 página** os dois layouts são visualmente idênticos — o bug só se manifesta na página 2. Por isso a Phase 6 exige renderizar e inspecionar **a página 2+**, não só a primeira. Cuidado também com a margem superior/inferior da página (`pageMargins`): com header/footer nos slots, reserve espaço suficiente para eles não sobreporem o conteúdo.

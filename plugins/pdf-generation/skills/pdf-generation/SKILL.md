@@ -1,7 +1,7 @@
 ---
 name: pdf-generation
 metadata:
-  version: 1.2.1
+  version: 1.3.0
 description: "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF."
 ---
 
@@ -119,9 +119,11 @@ function parseBold(text: string): Array<{text: string; bold?: boolean}> {
 
 Hash-based idempotency: SHA-256 of input data snapshot. Same hash → return cached PDF. Different hash → generate new revision (Rev. 0, 1, 2...).
 
+Note the hash is over the **input data**, not the rendering code. A layout/style change (font size, column widths, a moved field) leaves the hash unchanged, so the cache happily serves the **old** PDF. When verifying a layout edit, invalidate the cache first (delete the persisted revision row + the cached file) — otherwise you'll inspect a stale render and conclude your change "did nothing". See Phase 6.
+
 #### Header/Footer on All Pages
 
-Use callback functions for dynamic content:
+Put header/footer in the document's dedicated `header`/`footer` slots (callback functions), **not** in the `content[]` array. A header node pushed into `content[]` renders **once** at the top of the flow and is silently absent from page 2 onward — and you won't notice in a single-page test. The dedicated slots run per page:
 
 ```typescript
 footer: (currentPage, pageCount) => ({
@@ -146,19 +148,21 @@ Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues,
 
 1. **Test with real data** — use a quote/invoice with the most rows the system supports (or a realistic stress case: 10–50 line items, long descriptions, large monetary values 6+ digits)
 2. **Test with edge cases** — single row, max rows, all conditional columns hidden, all visible, multi-page pagination
-3. **Open the rendered PDF** and compare against the reference template
-4. **Check specific render risks** (these have all bitten real implementations):
+3. **Render and open EVERY page, not just page 1** — convert each page to an image (`pdftoppm -png -r 150 out.pdf page`) and inspect them. Page 1 looking right tells you nothing about whether the header/footer survive onto page 2 (a frequent bug — see the `content[]` trap below). Always exercise a 2+ page case.
+4. **Bust the cache before re-rendering** — if the pipeline caches by input-hash (Revision Control), a layout/code change won't regenerate. Delete the persisted revision + cached file first, or you'll inspect the stale PDF and wrongly conclude your edit had no effect.
+5. **Check specific render risks** (these have all bitten real implementations):
    - Last column not cut at right margin (the pdfmake padding pitfall — see `references/pdfmake-patterns.md`)
    - All values fully visible (no `R$49.12` when value is `R$49.126,35`)
-   - Header repeats on page 2+
+   - Header/footer present on page 2+ — **inspect page 2 itself**; a header placed in `content[]` instead of the `header`/`footer` slots renders once and silently vanishes on later pages
    - Footer page numbers correct
    - Long descriptions wrap, don't overflow
    - Font glyphs render correctly (no "fiscal"→"fscal" from broken ligatures)
    - Conditional columns omit/appear correctly based on data
+   - **Conditional/optional fields: absence ≠ bug.** An optional field that's simply empty looks identical to one that's broken. To confirm a conditional field actually renders, populate it in the test data (or inject it temporarily) — don't conclude it's broken from a case where the data happens to be absent.
 
-5. **Diff the rendered PDF against reference template visually** — open both side-by-side. Automated pixel diff is overkill; human eye catches what matters.
+6. **Diff the rendered PDF against reference template visually** — open both side-by-side. Automated pixel diff is overkill; human eye catches what matters.
 
-Skipping this phase will ship bugs that passed every automated test. Several real-world session bugs (overflow, font ligatures) only surfaced here.
+Skipping this phase will ship bugs that passed every automated test. Several real-world session bugs (overflow, font ligatures, a header that only existed on page 1, an "empty" field that was actually just missing data) only surfaced here.
 
 ## References
 

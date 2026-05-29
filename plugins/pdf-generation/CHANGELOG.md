@@ -1,5 +1,20 @@
 # Changelog — pdf-generation
 
+## v1.3.0 — 2026-05-29
+
+### Added
+
+- **SKILL.md § Phase 6 + § Phase 4 e references/pdfmake-patterns.md**: três lições de verificação visual aprendidas em produção:
+  1. **Renderizar e inspecionar TODA página, não só a página 1.** Header/footer colocados em `content[]` (em vez dos slots `header`/`footer` do `docDefinition`) renderizam **uma vez** e somem da página 2 em diante — e isso é **invisível** num teste de 1 página. Por que documentar: o layout de 1 página fica idêntico ao correto; o bug só aparece na página 2. Novo pitfall dedicado em `pdfmake-patterns.md` (com o contraste `content[]` ❌ vs slots ✅) + Phase 6 agora exige exercitar um caso de 2+ páginas (`pdftoppm` por página).
+  2. **Campo condicional/opcional: ausência ≠ bug.** Um campo opcional vazio é visualmente idêntico a um quebrado — concluir "não funciona" a partir de um caso sem dado é falso-negativo. Para validar que renderiza, **popular o dado** (fixture/store ou injeção temporária).
+  3. **Cache de revisão por hash do INPUT não regenera em mudança de layout/código.** O hash é sobre o dado, não sobre o código de render; uma edição de layout deixa o hash igual e o cache serve o PDF **antigo**. Ao verificar layout, invalidar o cache (apagar revisão persistida + arquivo) antes de re-renderizar — senão inspeciona-se um render obsoleto e conclui-se que a mudança "não fez efeito".
+
+### Why / Origin
+
+Sessão de ajustes de layout/conteúdo no PDF da Proposta Comercial (`sales_quote/015`): rebalanceamento de cabeçalho, barra número/data em 2 colunas, novo campo de cliente. As três lições custaram ciclos reais — o header que não repetia em multipágina, campos de cliente que pareciam "não renderizar" (só faltava dado no snapshot), e o cache hash-based servindo PDF antigo após mudança de layout. Todas são universais para qualquer pipeline de geração de PDF server-side com controle de revisão.
+
+---
+
 ## v1.2.1 — 2026-05-29
 
 ### Corrected

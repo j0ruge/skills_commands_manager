@@ -1,7 +1,7 @@
 ---
 name: pdf-generation
 metadata:
-  version: 1.1.0
+  version: 1.2.0
 description: "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF."
 ---
 
@@ -140,6 +140,26 @@ Produce a complete specification covering:
 - Conditional logic rules
 - Test scenarios (column combinations, multi-page pagination, revision idempotency)
 
+### Phase 6: Visual Verification (NON-NEGOTIABLE)
+
+Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues, conditional column logic, and pagination behavior **only show up in the rendered PDF**. Make this an explicit phase, not optional:
+
+1. **Test with real data** — use a quote/invoice with the most rows the system supports (or a realistic stress case: 10–50 line items, long descriptions, large monetary values 6+ digits)
+2. **Test with edge cases** — single row, max rows, all conditional columns hidden, all visible, multi-page pagination
+3. **Open the rendered PDF** and compare against the reference template
+4. **Check specific render risks** (these have all bitten real implementations):
+   - Last column not cut at right margin (the pdfmake padding pitfall — see `references/pdfmake-patterns.md`)
+   - All values fully visible (no `R$49.12` when value is `R$49.126,35`)
+   - Header repeats on page 2+
+   - Footer page numbers correct
+   - Long descriptions wrap, don't overflow
+   - Font glyphs render correctly (no "fiscal"→"fscal" from broken ligatures)
+   - Conditional columns omit/appear correctly based on data
+
+5. **Diff the rendered PDF against reference template visually** — open both side-by-side. Automated pixel diff is overkill; human eye catches what matters.
+
+Skipping this phase will ship bugs that passed every automated test. Several real-world session bugs (overflow, font ligatures) only surfaced here.
+
 ## References
 
 For detailed guidance on specific topics, load these on demand:
@@ -156,3 +176,4 @@ For detailed guidance on specific topics, load these on demand:
 4. **Data-driven, not hard-coded** — configurable content (company info, terms) comes from database, not code
 5. **Preview when possible** — use browser visual companion to show field mapping before implementation
 6. **Document alternatives** — always note the runner-up library for future migration
+7. **Verify visually before declaring done** — automated tests miss render bugs. Always open the rendered PDF and compare against the reference template, especially with realistic data (stress cases). See Phase 6.

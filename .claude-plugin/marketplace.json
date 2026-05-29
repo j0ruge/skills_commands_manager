@@ -101,8 +101,8 @@
     {
       "name": "pdf-generation",
       "source": "./plugins/pdf-generation",
-      "version": "1.1.0",
-      "description": "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. v1.1.0: pitfalls section — pdfmake/interfaces NodeNext resolution failure + monorepo font path via require.resolve. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF.",
+      "version": "1.2.0",
+      "description": "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. v1.2.0: three new production-proven pitfalls — cell padding NOT discounted from `widths` (last column silently cuts off A4 with 8+ cols, the most painful pdfmake gotcha); Roboto bundled has broken fi/fl/ffi ligatures (fiscal→fscal, fixture→fxture); `addFonts()` silently rejects AFM (Helvetica AFM via pdfkit looks like it works but errors 500 on getBuffer). Plus Phase 6 Visual Verification (NON-NEGOTIABLE) — render bugs only surface in the rendered PDF, never in automated tests. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF, pdfmake column overflow, pdfmake widths padding, Roboto ligature bug, pdfmake AFM rejection.",
       "category": "development",
       "keywords": ["pdf", "pdf-generation", "pdfmake", "pdf-lib", "pdfkit", "puppeteer", "react-pdf", "template-analysis", "layout-design", "conditional-columns", "invoice", "proposal", "report", "revision-control", "bold-parser"],
       "platforms": ["claude-code", "cursor"]

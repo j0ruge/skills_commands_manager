@@ -1,5 +1,30 @@
 # Changelog — pdf-generation
 
+## v1.2.0 — 2026-05-29
+
+### Added
+
+- **references/pdfmake-patterns.md § Pitfalls**: três novos pitfalls comprovados em produção:
+  1. **Cell padding NÃO é descontado de `widths`** — o pitfall mais grave do pacote pdfmake. Layout default adiciona `paddingLeft: 4` + `paddingRight: 4` = 8pt extras por célula, somando 64pt+ com 8 colunas e estourando A4 silenciosamente. Última coluna (geralmente "Total" em invoices) some sem erro. Fix: layout customizado com `paddingLeft/Right: 2`.
+  2. **Fonte Roboto bundled tem ligaduras "fi"/"fl"/"ffi" quebradas** — palavras como "fiscal"→"fscal", "fixture"→"fxture", "confirmação"→"confrmação" perdem o "f". Bug do GSUB antigo da Roboto bundled em pdfmake 0.3.x interagindo com fontkit interno do pdfkit. Fix: bundle TTF moderno ou trocar para Inter/Open Sans.
+  3. **`pdfmake.addFonts()` rejeita AFM silenciosamente** — tentar registrar Helvetica AFM (que pdfkit bundla) parece funcionar mas estoura erro 500 genérico no `getBuffer()`. AFM tem só métricas, não glifos. Conclusão: pdfmake requer TTF/OTF.
+
+- **SKILL.md § Phase 6 Visual Verification (NON-NEGOTIABLE)**: nova fase explícita no workflow. Bugs de render só aparecem visualmente — automação não pega overflow de coluna, glifos quebrados, paginação ruim. Inclui checklist de risk-areas (last column cut, value truncation, header repeat, font glyphs, conditional columns).
+
+- **SKILL.md § Key Principles #7**: princípio "Verify visually before declaring done" elevado ao topo das diretrizes.
+
+### Origin
+
+Lições aprendidas durante a verificação visual T056 da feature `sales_quote/015-pdf-proposta-comercial`. Após 57 tasks com **todos os testes automatizados passando**, a inspeção manual de PDFs reais com dados de produção revelou:
+
+1. Tabela de uma cotação de 11 itens com totais de R$300k+ teve a coluna "Total" cortada na borda direita (R$49.12 em vez de R$49.126,35). Causa: padding pitfall.
+2. Palavras como "fiscal" renderizadas como "fscal" no PDF gerado. Causa: ligaduras Roboto.
+3. Tentativa de fix substituindo Roboto por Helvetica AFM gerou erro 500 silencioso — perdemos ~20min até identificar que pdfmake não aceita AFM.
+
+Todas as três lições são **universais** para qualquer setup pdfmake server-side, não específicas do projeto.
+
+---
+
 ## v1.1.0 — 2026-05-27
 
 ### Added

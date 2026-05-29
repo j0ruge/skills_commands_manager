@@ -336,3 +336,74 @@ function resolveRobotoFont(filename: string): string {
 ```
 
 Funciona independentemente de onde `node_modules/pdfmake` foi instalado (raiz do monorepo, workspace-level, etc.).
+
+### Cell padding NÃO é descontado de `widths` — última coluna corta silenciosamente
+
+**Bug mais grave deste pitfall set.** O array `widths: [...]` declara apenas a largura **do conteúdo**, não a largura total da célula. O layout default (e os builtin `lightHorizontalLines`/`noBorders`) adiciona `paddingLeft: 4` + `paddingRight: 4` = **8pt por célula**, somados ao conteúdo. Com 8 colunas isso adiciona 64pt; com 10, 80pt — facilmente excede a largura útil de uma página A4 (≈515pt com margens 40pt).
+
+**Sintoma**: a coluna mais à direita (geralmente "Total" em invoices) some do PDF, sem erro nem warning. Os dados ainda estão no `body`, mas são renderizados fora da página visível.
+
+**Não confunda com**: colunas `auto` colapsando — esse é outro problema. Se o sintoma é "última coluna sumiu mesmo com widths fixos", é padding.
+
+**Fix**: layout customizado com padding reduzido (2pt cada lado economiza 32pt para 8 colunas):
+
+```typescript
+const tableLayoutCompact = {
+  hLineWidth: (i, node) => {
+    if (i === 0 || i === node.table.body.length) return 0.7;
+    return i === 1 ? 0.7 : 0.3;
+  },
+  vLineWidth: () => 0,
+  hLineColor: (i, node) => {
+    if (i === 0 || i === node.table.body.length || i === 1) return "#999999";
+    return "#dddddd";
+  },
+  paddingLeft: () => 2,
+  paddingRight: () => 2,
+  paddingTop: () => 3,
+  paddingBottom: () => 3,
+};
+
+// ... aplicar no table:
+{ table: { widths, body }, layout: tableLayoutCompact }
+```
+
+**Regra prática**: ao dimensionar widths fixos, considerar que cada coluna consome `width + 2 × paddingHorizontal`. Para 8 colunas em A4 com padding 2pt, descontar `8 × 4 = 32pt` da largura útil ao planejar.
+
+### Fonte Roboto bundled tem ligaduras "fi"/"fl"/"ffi" quebradas
+
+A Roboto que vem dentro de `pdfmake@0.3.x` em `pdfmake/fonts/Roboto/Roboto-Regular.ttf` tem tabela GSUB com ligaduras OpenType que o fontkit interno do pdfkit aplica, mas o glyph resultante é renderizado **vazio**. Palavras com "fi"/"fl"/"ffi" perdem a letra "f":
+
+| Original | Renderizado |
+|----------|-------------|
+| `fiscal` | `fscal` |
+| `fixture` | `fxture` |
+| `confirmação` | `confrmação` |
+| `oficial` | `ofcial` |
+| `específico` | `específco` |
+| `final` | `fnal` |
+
+**Diagnóstico**: se uma palavra rara perdeu uma letra "f" interna, é esse bug. Não é typo do banco.
+
+**Cura** (em ordem de simplicidade):
+
+1. **Bundle uma versão atualizada do Roboto** baixada do Google Fonts moderno (a versão TTF bundled no pdfmake é antiga e tem o GSUB problemático)
+2. **Trocar por outra fonte TTF sem o bug**: Inter, Open Sans, Source Sans 3 — todas têm ligaduras OpenType corretas
+3. **NÃO tentar**: trocar para Helvetica via AFM (ver próximo pitfall) — não funciona
+
+### `pdfmake.addFonts()` rejeita AFM silenciosamente — erro 500 no render
+
+Tentativa intuitiva: como o `pdfkit` (transitivo de pdfmake) bundla os AFM das 14 Standard PDF Fonts em `pdfkit/js/data/Helvetica.afm`, parece razoável registrar:
+
+```typescript
+pdfmake.addFonts({
+  Roboto: {
+    normal: resolveStandardFont("Helvetica.afm"),
+    // ...
+  },
+});
+```
+
+`addFonts()` aceita silenciosamente (não há validação). Mas no momento de `getBuffer()`, o `fontkit` falha porque AFM são **apenas métricas, sem glifos** — o erro borbulha como erro 500 genérico no endpoint, sem indicação clara da causa.
+
+**Conclusão**: pdfmake requer **TTF/OTF**. As Standard PDF Fonts (Helvetica, Times, Courier) não são acessíveis via `addFonts()`. Se precisar dessas fontes, considere usar `pdf-lib` diretamente, ou bundle uma versão TTF (ex: `Helvetica-Neue.ttf` se licenciado, ou Nimbus Sans no espírito Helvetica).

@@ -1,5 +1,20 @@
 # Changelog — pdf-generation
 
+## v1.4.0 — 2026-05-29
+
+### Added
+
+- **references/pdfmake-patterns.md § "Vector Logo (SVG)" + SKILL.md § Phase 4**: logo vetorial em pdfmake.
+  1. **pdfmake renderiza SVG nativamente** via o nó `{ svg, width }` (`svg` é a string XML, não data URI) — há `SVGMeasure.js` no pacote e `ContentSvg` em `@types/pdfmake`. **Não precisa de `svg-to-pdfkit`.** Documentar porque a crença "pdfmake não faz SVG" é comum e custa tempo (leva a rasterizar ou adicionar dependência à toa) — nesta sessão um agente de exploração afirmou isso com convicção e estava errado.
+  2. **SVG com fills definidos por `<style>`/classe (`class="cls-1"`) renderiza SEM cor** (paths pretos/vazados), porque o svg-to-pdfkit embutido tem suporte a CSS limitado. **Fix: inline cada `class` como atributo `fill="…"`** e remover `<defs><style>`/`<title>`. Silencioso — build e testes unitários passam; só a render visual revela. Novo pitfall dedicado em `pdfmake-patterns.md`.
+  3. **Embutir o vetor padrão como constante `.ts`** (`export const LOGO_SVG = '<svg…>'`), não arquivo no disco: um build `tsc → dist/` não copia arquivos não-`.ts`, e um dir de runtime gitignored (`storage/`) não existe em deploy novo — em ambos os casos o logo renderiza em branco, sem erro. Como código, sobrevive aos dois.
+
+### Why / Origin
+
+Sessão de troca do logo do PDF da Proposta Comercial (`sales_quote/015`) de bitmap (PNG) para vetor (`assets/jrcbrasil_logo.svg`). As três lições custaram ciclos reais: a investigação inicial concluiu (erradamente) que pdfmake 0.3.x não suportava SVG; o SVG exportado da ferramenta de design veio com fills em `<style>`/classe e renderizou preto até inlinar os `fill`; e o build `tsc`/`dist` + `storage/` gitignored obrigaram a embutir o SVG como constante para o logo padrão não sumir em deploy. Universais para qualquer logo vetorial em pdfmake server-side.
+
+---
+
 ## v1.3.0 — 2026-05-29
 
 ### Added

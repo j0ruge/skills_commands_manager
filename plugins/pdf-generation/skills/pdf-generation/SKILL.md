@@ -1,8 +1,8 @@
 ---
 name: pdf-generation
 metadata:
-  version: 1.3.0
-description: "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF."
+  version: 1.4.0
+description: "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Includes vector-logo (SVG) handling: pdfmake renders SVG natively (no svg-to-pdfkit dependency), SVGs with `<style>`/class fills render without color unless inlined, and small vectors ship as `.ts` constants to survive `tsc`/`dist` builds and gitignored asset dirs. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF, pdfmake SVG logo, vector logo PDF, SVG logo blank/black, SVG fills not rendering."
 ---
 
 ## User Input
@@ -132,6 +132,13 @@ footer: (currentPage, pageCount) => ({
   margin: [40, 10]
 })
 ```
+
+#### Vector Logos (SVG)
+
+Prefer a vector logo over a raster one — it stays crisp at any zoom. pdfmake renders SVG **natively** via the `{ svg, width }` node (no `svg-to-pdfkit` dependency). Two gotchas decide whether it actually works, both detailed in `references/pdfmake-patterns.md`:
+
+- **Inline the fills.** A design-tool SVG defines colors in a `<style>` block with class selectors (`class="cls-1"`); pdfmake's bundled SVG parser often ignores those and renders the logo with no color (black/blank), silently. Convert each `class="…"` to a direct `fill="…"` attribute.
+- **Ship the default vector as a `.ts` constant, not a file.** A `tsc → dist/` build won't copy an `.svg`, and a gitignored runtime asset dir won't exist on a fresh deploy — either way the logo renders blank. Embedding `export const LOGO_SVG = '<svg…>'` survives both.
 
 ### Phase 5: Generate Implementation Spec
 

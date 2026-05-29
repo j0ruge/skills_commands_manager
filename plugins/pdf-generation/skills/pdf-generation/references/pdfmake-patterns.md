@@ -154,6 +154,40 @@ const docDefinition = {
 };
 ```
 
+## Vector Logo (SVG)
+
+pdfmake renders SVG **natively** — `pdfmake@0.2+`/`0.3.x` bundle SVG support (there's an `SVGMeasure.js` inside the package, and `@types/pdfmake` declares a `ContentSvg` interface). A vector logo stays crisp at any zoom and is usually smaller than an equivalent PNG. You do **not** need a separate `svg-to-pdfkit` dependency — the node is just `{ svg, width }`, where `svg` is the raw XML **string** (not a data URI):
+
+```typescript
+{ svg: '<svg viewBox="0 0 296 74">…</svg>', width: 155 }   // ✅ vector
+{ image: logoDataUri, width: 155 }                          // raster (base64 data URI)
+```
+
+> A recurring misconception is that pdfmake can't do SVG (leading people to rasterize or add a dependency). It can — reach for `{ svg }` first for logos and line art.
+
+If a logo can arrive in either format (e.g. a configurable per-branch logo read from disk vs. a bundled default), discriminate before building the node — `{ svg }` and `{ image }` are different content shapes:
+
+```typescript
+type LogoAsset =
+  | { type: "svg"; svg: string }        // → { svg, width }
+  | { type: "raster"; dataUri: string } // → { image, width }
+  | null;                               // → blank cell, don't abort generation
+
+function logoCell(logo: LogoAsset) {
+  if (logo === null) return { text: "" };
+  return logo.type === "svg"
+    ? { svg: logo.svg, width: 155 }
+    : { image: logo.dataUri, width: 155 };
+}
+```
+
+**Ship the default vector as a `.ts` string constant, not a file on disk.** Two deploy traps make a file fragile, and both fail *silently* (blank logo, no error):
+
+- A `tsc → dist/` build does **not** copy non-`.ts` files — an `.svg` placed under `src/` never reaches the bundle.
+- A gitignored runtime asset dir (e.g. `storage/`) won't exist on a fresh checkout/deploy.
+
+A small SVG (a few KB) embedded as `export const LOGO_SVG = '<svg…>'` sidesteps both: it compiles to JS automatically, is version-controlled, and needs no file I/O. Keep the design `.svg` as the source of truth and generate the constant from it (see the inline-fill transform in Pitfalls).
+
 ## Bold Markup Parser
 
 ```typescript
@@ -433,3 +467,24 @@ const docDefinition = {
 ```
 
 **Por que escapa dos testes**: em uma cotação de **1 página** os dois layouts são visualmente idênticos — o bug só se manifesta na página 2. Por isso a Phase 6 exige renderizar e inspecionar **a página 2+**, não só a primeira. Cuidado também com a margem superior/inferior da página (`pageMargins`): com header/footer nos slots, reserve espaço suficiente para eles não sobreporem o conteúdo.
+
+### SVG com fills via `<style>`/classe não renderiza — inline os `fill`
+
+Um SVG exportado de ferramenta de design (Illustrator/Figma) costuma definir as cores num bloco `<style>` com seletores de classe, em vez de atributos diretos:
+
+```xml
+<defs><style>.cls-1{fill:#ec2228;}.cls-2{fill:#1e1e1e;}</style></defs>
+<path class="cls-1" d="…"/>
+```
+
+O svg-to-pdfkit embutido no pdfmake tem suporte a CSS `<style>`/seletores **limitado** — frequentemente ignora essas regras e renderiza os paths **sem fill** (pretos, ou vazados sobre fundo claro). Não há erro nem warning: o logo só aparece errado no PDF final.
+
+**Fix**: inline o fill como **atributo de apresentação** em cada elemento e descarte o `<style>` — atributo `fill="…"` é sempre respeitado:
+
+```xml
+<path fill="#ec2228" d="…"/>   <!-- ✅ -->
+```
+
+Faça a transformação ao gerar a constante embutida (ver "Vector Logo (SVG)"): `class="cls-1"` → `fill="#ec2228"`, e remova `<defs><style>…</style></defs>` e `<title>`. É uma substituição barata de string e elimina a dependência do parser de CSS.
+
+**Por que escapa dos testes**: build e testes unitários passam normalmente — o shape do nó `{ svg }` está correto, só a renderização do fill é que falha. Só a **verificação visual** (Phase 6) revela: rasterize (`pdftoppm -png -r 150`) e confirme que as cores aparecem.

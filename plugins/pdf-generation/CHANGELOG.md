@@ -1,5 +1,22 @@
 # Changelog — pdf-generation
 
+## v1.2.1 — 2026-05-29
+
+### Corrected
+
+- **references/pdfmake-patterns.md § ligaduras fi/fl/ffi**: a causa-raiz documentada na v1.2.0 ("GSUB antigo / glyph renderizado vazio") estava **errada**. O parse direto das tabelas SFNT da fonte bundled mostrou: o `pdfmake@0.3.9` traz uma Roboto **atual** (`name[5]` = "Version 3.014; 2025") com `GSUB` `liga`/`dlig` **ativas** e os glifos de ligadura **presentes** no `cmap` (U+FB01/FB02/FB03 → 471/472/473). O bug real: a cadeia pdfkit/fontkit **aplica** a substituição `liga` mas **falha ao embutir/subsetar** o glifo no PDF. Corrigida a explicação e a ordem de cura (desabilitar `liga` primeiro; só depois bundle de TTF próprio).
+
+### Added
+
+- **Técnica de diagnóstico**: parsear as tabelas SFNT (`name`/`GSUB`/`cmap`) para confirmar se o glifo existe e quais features estão ativas **antes** de assumir "fonte quebrada" — glifo presente + feature ativa + caractere sumindo ⇒ problema de embedding, não da fonte.
+- **Gotcha de fonte**: pacotes `@fontsource-variable/*` entregam **só `.woff2`**, que pdfmake/pdfkit (TTF/OTF-only) não consomem — "já temos Inter via fontsource" é uma armadilha. Confirmar `.ttf`/`.otf` antes de planejar troca de fonte.
+
+### Origin
+
+Sessão criando um agente de projeto especializado no PDF da Proposta Comercial (`sales_quote/015`). Ao escopar o bug residual de ligaduras (Jira SQ-37), o parse SFNT da Roboto bundled refutou a hipótese "fonte antiga" da v1.2.0 e revelou a causa real (embedding de glifo de ligadura). Lição universal para qualquer setup pdfmake 0.3.x server-side.
+
+---
+
 ## v1.2.0 — 2026-05-29
 
 ### Added

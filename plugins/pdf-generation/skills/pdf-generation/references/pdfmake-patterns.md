@@ -370,9 +370,9 @@ const tableLayoutCompact = {
 
 **Regra prática**: ao dimensionar widths fixos, considerar que cada coluna consome `width + 2 × paddingHorizontal`. Para 8 colunas em A4 com padding 2pt, descontar `8 × 4 = 32pt` da largura útil ao planejar.
 
-### Fonte Roboto bundled tem ligaduras "fi"/"fl"/"ffi" quebradas
+### Fonte Roboto bundled: ligaduras "fi"/"fl"/"ffi" somem do PDF
 
-A Roboto que vem dentro de `pdfmake@0.3.x` em `pdfmake/fonts/Roboto/Roboto-Regular.ttf` tem tabela GSUB com ligaduras OpenType que o fontkit interno do pdfkit aplica, mas o glyph resultante é renderizado **vazio**. Palavras com "fi"/"fl"/"ffi" perdem a letra "f":
+Palavras com "fi"/"fl"/"ffi" perdem a letra "f" no PDF renderizado:
 
 | Original | Renderizado |
 |----------|-------------|
@@ -383,13 +383,19 @@ A Roboto que vem dentro de `pdfmake@0.3.x` em `pdfmake/fonts/Roboto/Roboto-Regul
 | `específico` | `específco` |
 | `final` | `fnal` |
 
-**Diagnóstico**: se uma palavra rara perdeu uma letra "f" interna, é esse bug. Não é typo do banco.
+**Diagnóstico**: se uma palavra rara perdeu uma letra "f" interna, é esse bug — não é typo do banco.
 
-**Cura** (em ordem de simplicidade):
+**Causa real** (verificada por parse SFNT — corrige o diagnóstico "fonte antiga / glyph vazio" de versões anteriores): a Roboto bundled em `pdfmake@0.3.9` é **atual** (`name[5]` = "Version 3.014; 2025"), tem `GSUB` com as features `liga`/`dlig` **ativas**, e os glifos de ligadura **existem** no `cmap` (`U+FB01`/`FB02`/`FB03` → glyphs 471/472/473). A cadeia pdfkit/fontkit interna **aplica** a substituição `liga` (`f`+`i` → glyph 471) durante o layout, mas **falha ao embutir/subsetar** esse glifo no PDF — daí o "fi" sumir. Não é fonte velha nem glyph ausente: é o embedding do glifo de ligadura quebrado no pipeline do pdfmake 0.3.x.
 
-1. **Bundle uma versão atualizada do Roboto** baixada do Google Fonts moderno (a versão TTF bundled no pdfmake é antiga e tem o GSUB problemático)
-2. **Trocar por outra fonte TTF sem o bug**: Inter, Open Sans, Source Sans 3 — todas têm ligaduras OpenType corretas
-3. **NÃO tentar**: trocar para Helvetica via AFM (ver próximo pitfall) — não funciona
+**Confirme antes de trocar a fonte.** Chutar "a fonte está quebrada" custa tempo; as tabelas SFNT respondem direto: `name[5]` = versão, `GSUB` = features ativas, `cmap` = se o glifo de ligadura existe. Glifo presente + feature ativa + palavra sumindo ⇒ o problema é embedding (pipeline), não a fonte.
+
+**Cura** (em ordem de custo):
+
+1. **Desabilitar a ligadura** — se a sua versão do pdfmake/pdfkit expuser controle de features OpenType, desligar `liga` evita a substituição e, com ela, o glifo problemático. Mais barato que trocar a fonte; tentar primeiro.
+2. **Bundle um TTF que você controla** — Roboto atual (ou Inter/Open Sans/Source Sans 3) baixado e versionado nos seus assets, resolvido por path próprio em vez de `node_modules/pdfmake`. **Cuidado**: não assuma que a fonte do front serve — pacotes `@fontsource-variable/*` entregam **só `.woff2`**, e pdfmake/pdfkit exigem **TTF/OTF** (`.woff2` não é consumível). Confirme que existe um `.ttf`/`.otf` antes de planejar a troca.
+3. **NÃO tentar**: trocar para Helvetica via AFM (ver próximo pitfall) — não funciona.
+
+**Após qualquer fix, verifique visualmente** (Phase 6): abrir o PDF e conferir "fiscal" com o "i". Nenhum teste automatizado pega isso.
 
 ### `pdfmake.addFonts()` rejeita AFM silenciosamente — erro 500 no render
 

@@ -1,5 +1,46 @@
 # Changelog — ticket
 
+## v1.0.1 — 2026-05-29
+
+### Fixed
+
+- **Correção do "Corolário" da v1.0.0 — `acli --status` casa pelo NOME DO
+  STATUS DE DESTINO, não da transição.** A v1.0.0 documentou o **inverso**
+  (que `acli --status "Concluído"` falharia e que o flag casava por nome de
+  transição). Em uso real (fechamento de **SQ-42** e **SQ-43**, ambos partindo
+  de `Em andamento`) o comportamento observado foi o oposto:
+  `acli --status "Concluído"` **funciona**, enquanto
+  `acli --status "Itens concluídos"` (o *nome da transição*, id `31`) **falha**
+  com `No allowed transitions found for given status`. Isso bate com o próprio
+  help do `acli` (`--status` = "Status to transition the work item"). Provável
+  causa do engano na v1.0.0: a falha original do SQ-41 era em `"Aprovação"`/
+  `"Finished"` — status que **não existem** no board SQ —, não por casamento de
+  nome; o `--status "Concluído"` nunca tinha sido testado isolado a partir de
+  `Em andamento`.
+- **Por quê importa:** a guidance anterior mandava evitar um comando que
+  funciona e depender desnecessariamente do MCP. Corrigido em `SKILL.md`,
+  `references/workflow.md`, `plugin.json`, `marketplace.json` e `README.md`.
+  O MCP `transitionJiraIssue(transition:{id})` segue documentado como
+  alternativa robusta. A **Regra 1** (descobrir transições / caminhar passo a
+  passo) permanece — o mesmo erro também ocorre a partir de um status-fonte
+  inválido.
+
+### Added
+
+- Nota em `workflow.md §Sprint e Story Points via MCP`: numa sessão nova o
+  servidor atlassian MCP pode expor só `authenticate`/`complete_authentication`
+  (as tools de escrita não aparecem no ToolSearch). Chamar
+  `mcp__atlassian__authenticate`, repassar a URL ao dev e prosseguir após
+  autorizar; **story points/sprint ficam bloqueados até autenticar** (o `acli`
+  não escreve custom fields), mas transição e comentário (ADF) seguem via `acli`.
+
+### Origin
+
+Sessão de fechamento de **SQ-42 + SQ-43** (sales_quote): com o MCP atlassian
+não-autenticado, a transição foi feita por `acli` — a tentativa pelo *nome da
+transição* (`"Itens concluídos"`, conforme a doc v1.0.0) falhou, e o *nome do
+status* (`"Concluído"`) funcionou, desmentindo o corolário da v1.0.0.
+
 ## v1.0.0 — 2026-05-29
 
 ### Added

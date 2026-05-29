@@ -17,7 +17,7 @@
 | Projeto | Board | Caminho até "done" | Status final | Como chegar ao done |
 |---|---|---|---|---|
 | RS | 10 | `Tarefas pendentes → Em andamento → Aprovação → Finished` | `Finished` | duas transições (`Aprovação`, depois `Finished`) |
-| SQ | 51 | `Tarefas pendentes → Em andamento → Concluído` (**sem `Aprovação`**) | `Concluído` | transição **id `31`** ("Itens concluídos") |
+| SQ | 51 | `Tarefas pendentes → Em andamento → Concluído` (**sem `Aprovação`**) | `Concluído` | `acli --status "Concluído"` direto (ou MCP transição **id `31`**) |
 
 ### Descobrir transições (fazer isto, não chutar)
 
@@ -31,11 +31,13 @@ mcp__atlassian__getTransitionsForJiraIssue(cloudId, issueIdOrKey: "${PROJECT}-XX
 mcp__atlassian__transitionJiraIssue(cloudId, issueIdOrKey: "${PROJECT}-XXX", transition: { id: "31" })
 ```
 
-Fallback com `acli` — **transiciona pelo NOME DA TRANSIÇÃO** (não pelo nome do
-status, nem pela key da issue):
+Fallback com `acli` — **transiciona pelo NOME DO STATUS DE DESTINO** (o próprio
+help do `acli` descreve `--status` como "Status to transition the work item"),
+não pelo nome da transição:
 
 ```bash
-acli jira workitem transition --key "${PROJECT}-XXX" --status "Em andamento"
+# Passa o STATUS de destino (ex.: "Concluído"), não o nome da transição:
+acli jira workitem transition --key "${PROJECT}-XXX" --status "Concluído"
 ```
 
 ### Regras
@@ -44,11 +46,17 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Em andamento"
    do `acli`) revela a sequência real. Transição inexistente/fora de ordem retorna
    `"No allowed transitions found for given status"`.
 2. **Status/transições em PT-BR**, conforme configurado no projeto.
-3. **`acli --status` casa pelo NOME DA TRANSIÇÃO, não do status.** No SQ a transição
-   que leva a "Concluído" chama-se **"Itens concluídos"** — então `acli --status
-   "Concluído"` falha, mas `transitionJiraIssue(transition: { id: "31" })` funciona.
-   Quando o nome da transição diverge do status (ou você não o conhece), o **MCP por
-   id é o caminho confiável**.
+3. **`acli --status` casa pelo NOME DO STATUS DE DESTINO, não da transição.**
+   Verificado 2026-05-29 (SQ-42/SQ-43, ambos partindo de "Em andamento"):
+   `acli --status "Concluído"` **funciona**; `acli --status "Itens concluídos"`
+   (o *nome da transição* que leva a "Concluído", id `31`) **falha** com
+   `No allowed transitions found for given status`. Bate com o help do `acli`
+   (`--status` = "Status to transition the work item"). O MCP
+   `transitionJiraIssue(transition: { id })` continua útil quando você prefere o
+   `id`; para o `acli`, passe o **status alvo**.
+   ⚠️ O mesmo erro `No allowed transitions found` também aparece quando a
+   transição não é permitida a partir do status **atual** — por isso a Regra 1
+   (descobrir/caminhar passo a passo) continua valendo.
 
 ## Tipos de Issue (em PT-BR)
 
@@ -84,6 +92,14 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Em andamento"
 ## Sprint e Story Points via MCP
 
 O `acli` não suporta escrita em custom fields. Para atribuir **sprint** e **story points**, usar a tool MCP `mcp__atlassian__editJiraIssue`.
+
+> **MCP não-autenticado?** Numa sessão nova o servidor atlassian pode expor só
+> `authenticate`/`complete_authentication` (as tools de escrita não aparecem no
+> ToolSearch). Nesse caso, chame `mcp__atlassian__authenticate`, repasse a URL
+> ao dev para autorizar no browser e prossiga após o retorno. Enquanto não
+> autenticar, **story points e sprint não podem ser setados** (o `acli` não
+> escreve custom fields) — já transição (`--status "<status-destino>"`) e
+> comentário (ADF via `--body-file`) seguem funcionando pelo `acli`.
 
 ### Listar sprints ativas
 

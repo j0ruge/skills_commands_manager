@@ -4,7 +4,7 @@ description: "Gestão de tickets Jira para projetos JRC Brasil — criar issues,
 user_invocable: true
 argument_description: "Subcomando: start | split | close | status"
 metadata:
-  version: 1.0.0
+  version: 1.0.1
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
@@ -343,10 +343,10 @@ Antes de tudo, analisar o argumento passado após `start`:
    ```
 
    - **RS:** `Em andamento → Aprovação → Finished` (duas transições, por nome).
-   - **SQ:** `Em andamento → Concluído` direto — transição **id `31`** ("Itens
-     concluídos"); **não há `Aprovação`**, e `acli --status "Concluído"` falha (casa
-     por nome de transição) — usar o MCP por id.
-   - Fallback `acli` (por nome da transição): `acli jira workitem transition --key "${PROJECT}-XXX" --status "<nome>"`.
+   - **SQ:** `Em andamento → Concluído` direto (**não há `Aprovação`**) —
+     `acli --status "Concluído"` funciona (casa pelo nome do **status de
+     destino**); alternativamente, MCP transição **id `31`** ("Itens concluídos").
+   - Fallback `acli` (pelo nome do **status de destino**): `acli jira workitem transition --key "${PROJECT}-XXX" --status "<status-destino>"`.
 
 7. **Commitar mudanças pendentes:**
 
@@ -470,5 +470,6 @@ branch atual. Qual é a key? (ex.: `${PROJECT}-605`)"
 - **Transição falha (`"No allowed transitions found"`):** não insistir no nome cravado —
   listar as transições reais com `mcp__atlassian__getTransitionsForJiraIssue` e
   transicionar pelo `id` da transição cujo `to.name` é o status desejado (ver
-  `references/workflow.md`). Lembrar que `acli --status` casa por **nome da transição**.
+  `references/workflow.md`). Lembrar que `acli --status` casa pelo **nome do
+  status de destino** (ex.: `--status "Concluído"`).
 - **Mudanças não commitadas:** Avisar antes de trocar de branch

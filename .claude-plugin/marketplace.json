@@ -115,6 +115,15 @@
       "category": "development",
       "keywords": ["jira", "ticket", "issue-tracking", "acli", "atlassian-mcp", "git-workflow", "branch", "sub-issue", "story-points", "sprint", "workflow-transitions", "jrc-brasil", "pull-request", "conventional-commits"],
       "platforms": ["claude-code"]
+    },
+    {
+      "name": "whisper-preprocess",
+      "source": "./plugins/whisper-preprocess",
+      "version": "1.0.0",
+      "description": "Audio preprocessing + transcription pipeline (ffmpeg + OpenAI Whisper), 100% offline — extract, silence-removal, voice enhancement, segmentation, transcription (optional 2-language pass + auto-merge). **v1.0.0** initial packaging of the local skill, capturing the anti-\"picotamento\" (choppy/pumping voice) lessons proven against a real 65-min recording with a low-volume, impaired (dysarthric) speaker: (1) the listenable `*_enhanced.opus` must be DECOUPLED from the transcription chain — it used to inherit `silenceremove` + a fast-release `acompressor` + single-pass dynamic `loudnorm` AGC, three stacked gain-modulation/chopping sources that flutter the voice; `build_listenable()` now builds the listening copy from the ORIGINAL file at 48 kHz with NO silence removal (continuous audio) and STABLE gain only (slow-release compressor + makeup + true-peak `alimiter`), no dynamic AGC; (2) a 2-pass `loudnorm linear=true` is NOT reliable — on a clipping source it silently reverts to `Normalization Type: Dynamic` (verified via `print_format=summary`), reintroducing the pump, so compressor+limiter is used instead; (3) Opus adds inter-sample overshoot ABOVE the limiter ceiling (a -1.5 dBFS sample limit measured +1.3 dBTP after Opus), so the limiter needs headroom (`--listen-limit 0.6`) to keep the decoded true-peak below 0 dBFS — the old recipe clipped at +0.7 dBFS; (4) gentler `silenceremove` (`detection=rms`, `window=0.025`, `stop_silence=0.5`, `stop_duration=2.0`) helps Whisper on slow/quiet speakers while the long-standing -30dB threshold lesson is kept, and `afftdn` stays opt-in/off (musical-noise risk; `arnndn` preferred when denoise is wanted). Also encodes the listening copy as `-application audio` 48k/64k (was narrowband `voip`). Triggers — transcribe audio/video, transcricao, Whisper, speech-to-text, remove silence, enhance audio, voz picotando/choppy in enhanced.opus, pumping/breathing audio, low-volume or impaired speaker, MKV/MP4/WAV/M4A to text.",
+      "category": "development",
+      "keywords": ["whisper", "transcription", "transcricao", "speech-to-text", "ffmpeg", "audio-preprocessing", "silence-removal", "silenceremove", "loudnorm", "acompressor", "alimiter", "audio-enhancement", "opus", "offline", "multilingual", "segmentation", "hallucination", "picotamento", "choppy-audio", "pumping", "dynamic-agc", "two-pass-loudnorm-reverts-dynamic", "true-peak-headroom", "inter-sample-overshoot", "dysarthria", "low-volume-speaker", "afftdn-musical-noise"],
+      "platforms": ["claude-code", "cursor"]
     }
   ]
 }

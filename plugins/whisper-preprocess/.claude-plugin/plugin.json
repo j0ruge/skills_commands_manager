@@ -1,0 +1,40 @@
+{
+  "name": "whisper-preprocess",
+  "description": "Audio preprocessing + transcription pipeline (ffmpeg + OpenAI Whisper), 100% offline. Extracts audio, removes silence, enhances voice, segments, and transcribes (with optional 2-language pass + auto-merge). v1.0.0: initial packaging of the local skill, capturing the anti-\"picotamento\" (choppy/pumping) lessons proven against a real 65-min recording with a low-volume, impaired (dysarthric) speaker — (1) the listenable `*_enhanced.opus` must be DECOUPLED from the transcription chain: it used to inherit silence-removal + a fast-release compressor + single-pass dynamic loudnorm AGC, three stacked gain-modulation/chopping sources that flutter the voice; the fix builds the listening copy from the ORIGINAL file at 48 kHz with NO silence removal (continuous audio) and STABLE gain only (slow-release compressor + makeup + true-peak limiter), no dynamic AGC; (2) a 2-pass `loudnorm linear=true` is NOT reliable here — on a source that clips it silently reverts to \"Dynamic\" (verified via `print_format=summary`), reintroducing the pump, so stable compressor+limiter is used instead; (3) Opus encoding adds inter-sample overshoot ABOVE the limiter ceiling, so the limiter needs headroom (`--listen-limit 0.6`) to keep the decoded true-peak below 0 dBFS (the old recipe actually clipped at +0.7 dBFS); (4) gentler `silenceremove` (`detection=rms`, `window=0.025`, `stop_silence=0.5`, `stop_duration=2.0`) helps Whisper on slow/quiet speakers without violating the long-standing -30dB threshold lesson, and `afftdn` stays opt-in/off by default (musical-noise risk). Triggers — transcribe audio/video, transcricao, Whisper, speech-to-text, remove silence, enhance audio, choppy/picotando voice in enhanced.opus, pumping/breathing audio, low-volume or impaired speaker, MKV/MP4/WAV/M4A to text.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "1.0.0",
+  "category": "development",
+  "keywords": [
+    "whisper",
+    "transcription",
+    "transcricao",
+    "speech-to-text",
+    "ffmpeg",
+    "audio-preprocessing",
+    "silence-removal",
+    "silenceremove",
+    "loudnorm",
+    "acompressor",
+    "alimiter",
+    "audio-enhancement",
+    "opus",
+    "offline",
+    "multilingual",
+    "segmentation",
+    "hallucination",
+    "picotamento",
+    "choppy-audio",
+    "pumping",
+    "dynamic-agc",
+    "two-pass-loudnorm-reverts-dynamic",
+    "true-peak-headroom",
+    "inter-sample-overshoot",
+    "dysarthria",
+    "low-volume-speaker",
+    "afftdn-musical-noise"
+  ],
+  "platforms": ["claude-code", "cursor"],
+  "skills": "./skills"
+}

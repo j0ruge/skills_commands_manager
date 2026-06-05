@@ -4,7 +4,7 @@
 
 *Plugin marketplace for Claude Code and Cursor — CI/CD, code review, deployments, releases, and more.*
 
-[![Plugins](https://img.shields.io/badge/plugins-8-blue?style=flat-square)](#available-plugins)
+[![Plugins](https://img.shields.io/badge/plugins-13-blue?style=flat-square)](#available-plugins)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code%20%7C%20Cursor-blueviolet?style=flat-square)](https://code.claude.com)
 [![License](https://img.shields.io/badge/license-Proprietary-red?style=flat-square)](#)
 
@@ -26,6 +26,7 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 | **deploy** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **dev-script** | ✓ | ✓ | Skill — generates `dev.sh` (bash) + `dev.ps1` (PowerShell) per project |
 | **dotnet-wpf** | ✓ | ✓ | Skills — works on both platforms |
+| **pdf-generation** | ✓ | ✓ | Skill — PDF template design + library selection (pdfmake/pdf-lib/PDFKit/Puppeteer/@react-pdf), modular sections, visual verification |
 | **release** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **retrofit-skill** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **statusline** | ✓ | — | Claude Code only (uses the Claude Code status line API) |
@@ -46,7 +47,7 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 Then install any plugin:
 
 ```bash
-/plugin install codereview    # or: cicd, deploy, release, statusline, dotnet-wpf, ddd, retrofit-skill
+/plugin install codereview    # or: cicd, ddd, deploy, dev-script, dotnet-wpf, pdf-generation, release, retrofit-skill, statusline, ticket, whisper-preprocess, zitadel-idp
 ```
 
 > [!TIP]
@@ -81,8 +82,8 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | [**deploy**](#deploy) | 1.4.0 | Development | Automated staging deployment with pre-flight checks and pipeline monitoring |
 | [**release**](#release) | 1.3.0 | Development | GitHub Release creation with categorized notes, multi-stack and monorepo support |
 | [**statusline**](#statusline) | 1.4.0 | Customization | Interactive status line setup — cross-platform (Bash + PowerShell), 9 sections + optional effort-level badge |
-| [**dotnet-wpf**](#dotnet-wpf) | 1.6.0 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
-| **ddd** | 0.3.0 | Architecture | Domain-Driven Design toolkit — codebase analysis, strategic design (event storming, context mapping), legacy → DDD conversion specs |
+| [**dotnet-wpf**](#dotnet-wpf) | 1.6.1 | Development | WPF toolkit — project audit, Fluent Design guide (90+ controls, form spacing, height clipping, Grid row separators, multi-column layouts, ContentDialog confirmation for destructive actions), MVVM migration, E2E testing |
+| [**ddd**](#ddd) | 0.4.1 | Architecture | Domain-Driven Design toolkit — analyzes codebases for DDD violations, guides strategic design (event storming, context mapping, bounded-context canvas), generates legacy→DDD migration specs. Language-agnostic; synthesizes Evans + Vernon + modular-monolith practice |
 | **dev-script** | 0.4.0 | Development | Generates `dev.sh` (bash) + `dev.ps1` (PowerShell) launchers tailored to the current project — detects compose/monorepo/IdP/mkcert, emits idempotent script with healthchecks, **two-strategy port handling** (find-next-free discovery with peer-coordination env vars for foreign-owned service ports / kill-and-reclaim with `pgrep` fallback for own orphans), trap cleanup, HTTPS-on-LAN via mkcert + Caddy when the SPA does OIDC PKCE, Playwright LAN-HTTPS testing recipe, monorepo `kill_known_dev_servers` regex gotcha (path appears before `tsx` in cmdline), `tsx watch --include=.env` so launcher-patched env actually reaches runtime, the boot-time sanity-check pattern (app warns LOUD when runtime config diverges from launcher's source-of-truth file), and **v0.4.0** P17 — foreign port owner + `strictPort: true` silent-hang cascade (kill silently fails → Vite hard-fails → parent `wait` keeps tracking surviving backend = looks like a hang; fix is pre-flight port discovery with peer-coordination env vars instead of trying to kill foreign processes) |
 | **retrofit-skill** | 0.2.0 | Development | Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes) |
 | **pdf-generation** | 1.4.0 | Development | PDF generation design toolkit — analyzes reference templates, recommends libraries (pdfmake/pdf-lib/PDFKit/Puppeteer/@react-pdf), designs modular section architecture with conditional columns, auto-generated observations and revision control. **v1.2.0** adds three production-proven pdfmake pitfalls: cell padding NOT discounted from `widths` (last column silently cuts on A4 with 8+ cols, most painful pdfmake gotcha); Roboto bundled `fi`/`fl`/`ffi` ligatures drop the f (`fiscal`→`fscal`) — **v1.2.1** corrects the cause: pdfkit applies the `liga` substitution but fails to embed the glyph (bundled font is current, not old; confirm via SFNT parse; `@fontsource-variable/*` ships only `.woff2`, unusable by pdfmake); `addFonts()` silently rejects AFM (errors 500 on `getBuffer`). Plus Phase 6 Visual Verification (NON-NEGOTIABLE) — render bugs only surface in the rendered PDF, never in automated tests. **v1.3.0** adds three visual-verification lessons: render/inspect EVERY page — header/footer in `content[]` (vs the `header`/`footer` slots) vanish on page 2+ (invisible in 1-page tests); conditional/optional field absence ≠ bug (populate the data to verify); hash-by-input revision cache doesn't regenerate on layout/code change (bust the cache). **v1.4.0** adds vector-logo (SVG) handling: pdfmake renders SVG natively via `{ svg, width }` (no svg-to-pdfkit dependency — the "pdfmake can't do SVG" belief is wrong); an SVG whose fills come from a `<style>`/class block renders with NO color unless each `class` is inlined to a `fill=` attribute (silent — only the visual render reveals it); ship a small default vector as a `.ts` string constant so it survives `tsc → dist` builds (which don't copy non-`.ts` files) and gitignored runtime asset dirs (which don't exist on fresh deploy) |
@@ -232,7 +233,73 @@ Captures patterns and pitfalls discovered while integrating **Zitadel `v4.x` sel
 - 401 storm post `--reset-zitadel` from orphaned `tsx watch` / `nodemon` processes holding stale env+JWKS in heap
 - Multi-app YAML refactor: env vars from `dev.sh` must dominate static YAML when LAN host is dynamic (`.sslip.io`)
 
-**Scope**: Zitadel `v4.x` self-hosted, OIDC-only, Login UI v1. Out of scope: Zitadel Cloud, v3, SAML, federation IdPs, Login UI v2.
+**Scope**: Zitadel `v4.x` self-hosted, OIDC-only (Login UI v1 primary; Login UI v2 deploy bug + Path B mitigation also covered). Out of scope: Zitadel Cloud, v3, SAML, federation IdPs.
+
+</details>
+
+<details>
+<summary><strong>ddd</strong> — Domain-Driven Design Toolkit</summary>
+
+Language-agnostic DDD toolkit that audits a codebase for tactical/strategic violations and guides design. Synthesizes Evans, Vernon and modular-monolith practice.
+
+| Skill | Description |
+|-------|-------------|
+| `/ddd` | Analyzes the codebase for DDD violations, guides strategic design (event storming, context mapping, bounded-context canvas), and generates legacy→DDD migration specs |
+
+**References:** `bounded-context-canvas.md` (DDD Crew v5), `ddd-crew-process.md` (6-phase canonical sequence: Big Picture → Domain Message Flow → BC Canvas → Context Map → Design Level → ADRs), plus tactical/strategic pattern guides.
+
+</details>
+
+<details>
+<summary><strong>retrofit-skill</strong> — Apply Session Lessons to a Skill</summary>
+
+Captures non-obvious lessons from the current session and applies them to a target skill, in one of two modes so the workflow matches where the skill lives.
+
+| Command | Description |
+|---------|-------------|
+| `/retrofit-skill <skill>` | Lists session lessons, filters to the target skill, previews the diff, then applies it |
+
+**Full mode** (skill published in this marketplace): bumps `plugin.json` + `marketplace.json`, updates CHANGELOG and README, commits and pushes.
+**Lean mode** (local skill in another repo, e.g. `<repo>/.claude/skills/<name>/`): edits the files + a CHANGELOG entry and commits in that repo — no version bump or marketplace changes.
+
+</details>
+
+<details>
+<summary><strong>pdf-generation</strong> — PDF Template Design Toolkit</summary>
+
+Designs PDF generation from reference templates — maps dynamic vs fixed fields, recommends a library with trade-offs, and architects modular sections with conditional columns and revision control.
+
+| Skill | Description |
+|-------|-------------|
+| `/pdf-generation` | Analyzes a reference template (PDF/Excel), recommends a library (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf), and designs the section architecture |
+
+**Production-proven pitfalls encoded:** cell padding not discounted from `widths` (last column cut off on A4 with 8+ columns); Roboto `fi`/`fl` ligatures drop the `f`; `addFonts()` rejects AFM; header/footer in `content[]` vanish on page 2+; revision cache stale on layout change; SVG fills from a `<style>` block render blank unless inlined. **Phase 6 Visual Verification (NON-NEGOTIABLE)** — render and inspect every page, not just page 1.
+
+</details>
+
+<details>
+<summary><strong>ticket</strong> — Jira Ticket Lifecycle (Claude Code only)</summary>
+
+Jira ticket lifecycle integrated with Git for JRC Brasil projects. Per-repo project detection via a `.jira-project` file (PROJECT/BOARD/BRANCH_PREFIX, optional BASE_BRANCH) — no hardcoded project. Prefers `acli` + the atlassian MCP.
+
+| Command | Description |
+|---------|-------------|
+| `/ticket start \| split \| close \| status` | Create issues/sub-issues + branches, split work, and close with an auto-generated summary |
+
+**Encoded lessons:** transitions are project-specific (discover via `getTransitionsForJiraIssue`, transition by id; `acli --status` matches the destination status name, not the transition name); the base branch is project-specific (optional `BASE_BRANCH`, don't assume `develop`).
+
+</details>
+
+<details>
+<summary><strong>whisper-preprocess</strong> — Offline Audio→Text Pipeline</summary>
+
+Audio preprocessing + transcription pipeline (ffmpeg + OpenAI Whisper), 100% offline — extract, silence removal, voice enhancement, segmentation, and transcription (optional two-language pass + auto-merge).
+
+| Skill | Description |
+|-------|-------------|
+| `/whisper-preprocess` | Runs the full pipeline from a media file (MKV/MP4/WAV/M4A) to text |
+
+**Anti-"picotamento" lessons** (proven on a 65-min low-volume, dysarthric recording): the listenable `*_enhanced.opus` is decoupled from the transcription chain (stable gain only — no dynamic AGC or silence removal); a 2-pass `loudnorm linear=true` silently reverts to dynamic on clipping sources (compressor + limiter used instead); Opus inter-sample overshoot needs limiter headroom (`--listen-limit 0.6`) to keep the decoded true-peak below 0 dBFS.
 
 </details>
 
@@ -292,10 +359,15 @@ Use este modo quando quiser utilizar comandos e skills diretamente no Claude Cod
 /plugin install codereview
 /plugin install ddd
 /plugin install deploy
+/plugin install dev-script
 /plugin install dotnet-wpf
+/plugin install pdf-generation
 /plugin install release
 /plugin install retrofit-skill
 /plugin install statusline
+/plugin install ticket
+/plugin install whisper-preprocess
+/plugin install zitadel-idp
 ```
 
 3. Execute os comandos/skills no Claude Code:

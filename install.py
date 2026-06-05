@@ -356,10 +356,15 @@ _CLAUDE_CODE_INSTRUCTIONS = """\
       /plugin install codereview
       /plugin install ddd
       /plugin install deploy
+      /plugin install dev-script
       /plugin install dotnet-wpf
+      /plugin install pdf-generation
       /plugin install release
       /plugin install retrofit-skill
-      /plugin install statusline    ← Claude Code only
+      /plugin install statusline          ← Claude Code only
+      /plugin install ticket              ← Claude Code only
+      /plugin install whisper-preprocess
+      /plugin install zitadel-idp
 
   Update at any time:
       /plugin marketplace update

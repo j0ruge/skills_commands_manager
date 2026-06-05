@@ -1,26 +1,108 @@
 #!/usr/bin/env python3
 """Valida consistencia de versoes e metadados entre marketplace.json e plugin.json.
 
-Verificacoes realizadas (na ordem em que rodam):
-  1. Versao em marketplace.json == versao em plugin.json  (com --fix corrige marketplace.json)
+Verificacoes (na ordem em que rodam):
+  1. Versao em marketplace.json == versao em plugin.json
   2. plugin.json possui campo 'platforms' como lista nao-vazia com valores validos
   3. Campo 'platforms' em marketplace.json e plugin.json sao identicos
   4. Plugins com 'cursor' em platforms tem ao menos uma entrada em CURSOR_SKILL_MAP (install.py)
-  5. CHANGELOG.md de cada plugin contem entrada para a versao atual
+  5. CHANGELOG.md de cada plugin contem entrada para a versao atual ([x.y.z], com colchetes)
+
+Modo --fix (correcao automatica, PRESERVANDO a formatacao do arquivo):
+  - Mismatch de versao: NAO copia cegamente o plugin.json para o marketplace. Decide a
+    versao verdadeira pelo header [x.y.z] mais recente do CHANGELOG do plugin (o lado que
+    NAO bate com o CHANGELOG e o stale) e corrige esse lado. Se o CHANGELOG nao desempata,
+    cai para o maior semver e marca o fix como HEURISTIC (confirme a mao). Se nem isso for
+    possivel, NAO corrige e reporta como erro.
+    Motivacao: o --fix antigo fazia marketplace <- plugin.json sempre, rebaixando o
+    marketplace quando o stale era o plugin.json (caso comum de bump propagado pela metade).
+  - Mismatch de platforms: alinha o marketplace ao plugin.json.
+  As escritas usam substituicao textual dirigida (regex), NAO json.dumps, para nao
+  reformatar o arquivo (arrays inline de keywords/platforms permanecem intactos).
 
 Uso:
     python scripts/validate-versions.py
-    python scripts/validate-versions.py --fix  # corrige marketplace.json automaticamente
+    python scripts/validate-versions.py --fix
 """
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
 VALID_PLATFORMS = {'claude-code', 'cursor'}
 
+_CHANGELOG_VER_RE = re.compile(r'\[(\d+\.\d+\.\d+)\]')
 
-def _load_cursor_skill_map(repo_root: Path) -> list[dict] | None:
+
+def _parse_semver(v: str | None) -> tuple[int, int, int] | None:
+    m = re.fullmatch(r'\s*(\d+)\.(\d+)\.(\d+)\s*', v or '')
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def _latest_changelog_version(changelog_path: Path) -> str | None:
+    """Topmost [x.y.z] em um CHANGELOG (changelogs sao cronologia reversa), ou None."""
+    if not changelog_path.exists():
+        return None
+    m = _CHANGELOG_VER_RE.search(changelog_path.read_text(encoding='utf-8'))
+    return m.group(1) if m else None
+
+
+def _resolve_true_version(
+    marketplace_version: str, plugin_version: str, changelog_path: Path
+) -> tuple[str | None, str, bool]:
+    """Decide a versao autoritativa para um mismatch.
+
+    Retorna (truth, reason, confident). truth e None quando indecidivel.
+    """
+    cl = _latest_changelog_version(changelog_path)
+    if cl in (marketplace_version, plugin_version):
+        stale = 'plugin.json' if cl == marketplace_version else 'marketplace.json'
+        return cl, f'CHANGELOG top [{cl}] -> {stale} esta stale', True
+    mv, pv = _parse_semver(marketplace_version), _parse_semver(plugin_version)
+    if mv and pv and mv != pv:
+        higher = marketplace_version if mv > pv else plugin_version
+        return higher, f'maior semver {higher} (CHANGELOG nao desempatou)', False
+    return None, 'impossivel determinar a versao correta pelo CHANGELOG ou semver', False
+
+
+def _replace_once(path: Path, pattern: 're.Pattern', repl, label: str) -> None:
+    text = path.read_text(encoding='utf-8')
+    new_text, n = pattern.subn(repl, text, count=1)
+    if n != 1:
+        raise RuntimeError(f'{label}: esperava exatamente 1 substituicao, fez {n} em {path}')
+    path.write_text(new_text, encoding='utf-8')
+
+
+def _set_plugin_version(plugin_json_path: Path, old: str, new: str) -> None:
+    pat = re.compile(r'("version":\s*")' + re.escape(old) + r'(")')
+    _replace_once(plugin_json_path, pat, r'\g<1>' + new + r'\g<2>', 'plugin.json version')
+
+
+def _set_marketplace_version(marketplace_path: Path, name: str, old: str, new: str) -> None:
+    pat = re.compile(
+        r'("name":\s*"' + re.escape(name) + r'",\s*"source":\s*"[^"]*",\s*"version":\s*")'
+        + re.escape(old) + r'(")'
+    )
+    _replace_once(
+        marketplace_path, pat, r'\g<1>' + new + r'\g<2>',
+        f'marketplace.json version for {name}',
+    )
+
+
+def _set_marketplace_platforms(marketplace_path: Path, name: str, new_list: list) -> None:
+    new_json = json.dumps(new_list)
+    pat = re.compile(
+        r'("name":\s*"' + re.escape(name) + r'".*?"platforms":\s*)\[[^\]]*\]',
+        re.DOTALL,
+    )
+    _replace_once(
+        marketplace_path, pat, lambda m: m.group(1) + new_json,
+        f'marketplace.json platforms for {name}',
+    )
+
+
+def _load_cursor_skill_map(repo_root: Path) -> 'list[dict] | None':
     """Import install.py and return CURSOR_SKILL_MAP. Returns None if install.py is absent."""
     install_py = repo_root / 'install.py'
     if not install_py.exists():
@@ -58,16 +140,27 @@ def main():
         plugin_data = json.loads(plugin_json_path.read_text(encoding='utf-8'))
         plugin_version = plugin_data.get('version', '?')
 
-        # Check 1: version consistency
+        # Check 1: version consistency — CHANGELOG-aware, never blind-copies a stale value
         if marketplace_version != plugin_version:
-            if fix_mode:
-                entry['version'] = plugin_version
+            changelog_path = repo_root / 'plugins' / name / 'CHANGELOG.md'
+            truth, reason, confident = _resolve_true_version(
+                marketplace_version, plugin_version, changelog_path
+            )
+            if fix_mode and truth is not None:
+                if marketplace_version != truth:
+                    _set_marketplace_version(marketplace_path, name, marketplace_version, truth)
+                if plugin_version != truth:
+                    _set_plugin_version(plugin_json_path, plugin_version, truth)
+                    plugin_version = truth
                 fixes_applied += 1
-                print(f'  FIXED {name}: marketplace {marketplace_version} -> {plugin_version}')
+                flag = '' if confident else '  [HEURISTIC — confirm manually]'
+                print(f'  FIXED {name}: -> v{truth} ({reason}){flag}')
             else:
+                cl = _latest_changelog_version(changelog_path)
+                hint = f'; suggested truth: v{truth} ({reason})' if truth else ''
                 errors.append(
                     f'  {name}: marketplace.json={marketplace_version} '
-                    f'!= plugin.json={plugin_version}'
+                    f'!= plugin.json={plugin_version} (CHANGELOG top={cl}){hint}'
                 )
         else:
             print(f'  OK {name}: v{plugin_version}')
@@ -104,12 +197,9 @@ def main():
                 )
             elif sorted(marketplace_platforms) != sorted(plugin_platforms):
                 if fix_mode:
-                    entry['platforms'] = plugin_platforms
+                    _set_marketplace_platforms(marketplace_path, name, plugin_platforms)
                     fixes_applied += 1
-                    print(
-                        f'  FIXED {name}: marketplace platforms '
-                        f'{marketplace_platforms} -> {plugin_platforms}'
-                    )
+                    print(f'  FIXED {name}: marketplace platforms -> {plugin_platforms}')
                 else:
                     errors.append(
                         f'  {name}: marketplace.json platforms={marketplace_platforms} '
@@ -157,17 +247,17 @@ def main():
                 )
 
     if fix_mode and fixes_applied > 0:
-        marketplace_path.write_text(
-            json.dumps(marketplace, indent=2, ensure_ascii=False) + '\n',
-            encoding='utf-8',
-        )
-        print(f'\nFixed {fixes_applied} field(s) in marketplace.json')
+        print(f'\nApplied {fixes_applied} format-preserving fix(es).')
 
     if errors:
         print('\nVALIDATION ERRORS FOUND:')
         for err in errors:
             print(err)
-        print('\nRun "python scripts/validate-versions.py --fix" to auto-fix marketplace.json')
+        if not fix_mode:
+            print(
+                '\nRun "python scripts/validate-versions.py --fix" to auto-fix '
+                '(version mismatches are resolved via the CHANGELOG, not by copying blindly).'
+            )
         sys.exit(1)
     else:
         print('\nAll checks passed.')

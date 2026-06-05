@@ -1,6 +1,6 @@
 # Changelog — pdf-generation
 
-## v1.4.0 — 2026-05-29
+## [1.4.0] — 2026-05-29
 
 ### Added
 

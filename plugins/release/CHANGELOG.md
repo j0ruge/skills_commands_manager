@@ -1,5 +1,13 @@
 # Changelog — release
 
+## [1.3.0] — 2026-04-01
+
+### Changed
+
+- Resolução de contribuidores passa a usar a GitHub commits API e, quando o autor não
+  resolve por ela, faz fallback por cross-reference de org membership — entrega usernames
+  reais do GitHub em vez de depender do nome de autor do git.
+
 ## [1.2.0] — 2026-03-25
 
 ### Added

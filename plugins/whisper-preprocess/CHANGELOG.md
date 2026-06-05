@@ -1,6 +1,6 @@
 # Changelog — `whisper-preprocess`
 
-## 1.0.0 — 2026-05-30
+## [1.0.0] — 2026-05-30
 
 Initial packaging of the local `whisper-preprocess` skill into the marketplace. The skill
 already carried hard-won Whisper lessons (silence removal before enhancement, -30dB threshold,

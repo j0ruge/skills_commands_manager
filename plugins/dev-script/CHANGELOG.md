@@ -1,6 +1,6 @@
 # Changelog — `dev-script`
 
-## 0.4.0 — 2026-05-14
+## [0.4.0] — 2026-05-14
 
 Lessons from a session against the LouvorFlow monorepo where the user's `dev.sh` "hung" on every cold start whenever port 8080 was held by a foreign process. The diagnosis exposed a gap in the v0.3.1 skill: it advocated kill-and-reclaim as the *only* strategy for service ports, with no acknowledgment of the scenario where the port owner is something the script can't (or shouldn't) kill.
 

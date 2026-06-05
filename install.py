@@ -132,6 +132,27 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
             "provided."
         ),
     },
+    {
+        "plugin": "dev-script",
+        "cursor_name": "dev-script",
+        "display": "Dev Script — generate idempotent dev.sh / dev.ps1 launchers (Compose, mkcert HTTPS-on-LAN, smart port handling)",
+        "source_type": "skill",
+        "source_dir": "plugins/dev-script/skills/dev-script",
+    },
+    {
+        "plugin": "pdf-generation",
+        "cursor_name": "pdf-generation",
+        "display": "PDF Generation — design PDF templates, pick a library (pdfmake/pdf-lib/PDFKit), modular sections + visual verification",
+        "source_type": "skill",
+        "source_dir": "plugins/pdf-generation/skills/pdf-generation",
+    },
+    {
+        "plugin": "whisper-preprocess",
+        "cursor_name": "whisper-preprocess",
+        "display": "Whisper Preprocess — offline ffmpeg + OpenAI Whisper audio→text (silence removal, voice enhancement, segmentation)",
+        "source_type": "skill",
+        "source_dir": "plugins/whisper-preprocess/skills/whisper-preprocess",
+    },
 ]
 
 # Plugins not available for Cursor (Claude Code only).

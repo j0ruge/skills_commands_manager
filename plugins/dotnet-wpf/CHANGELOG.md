@@ -2,6 +2,13 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.6.1] - 2026-05-06
+
+### Changed
+
+- Patch-bump em conjunto com os demais plugins: descrições das skills enxugadas para caber
+  no orçamento do `/doctor`, garantindo que `/plugin update` puxe as versões enxutas.
+
 ## [1.6.0] - 2026-04-16
 
 ### Added

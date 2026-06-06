@@ -153,6 +153,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_type": "skill",
         "source_dir": "plugins/whisper-preprocess/skills/whisper-preprocess",
     },
+    {
+        "plugin": "wsl-windows-onboarding",
+        "cursor_name": "wsl-windows-onboarding",
+        "display": "WSL Onboarding — diagnose WSL, install rtk & safely migrate Windows projects to WSL2 (rsync, copy→validate→delete)",
+        "source_type": "skill",
+        "source_dir": "plugins/wsl-windows-onboarding/skills/wsl-windows-onboarding",
+    },
 ]
 
 # Plugins not available for Cursor (Claude Code only).

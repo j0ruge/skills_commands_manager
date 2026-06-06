@@ -1,6 +1,21 @@
 # Changelog — `wsl-windows-onboarding`
 
-## 0.1.0 — 2026-06-06
+## [0.1.1] — 2026-06-06
+
+### Added
+
+- **`references/project-migration.md` → "Pushing a migrated repo from WSL"** — two gotchas hit while publishing this very skill: (1) HTTPS `git push` from a fresh WSL distro **hangs** with no credential helper, fixed by bridging to the Windows Git Credential Manager via `credential.helper = !"/mnt/c/Program Files/Git/mingw64/bin/git-credential-manager.exe"` (the `!` prefix + inner quotes are required — a bare quoted path makes git treat it as a subcommand, an unquoted path breaks on the space); (2) the migrated local copy may be **behind** the real GitHub remote (the Windows checkout was stale), so the first push is rejected and you must `git fetch` + `git rebase origin/main` first — and clean the CRLF/filemode noise with `git checkout -- .` so rebase will start.
+
+### Fixed
+
+- **CURSOR_SKILL_MAP registration** in `install.py` — the plugin declared `cursor` in `platforms` but had no map entry, so `validate-versions.py` failed and Cursor users wouldn't see it.
+- **CHANGELOG version format** — headings now use the `## [x.y.z]` bracket form the repo's `validate-versions.py` requires (the v0.1.0 entry was written as `## 0.1.0` and went unrecognized).
+
+### Why / Origin
+
+Same session as v0.1.0: the act of committing and pushing this skill from WSL surfaced the push-auth + stale-remote gotchas (now documented), and running the repo's own `validate-versions.py` caught the missing Cursor-map entry and the changelog format — fixed here so the marketplace stays green.
+
+## [0.1.0] — 2026-06-06
 
 Initial packaging of the Windows→WSL onboarding skill: diagnose/prepare WSL, install rtk, and migrate dev projects into the Linux filesystem.
 

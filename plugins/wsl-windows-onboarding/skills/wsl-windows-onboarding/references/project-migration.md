@@ -137,3 +137,35 @@ git diff --cached --stat        # verify the diff is scoped to your change, not 
 ```
 
 The wider CRLF cleanup is a real decision for the repo owner — surface it, don't sweep 150 files into an unrelated commit.
+
+## Pushing a migrated repo from WSL
+
+If you migrate a repo and then try to `git push`, two things bite — both observed in practice:
+
+### 1. HTTPS push hangs (no credential helper in WSL)
+
+A fresh WSL distro has no git credential helper, no `gh`, and no SSH key, so an HTTPS `git push` to GitHub **hangs forever** waiting for credentials it can't prompt for non-interactively. The clean fix is to **reuse the Windows Git Credential Manager** (Git for Windows ships it), so auth pops a normal Windows window/browser and the credential is cached:
+
+```bash
+git config credential.helper '!"/mnt/c/Program Files/Git/mingw64/bin/git-credential-manager.exe"'
+```
+
+Two parsing traps make this finicky — get the quoting exactly right:
+
+- The path has **spaces**, so it must be quoted. But a bare quoted path (`"/mnt/c/.../...exe"`) makes git think the value isn't an absolute path (it starts with `"`) and it tries to run `git credential-"/mnt/c/..."` → "is not a git command."
+- The working form is the **`!` shell-command prefix** with the path quoted inside: `!"/mnt/c/Program Files/Git/mingw64/bin/git-credential-manager.exe"`. The `!` tells git "run this as a shell command," and the inner quotes survive the space.
+
+First push then triggers GCM's auth UI on Windows; after you complete it once, the credential is cached and subsequent pushes are silent. (SSH is the alternative — `git remote set-url` to the `git@github.com:...` form and add a key — but the GCM bridge reuses what Windows already has.)
+
+### 2. The migrated copy may be behind the real remote
+
+The Windows checkout you migrated from may have been **stale** relative to GitHub (someone pushed more commits since). So your first push is rejected with *"Updates were rejected because the remote contains work that you do not have locally."* Don't force — integrate:
+
+```bash
+git fetch origin
+git rev-list --left-right --count main...origin/main   # see how far each side diverged
+git rebase origin/main                                  # replay your commit(s) on top of the remote
+git push origin main
+```
+
+Caveat: `git rebase` refuses to start while the working tree is "dirty" — and right after migration it's dirty with the CRLF/filemode noise described above. Since that noise is **not real changes** (verify: `git diff --ignore-cr-at-eol --stat` is empty, and a per-file CR-stripped `diff` of blob vs working tree shows nothing), it's safe to clean it first with `git checkout -- .` (restores the LF blobs), then rebase. If your commit and the remote both edited shared files like `marketplace.json`/`README.md`, the 3-way merge usually still applies cleanly when your edits are additions in different regions — but always re-validate the result (e.g. `python -m json.tool` on any JSON) before pushing.

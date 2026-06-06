@@ -1,5 +1,25 @@
 # Changelog — `wsl-windows-onboarding`
 
+## [0.3.0] — 2026-06-06
+
+### Added
+
+- **`references/wsl-setup.md` §2 rewritten — "Install Ubuntu + first user"** and **§5 Docker integration expanded.** The skill previously assumed a distro already existed; now it covers installing one and the first-user trap.
+- **`references/shell-setup.md` §7 (new) — "Windows Terminal profile: icon + default profile."**
+- **`references/rtk-install.md` — "Claude Code + the global rtk hook"** section: install Claude Code in WSL, then wire rtk in globally.
+- **`SKILL.md`** gains pointers in Phase 1 (install distro + non-root user), Phase 2 (Claude Code + `rtk init -g`), and Phase 4 (Windows Terminal profile).
+
+### Why / Origin
+
+Captured from a real session that took a Docker-only Windows box all the way to a working Ubuntu dev environment. Each lesson cost time the first time:
+
+- **`wsl --install Ubuntu-24.04` fails** — current WSL's `--list --online` only lists the generic `Ubuntu`; the versioned name returns `WSL_E_DISTRO_NOT_FOUND`. Use the bare `Ubuntu`.
+- **The first-run user setup (OOBE) needs a real TTY.** Driving it through a pipe / background job / agent `!`-command loops forever on `Enter new UNIX username:` (plus `fatal: Only one or two names allowed`) and leaves the distro **root-only**. Fix: register `--no-launch`, then `useradd` + `usermod -aG sudo` + `chpasswd`, and set the default login via `/etc/wsl.conf [user] default` (needs `wsl --terminate` to apply). Always make a **non-root sudo user** for daily work.
+- **Windows Terminal:** a distro installed while WT is open won't appear until it re-scans (restart, or just saving `settings.json` triggers a live reload). On **WT Preview** the Ubuntu profile comes from the *Store-app source* (`CanonicalGroupLimited.Ubuntu_…`), not the legacy `Windows.Terminal.Wsl` UUIDv5 GUID — hand-adding the legacy GUID **duplicates** the entry (WT then hides one). Set an explicit `"icon"` (the package PNG path is version-stamped and `WindowsApps` blocks wildcard listing, so resolve via `Get-AppxPackage … InstallLocation` and copy the PNG to a stable path). **`defaultProfile` ≠ `wsl --set-default`** — they're two independent knobs.
+- **Docker ↔ WSL integration** follows `EnableIntegrationWithDefaultWslDistro` (the **default** distro) in `%APPDATA%\Docker\settings-store.json`; non-default distros go in `IntegratedWslDistros`. Edit it only while Docker Desktop is stopped (a running Docker rewrites the file on exit), then (re)start Docker.
+- **Claude Code in WSL** installs to `~/.local/bin/claude` (same dir as rtk — one PATH line covers both; the installer prints the same PATH warning). Auth is interactive (browser, Pro/Max account) — not scriptable.
+- **rtk global integration is `rtk init -g`** (hook + `RTK.md` + `~/.claude/CLAUDE.md` `@RTK.md` + `settings.json`). Install Claude Code **first** (it owns `~/.claude`). Use **`--auto-patch`**: plain `rtk init -g` *prompts* before patching an existing `settings.json` and **defaults to N** non-interactively, silently leaving the hook unwired; `rtk init --show` verifies.
+
 ## [0.2.1] — 2026-06-06
 
 ### Changed

@@ -27,13 +27,47 @@ Read this carefully:
 
 `wsl ...` output piped through the Windows console can come back with spaced-out / garbled accented characters (it's UTF-16). Prefer **Windows Terminal** (UTF-8). When scripting, don't try to parse the pretty table — query inside the distro instead (see the diagnose script).
 
-## 2. If WSL is not installed
+## 2. If no usable distro exists — install Ubuntu
+
+If `wsl -l -v` shows only `docker-desktop` (or nothing), you need a real distro:
 
 ```powershell
-wsl --install            # installs WSL2 + Ubuntu by default; reboot when asked
+wsl --install Ubuntu      # installs the latest Ubuntu LTS
 ```
 
-After reboot, launch Ubuntu once to create your Linux user.
+**Name trap:** on current WSL, `wsl --list --online` only lists the *generic* name
+`Ubuntu`. Passing a versioned name like `wsl --install Ubuntu-24.04` fails with
+`WSL_E_DISTRO_NOT_FOUND` — use the bare `Ubuntu` (it resolves to the latest LTS).
+If WSL itself is missing too, `wsl --install` with no argument installs WSL2 +
+Ubuntu; reboot when asked.
+
+### Creating the first user — the OOBE only works in a real terminal
+
+On first launch the distro runs an interactive setup (OOBE) that asks for a UNIX
+username + password. **That prompt needs a real TTY.** Driving the launcher through
+anything non-interactive — a piped shell, a background job, an agent's `!`-prefixed
+command — makes it loop forever on `Enter new UNIX username:` (you'll see a flood of
+that line plus `fatal: Only one or two names allowed`) and leaves the distro
+registered as **root only**. Two ways out:
+
+- **Open Ubuntu in a real Windows Terminal tab** and answer the prompts, or
+- **Register non-interactively** and create the user by hand (the path to use when
+  scripting / automating):
+
+```powershell
+wsl --install Ubuntu --no-launch        # download + register, skip the OOBE
+# create a non-root user with sudo (root is the OOBE-skip default — not for daily use):
+wsl -d Ubuntu -u root -- bash -c 'useradd -m -s /bin/bash <user>; usermod -aG sudo <user>; echo "<user>:<password>" | chpasswd'
+# make that user the default login:
+wsl -d Ubuntu -u root -- bash -c 'printf "[user]\ndefault=<user>\n" > /etc/wsl.conf'
+wsl --terminate Ubuntu                   # REQUIRED for /etc/wsl.conf to take effect
+wsl -d Ubuntu -- whoami                  # → <user>
+```
+
+`/etc/wsl.conf [user] default` is the generic mechanism; `ubuntu config
+--default-user <user>` (the Ubuntu launcher) is the app-specific alternative.
+**Always create a non-root user with sudo** for daily work — running as root inside
+WSL is a footgun.
 
 ## 3. Inspect the distro from the inside
 
@@ -68,12 +102,33 @@ A convenience alias (point it at the *final* Linux location after migration, not
 echo 'alias repos="cd ~/repos"' >> ~/.bashrc && source ~/.bashrc
 ```
 
-## 5. Docker ↔ WSL integration (optional, manual, GUI-only)
+## 5. Docker ↔ WSL integration (optional)
 
-If `docker` isn't found inside your distro, it's because Docker Desktop's WSL integration is off for that distro. This is **not required for rtk** and not required for the migration. Enable it only if you actually want to run `docker` from inside WSL:
+If `docker` inside your distro reports *"The command 'docker' could not be found in
+this WSL 2 distro… activate the WSL integration"*, Docker Desktop's integration is
+off for that distro. This is **not required for rtk** and not required for the
+migration — enable it only if you want to run `docker` from inside WSL.
+
+The supported path is the GUI:
 
 1. Docker Desktop → **Settings → Resources → WSL Integration**
 2. Enable the toggle for your distro (e.g. `Ubuntu`)
-3. **Apply & Restart**, then verify with `docker --version` inside WSL.
+3. **Apply & Restart**, then verify with `docker version` inside WSL.
 
-It's a GUI step — you cannot flip it from the CLI, so hand it to the user with these instructions.
+How the integration is actually keyed (useful when scripting or debugging) — it
+lives in `%APPDATA%\Docker\settings-store.json`:
+
+- `EnableIntegrationWithDefaultWslDistro: true` integrates with whatever the
+  **default** WSL distro is. So once your real distro is the default
+  (`wsl --set-default Ubuntu`), Docker integrates with it automatically — no
+  per-distro toggle needed.
+- `IntegratedWslDistros: ["Ubuntu", …]` is the explicit list for **non-default**
+  distros.
+
+Either way Docker Desktop must be **(re)started** to inject the `docker` shim into
+the distro. Edit `settings-store.json` only while Docker Desktop is **stopped** (a
+running Docker rewrites the file on exit and would clobber your change). Verify:
+
+```powershell
+wsl -d Ubuntu -- docker version    # Server.Version present ⇒ integration is live
+```

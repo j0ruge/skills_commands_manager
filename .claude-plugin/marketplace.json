@@ -11,10 +11,10 @@
     {
       "name": "wsl-windows-onboarding",
       "source": "./plugins/wsl-windows-onboarding",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "description": "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures.",
       "category": "development",
-      "keywords": ["wsl", "wsl2", "ubuntu", "windows", "rtk", "rtk-ai", "migration", "rsync", "mnt-c-slow", "local-bin-path", "dotenv-preserve", "git-clone-drops-env", "crlf-lf", "autocrlf", "filemode-0777", "whole-tree-modified", "copy-validate-delete", "docker-desktop-distro", "wsl-integration", "onboarding", "zsh", "oh-my-zsh", "default-shell", "passwordless-sudo", "bashrc-vs-zshrc", "jetbrains-mono", "nerd-font", "ligatures", "windows-terminal"],
+      "keywords": ["wsl", "wsl2", "ubuntu", "windows", "rtk", "rtk-ai", "migration", "rsync", "mnt-c-slow", "local-bin-path", "dotenv-preserve", "git-clone-drops-env", "crlf-lf", "autocrlf", "filemode-0777", "whole-tree-modified", "copy-validate-delete", "docker-desktop-distro", "wsl-integration", "onboarding", "zsh", "oh-my-zsh", "default-shell", "passwordless-sudo", "bashrc-vs-zshrc", "jetbrains-mono", "nerd-font", "ligatures", "windows-terminal", "install-ubuntu", "wsl-no-tty-oobe", "non-root-user", "wsl-conf-default-user", "windows-terminal-profile", "default-profile", "docker-wsl-integration", "claude-code", "rtk-init-global"],
       "platforms": ["claude-code", "cursor"]
     },
     {

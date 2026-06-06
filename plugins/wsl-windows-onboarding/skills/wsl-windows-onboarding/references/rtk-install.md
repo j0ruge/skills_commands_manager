@@ -66,3 +66,41 @@ Two ways to use it, neither of which re-installs anything:
 
 - **Prefix commands manually** — `rtk npm test`, `rtk pytest` — works in any directory with zero config.
 - **Auto-integrate with Claude Code** via the hook (Linux/WSL) or CLAUDE.md injection. The *integration config* can be global (`~/.claude/`) or per-project (`.claude/`), but that is just wiring — the rtk binary itself remains a single global install. So "does it serve everything I do in Claude Code?" — yes: install once, and it applies everywhere; the only per-project choice is whether you also want the automatic hook wired in that repo.
+
+## Claude Code + the global rtk hook (the usual goal)
+
+rtk's main payoff is the **Claude Code hook**, so most people want Claude Code
+installed in WSL with rtk wired in **globally** (every project, no per-repo setup).
+
+### 1. Install Claude Code (same PATH dir as rtk)
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+The native installer drops `claude` in **`~/.local/bin`** — the *same* directory as
+rtk. So the one PATH line you already added for rtk
+(`export PATH="$HOME/.local/bin:$PATH"`) covers both; the Claude Code installer even
+prints the identical "not in your PATH" warning. Verify with `claude --version`.
+Authentication (`claude`, then a browser login, requires a Pro/Max/Console account)
+is **interactive** — it can't be scripted from an agent/non-TTY context; the user
+runs it once in a real terminal.
+
+### 2. Wire rtk in globally
+
+Install Claude Code **first** — the global integration writes into `~/.claude/`,
+which Claude Code owns.
+
+```bash
+rtk init -g --auto-patch    # hook + RTK.md + ~/.claude/CLAUDE.md @RTK.md + settings.json
+rtk init --show             # verify: all entries should read [ok]
+```
+
+What `-g` writes: a `PreToolUse`/`Bash` hook running `rtk hook claude` in
+`~/.claude/settings.json`, an `RTK.md` instruction file, and an `@RTK.md` reference
+in `~/.claude/CLAUDE.md`. **Use `--auto-patch`** — plain `rtk init -g` *prompts*
+before patching an existing `settings.json`, and in a non-interactive shell that
+prompt **defaults to N**, so the hook silently doesn't get wired (the rest still
+installs, so `rtk init --show` will show settings.json as the one missing piece). If
+that happens, re-run with `--auto-patch`, or add the hook block by hand. Restart
+Claude Code afterwards and test with `git status`.

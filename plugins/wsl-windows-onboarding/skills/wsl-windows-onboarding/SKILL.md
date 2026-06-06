@@ -1,7 +1,7 @@
 ---
 name: wsl-windows-onboarding
 metadata:
-  version: 0.2.1
+  version: 0.3.0
 description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures."
 ---
 
@@ -42,6 +42,7 @@ Key things to get right (full detail in `references/wsl-setup.md`):
 
 - **Docker users almost always already have WSL2** — check `wsl -l -v` and `wsl --version` before installing anything.
 - The **`docker-desktop` distro is Docker's backend, not your workspace.** Work inside the real distro (e.g. `Ubuntu`). Picking `docker-desktop` is a classic mistake.
+- **If there's no real distro, install one** with `wsl --install Ubuntu` (the bare name — `Ubuntu-24.04` fails with `WSL_E_DISTRO_NOT_FOUND` on current WSL). The first-run user prompt (OOBE) needs a real terminal; when scripting, register non-interactively and create a **non-root user with sudo**, set as default via `/etc/wsl.conf [user] default`. Full recipe in `references/wsl-setup.md`.
 - Your Windows files are at `/mnt/c/...`, but working there is **slow** (cross-filesystem). The payoff of this whole skill is moving projects onto the Linux filesystem (`~`).
 
 ## Phase 2 — Install rtk
@@ -52,7 +53,8 @@ Full recipe in `references/rtk-install.md`. The essentials:
 
 - rtk is a **single Rust binary with zero runtime dependencies** — do NOT install Node/Python/Go/Docker/Rust just to run it. The install script downloads a prebuilt binary.
 - The install script drops the binary in `~/.local/bin`, which is **usually not on PATH** — you must add it to `~/.bashrc`, or `rtk` will be "not found" even though it installed fine.
-- rtk does **not** need Docker. Docker↔WSL integration is a separate, optional, GUI-only step, relevant only if you want rtk to filter `docker` command output.
+- rtk does **not** need Docker. Docker↔WSL integration is a separate, optional step, relevant only if you want rtk to filter `docker` command output.
+- **For the usual goal — Claude Code in WSL with rtk wired in globally:** install Claude Code (`curl -fsSL https://claude.ai/install.sh | bash`, also lands in `~/.local/bin`, so the same PATH fix covers both) **first**, then `rtk init -g --auto-patch` (use `--auto-patch` — plain `rtk init -g` prompts to patch an existing `~/.claude/settings.json` and defaults to N in a non-interactive shell). See `references/rtk-install.md`.
 
 ## Phase 3 — Migrate projects into WSL
 
@@ -83,3 +85,4 @@ The one trap that bites everyone:
 
 - **`~/.bashrc` config does NOT carry to zsh.** zsh reads `~/.zshrc`, never `~/.bashrc`. So the **rtk PATH** (`~/.local/bin`) and any aliases you added during onboarding are invisible in zsh until you re-add them to `~/.zshrc` — and on Ubuntu the system profile won't add `~/.local/bin` for you (its `/etc/zsh/zprofile` is empty), so the explicit `export` is required, not redundant. See the cross-reference in `references/rtk-install.md`.
 - The **font and ligatures live on Windows**, not in WSL — the Windows-side terminal renders text. Install the **JetBrainsMono Nerd Font** on Windows and enable ligatures via Windows Terminal's per-profile `font.features`.
+- **Windows Terminal profile (icon + default):** a new distro only shows after the Terminal re-scans (restart, or just saving `settings.json`); set an explicit `"icon"` (copy the package PNG to a stable path) and the top-level `"defaultProfile"` to open Ubuntu by default — which is separate from `wsl --set-default`. Don't hand-guess the profile GUID on WT Preview (it uses the Store-app source). See `references/shell-setup.md`.

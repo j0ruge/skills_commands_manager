@@ -104,6 +104,50 @@ winget install -e --id DEVCOM.JetBrainsMonoNerdFont
 
 Pick the **"JetBrainsMono Nerd Font"** face (the proportional/standard patched family) rather than the strict single-width **"JetBrainsMono Nerd Font Mono"** if you want ligatures to render most reliably.
 
+## 7. Windows Terminal profile — make the distro appear, with an icon, as the default
+
+A freshly installed distro often won't show in the Windows Terminal dropdown right
+away, and when it does it may render **without an icon**. The knobs:
+
+- **It only appears after a re-scan.** Windows Terminal generates WSL profiles at
+  startup, so a distro installed while the Terminal was open won't show until it
+  re-scans. Restarting the Terminal works; so does **saving `settings.json`** — the
+  Terminal watches that file and live-reloads, regenerating the WSL profiles.
+- **Don't hand-author the WSL profile by guessing its GUID — especially on
+  Preview.** Windows Terminal **Preview** generates the Ubuntu profile from the
+  *Store-app source* (`"source": "CanonicalGroupLimited.Ubuntu_…"`) with its own
+  GUID, **not** from the legacy `Windows.Terminal.Wsl` generator (whose GUID is the
+  UUIDv5 of the distro name, e.g. `{2c4de342-…}` for "Ubuntu"). If you add a profile
+  with the legacy GUID by hand, you get **two** Ubuntu entries; the Terminal then
+  marks one `"hidden": true` to dedupe. Let the Terminal generate the profile, then
+  edit *that* entry.
+- **Add an explicit icon.** Set `"icon"` on the generated profile to the Ubuntu
+  logo. The package ships PNGs under
+  `C:\Program Files\WindowsApps\CanonicalGroupLimited.Ubuntu_*\Assets\` — but that
+  path is **version-stamped** (breaks on app update) and the `WindowsApps` root
+  blocks wildcard listing. Resolve the exact dir via
+  `(Get-AppxPackage CanonicalGroupLimited.Ubuntu*).InstallLocation`, then **copy the
+  PNG to a stable location** and point at that:
+
+  ```powershell
+  $pkg = Get-AppxPackage CanonicalGroupLimited.Ubuntu*
+  New-Item -ItemType Directory -Force "$HOME\.wsl-icons" | Out-Null
+  Copy-Item (Join-Path $pkg.InstallLocation 'Assets\Square44x44Logo.targetsize-256.png') "$HOME\.wsl-icons\ubuntu.png"
+  ```
+  ```jsonc
+  { "guid": "{…the generated GUID…}", "name": "Ubuntu",
+    "source": "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc",
+    "icon": "C:\\Users\\<you>\\.wsl-icons\\ubuntu.png",
+    "startingDirectory": "~" }
+  ```
+- **"Default WSL distro" ≠ "default Terminal profile".** `wsl --set-default Ubuntu`
+  only changes which distro bare `wsl` enters; it does **not** make the Terminal
+  open Ubuntu by default. For that, set the top-level `"defaultProfile"` in
+  `settings.json` to the Ubuntu profile's GUID. Two independent settings.
+
+Validate the JSON after editing (`Get-Content settings.json -Raw | ConvertFrom-Json`)
+— a trailing-comma typo silently reverts the Terminal to defaults.
+
 ---
 
 ### Sources (verified 2026)

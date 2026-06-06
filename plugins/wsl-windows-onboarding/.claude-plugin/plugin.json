@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-    "version": "0.2.1",
+    "version": "0.3.0",
   "category": "development",
   "keywords": [
     "wsl",
@@ -34,7 +34,16 @@
     "jetbrains-mono",
     "nerd-font",
     "ligatures",
-    "windows-terminal"
+    "windows-terminal",
+    "install-ubuntu",
+    "wsl-no-tty-oobe",
+    "non-root-user",
+    "wsl-conf-default-user",
+    "windows-terminal-profile",
+    "default-profile",
+    "docker-wsl-integration",
+    "claude-code",
+    "rtk-init-global"
   ],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"

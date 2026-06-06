@@ -1,0 +1,27 @@
+# Enforce LF line endings in the repository for all text files.
+#
+# Why: this repo is developed across Windows, WSL, macOS and Linux. Without this,
+# a Windows checkout (core.autocrlf=true) writes CRLF to the working tree while the
+# committed blobs are LF, and a Linux/WSL git then reports the ENTIRE tree as modified
+# (the "whole tree modified, zero untracked files" trap). Pinning eol=lf makes the
+# committed form canonical and keeps every platform consistent. Git auto-detects
+# binary content and leaves it untouched.
+
+* text=auto eol=lf
+
+# Scripts that must stay LF regardless of platform.
+*.sh text eol=lf
+
+# Common binary assets — never apply line-ending conversion (defensive; the repo is
+# currently all-text, these guard future additions).
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.woff  binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary

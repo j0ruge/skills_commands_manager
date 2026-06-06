@@ -1,19 +1,20 @@
 ---
 name: wsl-windows-onboarding
 metadata:
-  version: 0.1.0
-description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), and safely migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env, excludes rebuildable deps, and validates before any deletion. Encodes the non-obvious gotchas (rtk installs to ~/.local/bin but not on PATH and one global install serves every project, git clone drops .env, /mnt/c is slow, CRLF+filemode make the whole tree look modified, docker-desktop is not your distro). Triggers — wsl, wsl2, ubuntu wsl, install rtk, rtk-ai, move projects to wsl, migrate repos to wsl, /mnt/c slow, .local/bin not in PATH, whole git tree modified after migration, crlf wsl, docker desktop wsl integration."
+  version: 0.2.0
+description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), safely migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env, and optionally set up the shell (zsh). Encodes the non-obvious gotchas (rtk installs to ~/.local/bin but not on PATH and one global install serves every project, git clone drops .env, /mnt/c is slow, CRLF+filemode make the whole tree look modified, docker-desktop is not your distro, ~/.bashrc config does NOT carry to ~/.zshrc so rtk PATH/aliases must be re-added, font/ligatures are configured Windows-side). Triggers — wsl, wsl2, ubuntu wsl, install rtk, rtk-ai, move projects to wsl, migrate repos to wsl, /mnt/c slow, .local/bin not in PATH, whole git tree modified after migration, crlf wsl, docker desktop wsl integration, zsh wsl, oh-my-zsh, default shell wsl, zshrc path, jetbrains mono ligatures, nerd font windows terminal."
 ---
 
 # WSL Windows Onboarding — diagnose WSL · install rtk · migrate projects
 
 This skill takes a Windows developer from "I have a Windows box (probably with Docker)" to "my projects run fast inside WSL2 and rtk is installed." It is built from a real migration and bakes in the traps that cost time the first time around.
 
-It covers three phases that usually run in sequence, but each is independently useful:
+It covers four phases that usually run in sequence, but each is independently useful:
 
 1. **Diagnose / prepare WSL** → `references/wsl-setup.md` + `scripts/wsl-diagnose.sh`
 2. **Install rtk** → `references/rtk-install.md`
 3. **Migrate projects from Windows into WSL** → `references/project-migration.md` + `scripts/migrate-repos.sh`
+4. **(Optional) Set up the shell — zsh + font** → `references/shell-setup.md`
 
 ## When to invoke
 
@@ -73,3 +74,12 @@ git diff --ignore-cr-at-eol --stat   # empty output ⇒ pure line-ending artifac
 ```
 
 If it's empty, the fix is a line-ending normalization (`.gitattributes` with `* text=auto eol=lf` + `git add --renormalize .`), not a panic. `references/project-migration.md` has the full diagnosis and fix, including how to scope a commit cleanly while the tree is in this state.
+
+## Phase 4 — (Optional) Set up the shell (zsh + font)
+
+**Optional.** Only when the user wants it. Full, source-validated recipe in `references/shell-setup.md` (install zsh + oh-my-zsh, set the default shell with `chsh`, passwordless sudo trade-off, the Docker completion warning, and JetBrains Mono Nerd Font + ligatures on Windows Terminal).
+
+The one trap that bites everyone:
+
+- **`~/.bashrc` config does NOT carry to zsh.** zsh reads `~/.zshrc`, never `~/.bashrc`. So the **rtk PATH** (`~/.local/bin`) and any aliases you added during onboarding are invisible in zsh until you re-add them to `~/.zshrc` — and on Ubuntu the system profile won't add `~/.local/bin` for you (its `/etc/zsh/zprofile` is empty), so the explicit `export` is required, not redundant. See the cross-reference in `references/rtk-install.md`.
+- The **font and ligatures live on Windows**, not in WSL — the Windows-side terminal renders text. Install the **JetBrainsMono Nerd Font** on Windows and enable ligatures via Windows Terminal's per-profile `font.features`.

@@ -1,5 +1,23 @@
 # Changelog — `wsl-windows-onboarding`
 
+## [0.2.0] — 2026-06-06
+
+### Added
+
+- **`references/shell-setup.md` (new Phase 4 — optional shell setup)** — install zsh + oh-my-zsh, set the default shell with `chsh`, the passwordless-sudo trade-off, silencing the Docker completion warning, and **JetBrains Mono Nerd Font + ligatures** on Windows Terminal.
+- **SKILL.md** gains a short Phase 4 section; **`references/rtk-install.md`** cross-links the zsh PATH caveat.
+
+### Why / Origin
+
+Captured from this session's shell setup (zsh + oh-my-zsh + passwordless sudo + default-shell change + font), then **validated via deep-research against 2026 sources** so the skill documents only what still holds:
+
+- **`~/.bashrc` does NOT carry to zsh** — the rtk PATH and aliases added during onboarding are invisible in zsh until re-added to `~/.zshrc`. Confirmed (3-0) that on Ubuntu a zsh login shell sources the *empty* `/etc/zsh/zprofile` instead of `/etc/profile`/`/etc/profile.d/*` (Ubuntu bug #1800280), so the explicit `~/.local/bin` export is **required, not redundant** — and a `grep` guard must match an *active* (non-commented) line, since oh-my-zsh's template ships a commented PATH line.
+- **`/etc/wsl.conf` cannot set the login shell** (no such key — Microsoft Learn); `chsh -s` is the correct, reliable mechanism (the "chsh reverts to bash under WSL" folklore was refuted 0-3).
+- **oh-my-zsh still valid** (maintained, commits through mid-2026); Starship noted as the lighter modern prompt.
+- **Docker `_docker` completion symlink** is a confirmed current issue; removing it fixes the `compinit` warning, but it can reappear when Docker Desktop restarts (durable fix: Docker's own `FPATH` completions).
+- **JetBrainsMono Nerd Font** installs via winget `DEVCOM.JetBrainsMonoNerdFont` (verified live, v3.3.0); the patched variant preserves ligatures (v2.1.0+), a Nerd Font is needed for oh-my-zsh glyphs, and Windows Terminal toggles ligatures natively via per-profile `font.features { liga: 1 }`.
+- **Passwordless sudo** (`/etc/sudoers.d` + `NOPASSWD`, validated with `visudo -cf`) is documented conservatively with a security caveat — dedicated 2026 sources did not survive verification, so it is presented as standard guidance, not a fresh citation.
+
 ## [0.1.1] — 2026-06-06
 
 ### Added

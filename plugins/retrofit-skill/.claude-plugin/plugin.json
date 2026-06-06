@@ -2,7 +2,7 @@
   "name": "retrofit-skill",
   "description": "Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.",
   "author": { "name": "Chewiesoft" },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "category": "development",
   "keywords": ["retrofit", "skill-maintenance", "marketplace", "changelog", "semver", "session-lessons", "lean-retrofit", "local-skill", "lean-vs-full"],
   "platforms": ["claude-code", "cursor"],

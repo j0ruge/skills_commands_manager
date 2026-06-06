@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.1] — 2026-06-06
+
+### Adicionado
+
+- **Passo "ANTES DE EDITAR — atualize o repo local"** no fluxo do comando: antes
+  de tocar em arquivos, fazer `git fetch` e trazer a branch alvo para o estado do
+  remoto (fast-forward ou rebase). Inclui o cuidado de, num clone recém-migrado
+  Windows→WSL, limpar o ruído de CRLF/filemode (`git diff --ignore-cr-at-eol`
+  vazio → `core.fileMode=false` + `git checkout -- .`) antes do rebase.
+
+### Motivação
+
+- Nesta sessão (publicação da skill `wsl-windows-onboarding`) o clone local estava
+  **atrás do `origin/main`** — outra origem havia empurrado 4 commits. O `git push`
+  foi **rejeitado** e foi preciso `git fetch` + `git rebase origin/main` com o
+  commit já feito sobre uma base defasada (ainda por cima com a árvore "suja" só
+  por CRLF, o que travava o rebase até um `git checkout -- .`). Sincronizar o repo
+  ANTES de editar elimina esse retrabalho e faz o push final passar de primeira.
+
 ## [0.2.0] — 2026-06-05
 
 ### Adicionado

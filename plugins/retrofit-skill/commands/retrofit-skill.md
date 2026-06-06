@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.2.0
+  version: 0.2.1
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -36,6 +36,33 @@ PARA LOCALIZAR O REPO DO MARKETPLACE (só no modo completo):
 - Confirme o caminho encontrado antes de seguir.
 
 No modo completo a skill alvo fica em `<REPO>/plugins/$ARGUMENTS/`.
+
+## ANTES DE EDITAR — atualize o repo local
+
+Sincronize o repo alvo com o remoto **antes de tocar em qualquer arquivo**. Numa
+sessão real isto evitaria um push rejeitado: o clone local estava atrás do
+`origin/main` (outra máquina/CI havia empurrado commits), então o `git push`
+falhou e exigiu fetch+rebase no meio do caminho — com o commit já feito sobre
+uma base defasada.
+
+No repo onde o commit vai cair (o marketplace no modo completo; o repo da skill
+no modo enxuto):
+
+```bash
+git fetch origin
+git status -sb                      # veja se aparece "behind N"
+# Se a árvore estiver "suja" só por artefatos de migração Windows→WSL
+# (working tree CRLF vs blobs LF; /mnt/c entrega arquivos 0777), confirme que
+# NÃO há mudança real antes de limpar:
+git diff --ignore-cr-at-eol --stat  # vazio = só line-ending, seguro
+git config core.fileMode false      # silencia o ruído de permissão 0777
+git checkout -- .                   # restaura os blobs LF (só se o diff acima for vazio)
+git merge --ff-only origin/<branch> || git rebase origin/<branch>
+```
+
+Só comece a editar depois de estar em dia (fast-forward limpo ou rebase). Assim
+o commit nasce sobre o estado atual do remoto e o push final passa de primeira,
+em vez de rebasear com a edição já feita.
 
 ## Fluxo
 

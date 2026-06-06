@@ -9,6 +9,15 @@
   },
   "plugins": [
     {
+      "name": "wsl-windows-onboarding",
+      "source": "./plugins/wsl-windows-onboarding",
+      "version": "0.1.0",
+      "description": "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), and safely migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem. Built from a real migration and encodes the non-obvious gotchas: Docker users already have WSL2 and the docker-desktop distro is NOT your workspace; rtk is a zero-dependency Rust binary whose installer drops it in ~/.local/bin but does NOT add it to PATH (the #1 'rtk not found' cause), and one global install serves every project; git clone drops gitignored .env so migration uses rsync (keep .git and .env, exclude only rebuildable dirs); /mnt/c is slow and du over it hangs (use df, run rsync in background); validate by diffing file PATHS not counts (a .env inside node_modules/psl is a harmless false positive); copy → validate → delete, with the irreversible delete last and via PowerShell Remove-Item; and after migrating a repo, git may show the WHOLE tree modified with zero untracked files — CRLF/LF + filemode artifacts (autocrlf, 0777 from /mnt/c), diagnosed with `git diff --ignore-cr-at-eol --stat` + `core.fileMode=false`, fixed by renormalization, not panic. Triggers — wsl, wsl2, ubuntu wsl, install rtk, rtk-ai, move projects to wsl, migrate repos to wsl, /mnt/c slow, .local/bin not in PATH, whole git tree modified after migration, crlf wsl, docker desktop wsl integration.",
+      "category": "development",
+      "keywords": ["wsl", "wsl2", "ubuntu", "windows", "rtk", "rtk-ai", "migration", "rsync", "mnt-c-slow", "local-bin-path", "dotenv-preserve", "git-clone-drops-env", "crlf-lf", "autocrlf", "filemode-0777", "whole-tree-modified", "copy-validate-delete", "docker-desktop-distro", "wsl-integration", "onboarding"],
+      "platforms": ["claude-code", "cursor"]
+    },
+    {
       "name": "cicd",
       "source": "./plugins/cicd",
       "version": "2.12.0",

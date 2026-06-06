@@ -1,5 +1,11 @@
 # Changelog — `wsl-windows-onboarding`
 
+## [0.2.1] — 2026-06-06
+
+### Changed
+
+- **Optimized the skill description for triggering.** Tightened from ~1,100 chars (which had ballooned across v0.1.0→v0.2.0 and risked silent truncation in the `/skills` list, hurting triggering) to ~540 chars: front-loaded the core capability, kept the distinctive traps, and replaced the long keyword dump with a compact, phrase-style `Triggers —` list. Mirrored across `SKILL.md`, `plugin.json`, and `marketplace.json`. The detailed prose stays in the README row (docs, not the trigger surface).
+
 ## [0.2.0] — 2026-06-06
 
 ### Added

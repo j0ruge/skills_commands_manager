@@ -1,8 +1,8 @@
 ---
 name: wsl-windows-onboarding
 metadata:
-  version: 0.2.0
-description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), safely migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env, and optionally set up the shell (zsh). Encodes the non-obvious gotchas (rtk installs to ~/.local/bin but not on PATH and one global install serves every project, git clone drops .env, /mnt/c is slow, CRLF+filemode make the whole tree look modified, docker-desktop is not your distro, ~/.bashrc config does NOT carry to ~/.zshrc so rtk PATH/aliases must be re-added, font/ligatures are configured Windows-side). Triggers — wsl, wsl2, ubuntu wsl, install rtk, rtk-ai, move projects to wsl, migrate repos to wsl, /mnt/c slow, .local/bin not in PATH, whole git tree modified after migration, crlf wsl, docker desktop wsl integration, zsh wsl, oh-my-zsh, default shell wsl, zshrc path, jetbrains mono ligatures, nerd font windows terminal."
+  version: 0.2.1
+description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures."
 ---
 
 # WSL Windows Onboarding — diagnose WSL · install rtk · migrate projects

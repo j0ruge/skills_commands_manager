@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.2.1
+  version: 0.2.2
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -100,5 +100,18 @@ em vez de rebasear com a edição já feita.
      Co-Authored-By do Claude). Push só se o usuário pedir.
    - NÃO toque em `marketplace.json`, no README do marketplace, nem em versões
      do marketplace.
+
+## Mantenha a descrição ENXUTA (triggering)
+
+A `description` (frontmatter do SKILL.md + `plugin.json` + `marketplace.json`) é a **superfície de triggering** — é só por ela (e pelo nome) que o Claude decide invocar a skill. Um retrofit não pode deixá-la inchar:
+
+- **Não vá só anexando** a lição de cada versão na descrição — é assim que ela vira um paredão de 1000+ chars. Detalhe vai para `references/**` e para a linha do README; a descrição fica curta.
+- **Alvo ~350–500 chars** (teto ~700 só se a skill for genuinamente complexa). Descrições longas demais diluem o sinal e podem ser **silenciosamente cortadas** na lista `/skills`, o que PIORA o triggering.
+- Se o retrofit empurrar a descrição além do teto, **enxugue em vez de só somar**: comece com UMA frase do que a skill faz, mantenha 1–2 diferenciais distintivos, e termine com um `Triggers —` compacto (≤8 frases/keywords, não um dump de palavras).
+- **Espelhe a MESMA descrição enxuta** nos três lugares (SKILL.md, `plugin.json`, `marketplace.json`).
+
+## Editando `marketplace.json` com segurança
+
+Ele lista TODOS os plugins, cada um com seu próprio `"description"`/`"version"`. Ao editar programaticamente, **escope ao bloco do plugin alvo** — um match ingênuo em `"description":` (ou `sed` global) atinge as descrições de todos os plugins e as sobrescreve. Localize o bloco pelo `"name": "$ARGUMENTS"` e só então troque `version`/`description` dentro dele; depois confirme que as demais entradas ficaram intactas (ex.: contar descrições distintas) e rode `python -m json.tool` antes de commitar.
 
 Não invente lições pra justificar uma mudança.

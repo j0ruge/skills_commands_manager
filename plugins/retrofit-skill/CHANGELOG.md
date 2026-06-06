@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.2] — 2026-06-06
+
+### Adicionado
+
+- **Seção "Mantenha a descrição ENXUTA (triggering)"** — orienta o retrofit a não deixar a `description` (superfície de triggering) inchar: não anexar a lição de cada versão, alvo ~350–500 chars, enxugar em vez de só somar (uma frase do que faz + 1–2 diferenciais + `Triggers —` compacto ≤8 itens), espelhada nos três lugares (SKILL.md, plugin.json, marketplace.json); detalhe vai para references/README.
+- **Seção "Editando `marketplace.json` com segurança"** — ao editar programaticamente, escopar ao bloco do plugin alvo (`"name": "$ARGUMENTS"`); um match ingênuo em `"description":` ou `sed` global sobrescreve as descrições de TODOS os plugins.
+
+### Motivação
+
+- Nesta sessão, a descrição da skill `wsl-windows-onboarding` inchou para ~1.100 chars ao longo de v0.1.0→v0.2.0 (cada retrofit anexando) e precisou ser enxugada para ~720 — exatamente o anti-padrão que esta diretriz previne. E uma edição programática do `marketplace.json` por prefixo `"description":` chegou a sobrescrever as 14 outras descrições (revertida do git) — daí a regra de escopar ao bloco do alvo. Meta-retrofit: o `retrofit-skill` aplicado a si mesmo.
+
 ## [0.2.1] — 2026-06-06
 
 ### Adicionado

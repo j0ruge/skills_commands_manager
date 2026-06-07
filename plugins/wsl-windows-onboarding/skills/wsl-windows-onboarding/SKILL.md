@@ -1,8 +1,8 @@
 ---
 name: wsl-windows-onboarding
 metadata:
-  version: 0.3.0
-description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures."
+  version: 0.4.0
+description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures, migrate repos with C: nearly full, one-repo-at-a-time copy-validate-delete, resume an interrupted WSL migration, Remove-Item nul Incorrect function."
 ---
 
 # WSL Windows Onboarding — diagnose WSL · install rtk · migrate projects
@@ -64,8 +64,10 @@ The migration, in short:
 
 1. **Copy** `C:\...\repos` → `~/repos` with rsync, **keeping `.git` and `.env`**, excluding only rebuildable dirs (`node_modules`, `.venv`/`venv`, build outputs, caches). Run it in the background — over `/mnt/c` it is slow.
 2. **Validate** by *diffing file paths*, not just counts: top-level folders match, `.git` repo count matches, every real `.env` is present. Mind the false positive: `.env` files inside `node_modules` (e.g. the `psl` npm package) will appear "missing" — that's correct and harmless.
-3. **Delete** the Windows source only after validation, and prefer PowerShell's native `Remove-Item` (faster than `rm` over `/mnt/c`).
+3. **Delete** the Windows source only after validation, and prefer PowerShell's native `Remove-Item` (faster than `rm` over `/mnt/c`). If it fails with `Cannot remove item …\nul: Incorrect function`, the repo has a **reserved-name** file (`nul`/`con`/`aux`/…) a Linux checkout can create — delete via the `\\?\` extended-length path prefix. See `references/project-migration.md`.
 4. **Clean up:** fix shell aliases that pointed at `/mnt/c`, and reinstall dependencies per stack (`npm install`, `pip install -r`, `dotnet restore`, `mix deps.get`).
+
+**Tight disk?** When `C:` is nearly full (the WSL `ext4.vhdx` lives on `C:` and grows as you copy, so you transiently need room for both copies), don't copy the whole tree first. Migrate **one repo at a time** — copy → validate that single repo with a `rsync -an` dry-run (0 file transfers = synced) → delete its Windows source to free space → next. This caps the peak to a single repo and resumes a half-finished migration cleanly. Full loop in `references/project-migration.md`.
 
 ### Expect a "whole tree modified" surprise after migrating a git repo
 

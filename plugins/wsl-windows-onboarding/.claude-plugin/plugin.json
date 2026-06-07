@@ -1,10 +1,10 @@
 {
   "name": "wsl-windows-onboarding",
-    "description": "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures.",
+    "description": "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures, migrate repos with C: nearly full, one-repo-at-a-time copy-validate-delete, resume an interrupted WSL migration, Remove-Item nul Incorrect function.",
   "author": {
     "name": "Chewiesoft"
   },
-    "version": "0.3.0",
+    "version": "0.4.0",
   "category": "development",
   "keywords": [
     "wsl",
@@ -23,6 +23,14 @@
     "autocrlf",
     "whole-tree-modified",
     "copy-validate-delete",
+    "tight-disk-migration",
+    "per-repo-delete",
+    "reserved-name-nul",
+    "remove-item-incorrect-function",
+    "extended-length-path",
+    "vhdx-on-c-grows",
+    "rsync-itemize-validate",
+    "resume-interrupted-migration",
     "docker-desktop-distro",
     "wsl-integration",
     "onboarding",

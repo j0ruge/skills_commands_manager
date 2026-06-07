@@ -74,7 +74,7 @@ diff <(cd "$SRC" && find . -name '.env*' -type f | sort) \
      <(cd "$DST" && find . -name '.env*' -type f | sort) | grep '^<'
 ```
 
-**The `.env` false positive.** Step 3 may report a couple of "missing" `.env` files — check their paths. If they live **inside an excluded dir** (classically `node_modules/psl/.env`, shipped by the `psl` npm package), they are dependency internals, not your config, and are recreated on `npm install`. That is expected and harmless. Only worry about `.env` files that are real project config. Diff by *path* so you can tell the difference — a raw count comparison can't.
+**The `.env` false positive.** Step 3 may report a couple of "missing" `.env` files — check their paths. If they live **inside an excluded dir** — classically `node_modules/psl/.env` (shipped by the `psl` npm package), or a packaged example like `.venv/.../langsmith/cli/.env.example` inside an excluded `.venv`/`venv` — they are dependency internals, not your config, and are recreated on `npm install` / `pip install`. That is expected and harmless. Only worry about `.env` files that are real project config. Diff by *path* so you can tell the difference — a raw count comparison can't. (A clean signal: if a per-repo `rsync -an` dry-run reports **0 file transfers** but your `.env` diff still flags one, that flagged file is necessarily inside an excluded dir — rsync would have copied it otherwise.)
 
 ## Delete the Windows source (only after validation, and confirm first)
 
@@ -85,6 +85,73 @@ Remove-Item -LiteralPath "C:\Users\<you>\source\repos" -Recurse -Force
 ```
 
 If the user chose "copy, keep Windows as backup," skip this entirely and let them delete later once they've confirmed everything runs in WSL.
+
+### The reserved-name trap: a `nul` file makes `Remove-Item` fail
+
+A repo created or edited from the Linux side can contain a file whose name is a **Windows reserved device name** — `nul`, `con`, `prn`, `aux`, `com1`–`com9`, `lpt1`–`lpt9` (e.g. a `nul` left behind by a `> nul` redirect written under a different convention). Linux has no such restriction, so the file exists on disk; but Win32 path parsing treats `nul` as the null device, so `Remove-Item`/`del`/`rd` can't address it and fail with:
+
+```
+Remove-Item : Cannot remove item C:\...\repo\nul: Incorrect function.
+```
+
+Worse, with `-ErrorAction Stop` that error **aborts the whole directory delete**, so the source is *kept* even though everything copied fine — easy to misread as "the migration didn't work." The validated WSL copy is intact; only the Windows-side delete failed.
+
+**Fix: the `\\?\` extended-length path prefix**, which bypasses Win32 name parsing (including reserved-name handling), so the `nul` inside is treated as an ordinary file:
+
+```powershell
+Remove-Item -LiteralPath "\\?\C:\Users\<you>\source\repos\<repo>" -Recurse -Force
+# fallback if Remove-Item still balks:
+cmd /c rd /s /q "\\?\C:\Users\<you>\source\repos\<repo>"
+```
+
+The same `\\?\` prefix also clears other Windows-illegal names a Linux checkout can produce (trailing-dot/space names, paths over `MAX_PATH`). If a normal delete fails with "Incorrect function" or "could not find," reach for `\\?\` before assuming the directory is in use.
+
+## Tight disk: migrate one repo at a time (copy → validate → delete per repo)
+
+The default flow copies the **whole** `repos` folder, validates, then deletes the source — fine when the drive has room to hold both copies at once. But the WSL `ext4.vhdx` **lives on `C:` by default** (`%LOCALAPPDATA%\Packages\…Ubuntu…\LocalState\ext4.vhdx`) and **grows on demand** as you write into the Linux filesystem. So copying into WSL *consumes `C:`* while the Windows source still occupies `C:` — transiently you need space for both. On a tight `C:`, copying everything before deleting anything can fill the disk (which is often exactly the half-finished state you're called in to rescue).
+
+Two facts that drive the math:
+
+- **`df -h ~` shows the vhdx's *virtual max* (often ~1 TB), not real usage.** Don't trust that "Avail" — check `C:` free on the Windows side (`Get-PSDrive C`). The real budget is `C:` free.
+- Because the copy **excludes** `node_modules`/venvs/build dirs, the bytes written into WSL are *smaller* than the bytes freed when you delete the full Windows source. So per repo, the net effect on `C:` is **downward** — the only risk is the transient peak, which the one-at-a-time loop caps at a single repo.
+
+**The loop** — copy one repo, validate it in isolation, delete its Windows source, then move on:
+
+```bash
+SRC=/mnt/c/Users/<you>/source/repos
+DST=~/repos
+EXCLUDES=(--exclude=node_modules/ --exclude=.venv/ --exclude=venv/ \
+  --exclude=__pycache__/ --exclude=.next/ --exclude=dist/ --exclude=build/ \
+  --exclude=target/ --exclude=bin/ --exclude=obj/ --exclude=.gradle/)
+
+for name in "$SRC"/*/; do
+  repo=$(basename "$name")
+  mkdir -p "$DST/$repo"
+  rsync -a "${EXCLUDES[@]}" "$SRC/$repo/" "$DST/$repo/"
+  # validate THIS repo: 0 real file transfers still pending == fully in sync
+  pending=$(rsync -an --itemize-changes "${EXCLUDES[@]}" "$SRC/$repo/" "$DST/$repo/" \
+            | grep -cE '^[<>]f')
+  sg=$(find "$SRC/$repo" -maxdepth 3 -type d -name .git | wc -l)
+  dg=$(find "$DST/$repo" -maxdepth 3 -type d -name .git | wc -l)
+  if [ "$pending" -eq 0 ] && [ "$sg" = "$dg" ]; then
+    echo "CLEAN $repo — safe to delete Windows source"
+    # delete from PowerShell (native, fast); use \\?\ if it has reserved-name files
+    powershell.exe -NoProfile -Command \
+      "Remove-Item -LiteralPath '\\?\\C:\\Users\\<you>\\source\\repos\\$repo' -Recurse -Force"
+  else
+    echo "DIRTY $repo (pending=$pending git=$sg/$dg) — KEEP, investigate"
+  fi
+done
+```
+
+Why this shape:
+
+- **The per-repo `rsync -an` dry-run is the gate.** Counting `^[<>]f` itemize lines (file transfers, ignoring dir/permission noise) gives an exact "is this repo fully copied?" answer — far more reliable than top-level counts, and it's what makes the delete safe to automate. **0 = synced.**
+- **It resumes an interrupted migration for free.** A repo already fully copied makes `rsync` a near-no-op and validates `pending=0` immediately, so re-running is safe and cheap. A repo left half-copied (e.g. an empty placeholder dir from a previous crash) shows `pending>0` and is finished, not skipped.
+- **Never delete on a DIRTY result.** Skip and report it; a non-zero `pending` or a `.git` count mismatch means the copy isn't trustworthy yet.
+- **Order CLEAN/already-synced repos first** so their deletes free `C:` early, giving the slower fresh copies more headroom.
+
+Calling `powershell.exe` from inside the WSL loop keeps copy→validate→delete in one place while still using the **native** Windows delete (much faster than `rm -rf` over `/mnt/c`, especially for big `node_modules`). Keep the human confirmation up front — authorize the loop once, with validation gating every individual delete.
 
 ## Post-migration cleanup
 

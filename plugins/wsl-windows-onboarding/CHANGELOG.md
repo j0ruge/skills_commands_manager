@@ -1,5 +1,21 @@
 # Changelog — `wsl-windows-onboarding`
 
+## [0.4.0] — 2026-06-06
+
+### Added
+
+- **`references/project-migration.md` → "The reserved-name trap: a `nul` file makes `Remove-Item` fail"** — a repo that contains a Windows reserved-device name (`nul`/`con`/`aux`/`com1`–`9`/`lpt1`–`9`), which a Linux checkout can create freely, makes the PowerShell delete of the Windows source fail with `Cannot remove item …\nul: Incorrect function` and (with `-ErrorAction Stop`) **abort the whole directory delete**, leaving the source behind even though the WSL copy validated fine. Fix documented: the **`\\?\` extended-length path prefix** (bypasses Win32 reserved-name parsing); `cmd /c rd /s /q "\\?\…"` fallback. Cross-referenced from `SKILL.md` Phase 3 step 3.
+- **`references/project-migration.md` → "Tight disk: migrate one repo at a time"** (new section) — the per-repo **copy → validate → delete** loop for when `C:` is nearly full. Documents the disk math (the `ext4.vhdx` lives on `C:` and **grows on demand**, so copying into WSL consumes `C:` while the source still occupies it; excludes make the copy smaller than the freed source, so the net is downward and the one-at-a-time loop caps the transient peak at a single repo), the **`df -h ~` shows the vhdx virtual max, not real usage** caveat (check `C:` free on the Windows side), and a runnable bash loop that gates each delete on a per-repo `rsync -an --itemize-changes` dry-run (0 file transfers = synced) and calls native `powershell.exe Remove-Item`. Also resumes a half-finished migration for free.
+- **`SKILL.md`** Phase 3 gains the reserved-name `nul`/`\\?\` note on the delete step and a **"Tight disk?"** pointer to the one-at-a-time loop.
+
+### Why / Origin
+
+Captured from a real session **resuming an interrupted migration on a nearly-full `C:` (36 GB free)** — the user explicitly wanted "copy, confirm, delete one by one to avoid filling the disk," which the existing whole-folder flow didn't cover. Each lesson cost time:
+
+- The automated per-repo delete **silently kept two repos** (`eb-analytics`, `panda-video-downloader`): `Remove-Item` hit a `nul` file and errored `Incorrect function`, aborting those directories while reporting success for everything else. The copies were complete and validated — only the Windows delete failed. `\\?\` cleared it instantly. This is invisible until you hit it, and reads like "the migration broke."
+- **`df -h ~` reported ~950 GB free** while `C:` had only **36.8 GB** — the vhdx's 1 TB *virtual* size, not real headroom. The real budget for "can I duplicate this before deleting?" is `Get-PSDrive C`, not the Linux `df`.
+- A prior crashed run had left **empty placeholder dirs** for the not-yet-copied repos. A per-repo `rsync -an` dry-run (counting `^[<>]f` itemize lines) distinguished "already synced" (0) from "half-done" (>0) exactly, making the resume safe and the delete gate trustworthy where a top-level count couldn't.
+
 ## [0.3.0] — 2026-06-06
 
 ### Added

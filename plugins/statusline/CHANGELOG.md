@@ -2,6 +2,22 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.5.0] - 2026-06-09
+
+### Added
+
+- **Section 10 — 5h usage window** (`rate_limits.five_hour.used_percentage`): shows how much of the 5-hour rolling usage limit is spent, with green/yellow/red thresholds (⏳)
+- **Section 11 — Weekly usage** (`rate_limits.seven_day.used_percentage`): shows the 7-day usage limit consumption (📅)
+- **Section 12 — PR state** (`pr.number` + `pr.review_state`): shows the current branch's PR number with an icon/color per review state — approved ✅ green, changes_requested ✋ red, commented 💬 yellow, other 🔀 cyan
+- **New recommended default** — the wizard now suggests sections `1-5, 10, 11, 12` (was `1-5`), surfacing usage limits and PR state out of the box
+
+### Implementation notes
+
+- **Graceful degradation is mandatory and built in**: `rate_limits.*` is only present for Claude.ai Pro/Max subscribers and only after the first API response; `pr.*` only when the branch has an open PR. The Bash parser emits an empty string for absent fields and each block guards on presence (`[ -n "$var" ]` / `$null -ne`), so missing data yields a silently omitted section — never `0%` or an empty slot. This is what makes the new sections safe defaults.
+- **Field-name gotcha documented**: the weekly window is `rate_limits.seven_day` (NOT `weekly`); the 5h window is `rate_limits.five_hour`
+- PowerShell: added emoji variables for the new sections via `[char]::ConvertFromUtf32()` (consistent with the existing no-inline-emoji rule)
+- Step 9 test JSON now includes `rate_limits` and `pr` so the preview exercises sections 10-12; added guidance to re-run without them to confirm graceful omission
+
 ## [1.4.0] - 2026-04-18
 
 ### Added

@@ -47,10 +47,10 @@
     {
       "name": "statusline",
       "source": "./plugins/statusline",
-      "version": "1.4.0",
-      "description": "Interactive setup for Claude Code status line — customize model info (with optional effortLevel badge), context bar, git branch, cost tracking, and more. Cross-platform: Bash + PowerShell.",
+      "version": "1.5.0",
+      "description": "Interactive setup for Claude Code status line — model (with optional effortLevel badge), context bar, git branch/PR state, cost, and 5h/weekly usage limits. Cross-platform: Bash + PowerShell.",
       "category": "customization",
-      "keywords": ["statusline", "status-bar", "footer", "customization", "ui", "effort-level"],
+      "keywords": ["statusline", "status-bar", "footer", "customization", "ui", "effort-level", "rate-limit", "pull-request"],
       "platforms": ["claude-code"]
     },
     {

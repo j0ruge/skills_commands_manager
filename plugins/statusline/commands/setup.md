@@ -1,7 +1,7 @@
 ---
-description: Interactive wizard to configure Claude Code status line — sections, colors, emojis, and separator. Cross-platform (Bash + PowerShell).
+description: Interactive wizard to configure Claude Code status line — model, context bar, git branch/PR, cost, and 5h/weekly usage limits. Cross-platform (Bash + PowerShell). Triggers — statusline, status bar, footer, rate limit, usage window, PR state.
 metadata:
-  version: 1.4.0
+  version: 1.5.0
 ---
 
 ## Status Line Setup
@@ -63,7 +63,7 @@ If any prerequisite fails, abort and inform the user how to resolve it.
 ### Step 3 — Section selection
 
 Present the table of available sections and ask the user which ones to activate.
-By default, suggest sections 1-5 (model, context bar, git branch, folder, cost).
+**By default, suggest the recommended set: sections 1-5, 10, 11, 12** (model, context bar, git branch, folder, cost, 5h usage window, weekly usage, PR state). Sections 10-12 add the most actionable runtime signals — how much of the rolling usage limits is spent and the review state of the current branch's PR — and degrade gracefully when their data is absent (see notes below), so they are safe to enable by default.
 
 | # | Section | JSON Fields | Emoji | Default Color |
 |---|---------|------------|-------|---------------|
@@ -76,8 +76,15 @@ By default, suggest sections 1-5 (model, context bar, git branch, folder, cost).
 | 7 | Lines changed | `cost.total_lines_added`, `.total_lines_removed` | 📝 | Green/Red |
 | 8 | Token counts | `context_window.total_input_tokens`, `.total_output_tokens` | 🔢 | White |
 | 9 | Vim mode | `vim.mode` | ⌨️ | Cyan |
+| 10 | 5h usage window | `rate_limits.five_hour.used_percentage` | ⏳ | Dynamic (green < 50%, yellow < 80%, red >= 80%) |
+| 11 | Weekly usage | `rate_limits.seven_day.used_percentage` | 📅 | Dynamic (green < 50%, yellow < 80%, red >= 80%) |
+| 12 | PR state | `pr.number`, `pr.review_state` | 🔀/✅/✋/💬 | Dynamic (by review state) |
 
-Ask: "Which sections do you want to activate? (e.g.: 1,2,3,4,5 or 'all' for all)"
+> **Note (sections 10-12 are conditional):** `rate_limits.*` is only present for Claude.ai **Pro/Max** subscribers and only after the first API response of the session; `pr.*` is only present when the current branch has an associated PR. The Bash/PowerShell blocks for these sections render **only when the field exists** — when absent, the section is silently omitted, never showing `0%` or an empty slot. This is why they are safe defaults: users without the data simply don't see them.
+>
+> **Field naming gotcha:** the weekly window is `rate_limits.seven_day` (NOT `weekly`). The 5-hour window is `rate_limits.five_hour`.
+
+Ask: "Which sections do you want to activate? (e.g.: 1,2,3,4,5,10,11,12 or 'all' for all)"
 
 ### Step 4 — Visual preferences
 
@@ -146,6 +153,10 @@ co = d.get('cost', {})
 md = d.get('model', {})
 cu = cw.get('current_usage', {})
 vm = d.get('vim', {})
+rl = d.get('rate_limits', {}) or {}
+fh = rl.get('five_hour', {}) or {}
+sd = rl.get('seven_day', {}) or {}
+pr = d.get('pr', {}) or {}
 
 cwd = ws.get('current_dir') or ws.get('project_dir') or d.get('cwd', '.')
 # Normalize Windows path for Git Bash: C:\... → /c/...
@@ -164,6 +175,17 @@ print(f'lines_removed={co.get(\"total_lines_removed\", 0) or 0}')
 print(f'input_tokens={cw.get(\"total_input_tokens\", 0) or 0}')
 print(f'output_tokens={cw.get(\"total_output_tokens\", 0) or 0}')
 print(f'vim_mode=\"{vm.get(\"mode\", \"\")}\"')
+
+# Rate limits (Pro/Max only, present after first API response) — empty string when absent
+fh_pct = fh.get('used_percentage')
+sd_pct = sd.get('used_percentage')
+print(f'fh_pct={\"\" if fh_pct is None else math.floor(fh_pct)}')
+print(f'sd_pct={\"\" if sd_pct is None else math.floor(sd_pct)}')
+
+# PR state (present only when the branch has an associated PR) — empty when absent
+pr_num = pr.get('number')
+print(f'pr_num={\"\" if pr_num is None else int(pr_num)}')
+print(f'pr_state=\"{pr.get(\"review_state\", \"\") or \"\"}\"')
 " <<< "$input")"
 
 # Detect Windows and use ASCII-safe progress bar characters
@@ -222,6 +244,12 @@ $eTimer = [char]::ConvertFromUtf32(0x23F1)     # Section 6 - Duration
 $ePen = [char]::ConvertFromUtf32(0x1F4DD)      # Section 7 - Lines changed
 $eNumbers = [char]::ConvertFromUtf32(0x1F522)  # Section 8 - Token counts
 $eKeyboard = [char]::ConvertFromUtf32(0x2328)  # Section 9 - Vim mode
+$eHourglass = [char]::ConvertFromUtf32(0x23F3) # Section 10 - 5h usage window
+$eCalendar = [char]::ConvertFromUtf32(0x1F4C5) # Section 11 - Weekly usage
+$ePr = [char]::ConvertFromUtf32(0x1F500)       # Section 12 - PR (default icon)
+$ePrOk = [char]::ConvertFromUtf32(0x2705)      # Section 12 - PR approved
+$ePrBlock = [char]::ConvertFromUtf32(0x270B)   # Section 12 - PR changes_requested
+$ePrComment = [char]::ConvertFromUtf32(0x1F4AC)# Section 12 - PR commented
 ```
 
 > **IMPORTANT (Windows):** Never place emoji characters directly inside PowerShell strings.
@@ -438,6 +466,87 @@ if ($json.vim -and $json.vim.mode) {
 }
 ```
 
+**Section 10 — 5h usage window (rate limit):**
+
+Renders only when `rate_limits.five_hour.used_percentage` is present (Pro/Max, after the first API response). Color uses the same green/yellow/red thresholds as the context bar.
+
+Bash:
+```bash
+# $fh_pct is set by the Python JSON parser ("" when the field is absent)
+if [ -n "$fh_pct" ]; then
+  if [ "$fh_pct" -lt 50 ]; then FH_COLOR="$GREEN"
+  elif [ "$fh_pct" -lt 80 ]; then FH_COLOR="$YELLOW"
+  else FH_COLOR="$RED"; fi
+  parts+=("⏳ 5h ${FH_COLOR}${fh_pct}%${RST}")
+fi
+```
+
+PowerShell:
+```powershell
+$fhPct = $json.rate_limits.five_hour.used_percentage
+if ($null -ne $fhPct) {
+  $fhPct = [math]::Floor($fhPct)
+  if ($fhPct -lt 50) { $fhColor = $GREEN } elseif ($fhPct -lt 80) { $fhColor = $YELLOW } else { $fhColor = $RED }
+  $parts += "$eHourglass 5h $fhColor$fhPct%$RST"
+}
+```
+
+**Section 11 — Weekly usage (rate limit):**
+
+Renders only when `rate_limits.seven_day.used_percentage` is present. Note the field is `seven_day`, not `weekly`.
+
+Bash:
+```bash
+# $sd_pct is set by the Python JSON parser ("" when the field is absent)
+if [ -n "$sd_pct" ]; then
+  if [ "$sd_pct" -lt 50 ]; then SD_COLOR="$GREEN"
+  elif [ "$sd_pct" -lt 80 ]; then SD_COLOR="$YELLOW"
+  else SD_COLOR="$RED"; fi
+  parts+=("📅 semana ${SD_COLOR}${sd_pct}%${RST}")
+fi
+```
+
+PowerShell:
+```powershell
+$sdPct = $json.rate_limits.seven_day.used_percentage
+if ($null -ne $sdPct) {
+  $sdPct = [math]::Floor($sdPct)
+  if ($sdPct -lt 50) { $sdColor = $GREEN } elseif ($sdPct -lt 80) { $sdColor = $YELLOW } else { $sdColor = $RED }
+  $parts += "$eCalendar semana $sdColor$sdPct%$RST"
+}
+```
+
+**Section 12 — PR state:**
+
+Renders only when the current branch has an associated PR (`pr.number` present). Icon and color follow `pr.review_state`.
+
+Bash:
+```bash
+# $pr_num and $pr_state are set by the Python JSON parser ("" when absent)
+if [ -n "$pr_num" ]; then
+  case "$pr_state" in
+    approved)          PR_COLOR="$GREEN";  PR_ICON="✅" ;;
+    changes_requested) PR_COLOR="$RED";    PR_ICON="✋" ;;
+    commented)         PR_COLOR="$YELLOW"; PR_ICON="💬" ;;
+    *)                 PR_COLOR="$CYAN";   PR_ICON="🔀" ;;
+  esac
+  parts+=("${PR_ICON} ${PR_COLOR}#${pr_num}${RST}")
+fi
+```
+
+PowerShell:
+```powershell
+if ($json.pr -and $json.pr.number) {
+  switch ($json.pr.review_state) {
+    "approved"          { $prColor = $GREEN;  $prIcon = $ePrOk }
+    "changes_requested" { $prColor = $RED;    $prIcon = $ePrBlock }
+    "commented"         { $prColor = $YELLOW; $prIcon = $ePrComment }
+    default             { $prColor = $CYAN;   $prIcon = $ePr }
+  }
+  $parts += "$prIcon $prColor#$($json.pr.number)$RST"
+}
+```
+
 #### Script footer — join parts with the separator
 
 **Bash:**
@@ -539,11 +648,16 @@ Run the generated script with a sample JSON to show the result to the user:
     "total_duration_ms": 120000,
     "total_lines_added": 30,
     "total_lines_removed": 5
-  }
+  },
+  "rate_limits": {
+    "five_hour": { "used_percentage": 23, "resets_at": 1738425600 },
+    "seven_day": { "used_percentage": 81, "resets_at": 1738857600 }
+  },
+  "pr": { "number": 128, "url": "https://github.com/owner/repo/pull/128", "review_state": "approved" }
 }
 ```
 
-Replace `{CURRENT_PROJECT_DIR}` with the user's current working directory.
+Replace `{CURRENT_PROJECT_DIR}` with the user's current working directory. The `rate_limits` and `pr` blocks are included so the preview exercises sections 10-12; in a real session they appear only for Pro/Max subscribers and branches with an open PR, respectively. To preview the graceful-omission behavior, run the script a second time with a JSON that omits both blocks and confirm those sections disappear.
 
 **Linux/macOS:**
 ```bash
@@ -573,6 +687,7 @@ If there is an error, diagnose and fix the script.
 - To reconfigure, simply run `/statusline:setup` again
 - To disable, remove the `statusLine` block from `settings.json`
 - The script should execute quickly (< 100ms) to avoid impacting the experience
+- **Sections 10-12 are conditional**: the 5h/weekly usage sections (`rate_limits.*`) appear only for Claude.ai Pro/Max subscribers and only after the first API response of the session; the PR section (`pr.*`) appears only when the current branch has an associated PR. Their blocks guard on field presence and are silently omitted otherwise — so they are safe to keep in the default set even for users who never see them.
 
 ### Windows Troubleshooting
 

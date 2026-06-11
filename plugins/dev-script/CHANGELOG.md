@@ -1,5 +1,33 @@
 # Changelog — `dev-script`
 
+## [0.5.0] — 2026-06-10
+
+Lessons from another session against the LouvorFlow monorepo (the same project that drove v0.4.0), this time on a **Windows→WSL checkout** where `./dev.sh` failed three different ways in sequence — each masquerading as a project/Prisma bug rather than the environment-drift trap it actually was. None of the three were mentioned by the v0.4.0 skill.
+
+### Added
+
+- **`references/pitfalls.md` §P18 — CRLF `.env` reads.** A `.env` saved with Windows CRLF line endings makes `grep -E "^KEY=" .env | cut -d'=' -f2` return values with a trailing `\r`; `docker exec "louvorflow_db\r" pg_isready` then fails `No such container` on all 30 healthcheck attempts while every log line *looks* correct (the `\r` is invisible). `docker compose --env-file` / dotenv tolerate CRLF, so only the shell-side reads break — that asymmetry (compose starts the container, the script's own healthcheck can't see it) is the tell. Includes detection (`cat -A`, `file`, `printf '%q'`) and fix.
+- **`references/pitfalls.md` §P19 — `node_modules` built on another platform.** Vite/swc crash `Failed to load native binding` (esbuild: `invalid ELF header`; also sharp/bcrypt/better-sqlite3) when the tree was installed under Windows and run under WSL Linux — the platform-optional binary (`@swc/core-linux-x64-gnu`) is absent (`node_modules/@swc/` has `core/` but no `core-linux-*` sibling). Fix: re-install on the target OS; cheap launcher pre-flight warns when `@swc/core` has no `core-*` sibling.
+- **`references/pitfalls.md` §P20 — `yarn` name collision (Debian `cmdtest`).** Corepack isn't enabled by default → no `yarn` on PATH → users `apt install yarn` → get `cmdtest`'s unrelated `yarn` (`Parsing scenario file …` / `Is a directory`; `--version` → `0.32+git`; `dpkg -S /usr/bin/yarn` → `cmdtest`). Fix: `corepack enable` drops the real shim into the Node bin dir, which precedes `/usr/bin` on PATH and shadows the impostor — no sudo, no package removal.
+- **`references/bash-patterns.md` §"Reading values out of `.env` (CRLF-safe)"** — `read_env` helper (`grep | head -1 | cut -d'=' -f2- | tr -d '\r'`): strips `\r`, keeps `=` inside values, ignores a duplicated key; plus the `set -a; . <(tr -d '\r' < .env); set +a` bulk-source variant with the "sourcing executes the file" caveat.
+- **`references/bash-patterns.md` §"Resolve the package manager (Corepack-aware)"** — `detect_pm` (from lockfile) + `ensure_pm` (falls back to `corepack <pm>` when the binary is missing; rejects the `cmdtest` `yarn` by checking `yarn --version` is a semver). Recommends driving the whole script via `$PM` rather than a literal `yarn`.
+- **`references/bash-patterns.md` §"Trap-based cleanup"** gained a **"Don't mask the exit code"** note: an `EXIT` trap that ends with `exit 0` overwrites a failing status, so a launcher that aborted on a failed healthcheck reports *success* to CI / `$?` / background-task exit codes — masking the failure right when it matters. Capture `local code=$?` first; never write a literal `exit 0` in an `EXIT` trap. (LouvorFlow's cleanup ended with `exit 0`, which made the failed cold-start report exit 0 and nearly masked the healthcheck failure.)
+
+### Changed
+
+- **`SKILL.md`** — Phase 1 step 4 now says to detect the package manager and resolve it Corepack-aware (§P20); step 8 says to read `.env` values through a CRLF-stripping helper (§P18). Three new bullets in "Pitfalls to encode in every script" (CRLF reads, cross-platform native bindings, yarn/cmdtest collision). Description gained a "Windows↔WSL migration guards" clause and triggers `CRLF .env`, `Failed to load native binding`, `yarn cmdtest collision`.
+- **Version 0.4.0 → 0.5.0** across `SKILL.md` metadata, `.claude-plugin/plugin.json`, and `marketplace.json`. **Keywords** gained `crlf`, `line-endings`, `native-binding`, `corepack`, `cmdtest`.
+
+### Not changed / out of scope
+
+- **`assets/dev.sh.tmpl` / `assets/dev.ps1.tmpl`** — not modified. Same policy as v0.3.0/v0.4.0: the gotchas live in `references/` as copy-pasteable snippets the skill weaves in during generation, keeping the template lean. The `read_env` / `ensure_pm` helpers are emitted only when Phase 1 detects a `.env` the script reads from, or a yarn/pnpm stack — not unconditionally.
+- **`references/powershell-patterns.md`** — PowerShell counterparts deferred to a future Windows session (matching v0.4.0's deferral). `Get-Content` reads a `.env` line-by-line and drops the CR on its own, so P18 is largely bash-specific; the native-binding (P19) and Corepack (P20) traps do have Windows analogues and will land when a PS session surfaces them.
+- Other references (`tls-https-recipe.md`, `idempotency-and-state.md`, `stack-detection.md`) — unchanged; these lessons live in the env-handling and process-management layers.
+
+### Verification
+
+- Reproduced against the LouvorFlow `dev.sh` on a Windows→WSL checkout: **(1)** CRLF `infra/postgres/.env` made the healthcheck fail all 30 attempts (`No such container: louvorflow_db`) while `docker exec louvorflow_db pg_isready -U admin` by hand returned `accepting connections`; `tr -d '\r'` on the reads fixed it (Postgres ready on attempt 1). **(2)** `@swc/core` crashed Vite with `Failed to load native binding` — `node_modules/@swc/` had `core/` but no `core-linux-x64-gnu`; `yarn install` on WSL pulled the linux binaries and Vite came up. **(3)** `yarn: command not found` → `apt install yarn` → `Parsing scenario file prisma` (`dpkg -S /usr/bin/yarn` = `cmdtest`, `--version` `0.32+git`); `corepack enable` made `yarn` resolve to the real `1.22.22` shim (shadowing `/usr/bin/yarn`) and the full stack booted clean — backend on :3000, Vite on :8080, both returning HTTP 200.
+
 ## [0.4.0] — 2026-05-14
 
 Lessons from a session against the LouvorFlow monorepo where the user's `dev.sh` "hung" on every cold start whenever port 8080 was held by a foreign process. The diagnosis exposed a gap in the v0.3.1 skill: it advocated kill-and-reclaim as the *only* strategy for service ports, with no acknowledgment of the scenario where the port owner is something the script can't (or shouldn't) kill.

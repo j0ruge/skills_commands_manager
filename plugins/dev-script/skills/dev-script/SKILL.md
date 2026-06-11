@@ -1,8 +1,8 @@
 ---
 name: dev-script
 metadata:
-  version: 0.4.0
-description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free port discovery for foreign-owned ports / kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check. Triggers — dev script, single-command dev, local stack, mkcert, kill port, find available port, port discovery, runtime drift, script hangs, strictPort.
+  version: 0.5.0
+description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free port discovery for foreign-owned ports / kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards (CRLF .env reads, cross-platform node_modules). Triggers — dev script, single-command dev, local stack, mkcert, kill port, find available port, port discovery, runtime drift, script hangs, strictPort, CRLF .env, Failed to load native binding, yarn cmdtest collision.
 ---
 
 # dev.script — Local Dev Stack Launcher Generator
@@ -35,11 +35,11 @@ Walk the project tree and identify, in this order:
 1. **Compose files** — `docker-compose.yml`, `infra/docker/*.yml`, `infra/postgres/*.yml`, `compose.*.yml`. Note services, ports, healthcheck blocks, volumes. Compose is the source of truth for what containerized infra exists.
 2. **Monorepo layout** — `package.json` `workspaces`, `pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`. Identify each workspace's role from its own `package.json` (`scripts.dev`, `scripts.start`, declared deps).
 3. **Frontend dev server** — Vite (`vite.config.*`), Next (`next.config.*`), Astro, SvelteKit, Nuxt. Capture the configured `port` and any `host` setting. **Read the config; do not modify it.**
-4. **Backend dev process** — `tsx watch`, `nest start --watch`, `dotnet watch`, `air` (Go), `cargo watch`. Capture port from `.env`/`.env.example` (`PORT=`).
+4. **Backend dev process** — `tsx watch`, `nest start --watch`, `dotnet watch`, `air` (Go), `cargo watch`. Capture port from `.env`/`.env.example` (`PORT=`). Note which **package manager** runs these scripts (`yarn.lock` / `pnpm-lock.yaml` / `package-lock.json` + a `packageManager` field) and resolve it **Corepack-aware** — a bare `yarn`/`pnpm` is often absent (Corepack isn't enabled by default) or shadowed by Debian's `cmdtest` impostor (`pitfalls.md` §P20).
 5. **Database** — Postgres (most common), SQL Server (JRC ERP/EST), MySQL, Mongo. Determine reachability path: docker container vs. external. For external (e.g. SQL Server in another datacenter), the script should ping/probe but not try to start it.
 6. **IdP** — Zitadel, Keycloak, Auth0 (cloud). For self-hosted Zitadel/Keycloak, this is the strongest signal that LAN HTTPS will be needed (PKCE requires secure context).
 7. **Bootstrap scripts** — `scripts/bootstrap-*.ts`, `infra/.../init/`. These run after containers are healthy. Capture them — they typically generate IDs that downstream services depend on.
-8. **`.env` files** — `.env`, `.env.example`, `.env.local`, `packages/*/.env`. List every key the dev script will need to read or patch.
+8. **`.env` files** — `.env`, `.env.example`, `.env.local`, `packages/*/.env`. List every key the dev script will need to read or patch. When the script *reads* a value out of a `.env` (container name, DB user, port) to drive `docker exec` / healthchecks, route it through a CRLF-stripping helper — Windows/WSL `.env` files are commonly CRLF and a trailing `\r` silently breaks `docker exec` / `pg_isready` while every log line looks correct (`pitfalls.md` §P18).
 9. **mkcert / TLS posture** — `command -v mkcert` plus any existing `infra/certs/` folder. If mkcert is installed and the user wants LAN access, that's the recipe.
 10. **Existing dev script** — read `dev.sh` / `dev.ps1` / `Makefile` / `Justfile` / `Taskfile.yml` if present. Improve, don't replace.
 
@@ -152,6 +152,9 @@ These are not exotic edge cases — they are the bugs that bit us in JRC project
 - **Zitadel persists `externalDomain` on first init**. Changing IPs requires `docker compose down -v`. Detect drift via state file; refuse to start with a wrong-domain volume; require an explicit `--reset` flag.
 - **`PUT /oidc_config` returns `400 COMMAND-1m88i "No changes"`** when the bootstrap re-runs with identical config. Wrap the bootstrap step in a guard that catches this and treats it as no-op.
 - **Backend rate limiters are too tight for dev**: a render storm in StrictMode plus React Query refetches blows past 120 req/min easily. Temporarily set `RATE_LIMIT_PER_MINUTE=0` in dev (and document it).
+- **CRLF `.env` on Windows/WSL** silently appends `\r` to every value read with `grep|cut` — `docker exec "$name\r"` fails with `No such container` and the healthcheck times out while every log line *looks* correct. Read `.env` values through a `tr -d '\r'` helper (§P18).
+- **`node_modules` built on another platform** (repo carried Windows↔WSL) makes Vite/swc/esbuild crash with `Failed to load native binding` — the platform-specific optional binary is missing. Re-install inside the target OS; the launcher can warn when `@swc/core` has no `core-*` sibling (§P19).
+- **`yarn` resolves to the wrong binary**: Corepack isn't enabled by default (so there's no `yarn` on `PATH`), and `apt install yarn` installs Debian's `cmdtest` impostor (`Parsing scenario file …`). Resolve the package manager Corepack-aware and validate it's genuine; `corepack enable` shadows the impostor (§P20).
 - **PowerShell ANSI color output** needs `$PSStyle.OutputRendering = 'Ansi'` on PS 7.x or `Enable-VTMode` shim on 5.1. The PowerShell template handles this in its preamble.
 
 ## References — when to read what

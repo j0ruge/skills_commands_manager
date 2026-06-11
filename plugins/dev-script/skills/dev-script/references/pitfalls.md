@@ -275,3 +275,92 @@ The cascade is invisible because each step looks like it "worked": kill returned
 **Fix in the dev script**: don't try to reclaim service ports owned by foreign processes — discover an alternative instead. See `bash-patterns.md` §"Port discovery — find-next-free with peer coordination". The rubric: reclaim is for orphans the script itself spawned (pgrep-matchable to your stack); discovery is for service ports where the owner is unknown. With pre-flight discovery, step 1 above is replaced by "port busy → use 8081 instead", peers are notified via subshell env vars (so the Vite proxy / backend CORS land on the right port), and step 2 never triggers.
 
 **Detecting the trap without fixing it first**: run the launcher under `bash -x` and look for the gap between the last "service started" log line and the `wait` call. If there's no error in between but one of the services never appears in `ss -tlnp`, the cascade is in flight. Also: if your launcher prints a summary banner with port numbers, but `ss -tlnp` shows one of those ports bound by a PID that isn't a child of the launcher, the corresponding service silently lost the bind race.
+
+## P18 — CRLF line endings in `.env` silently corrupt values read with `grep | cut`
+
+**Symptom**: The Postgres healthcheck loops the full 30 attempts and aborts with "PostgreSQL did not become ready", even though `docker exec <container> pg_isready -U <user>` run by hand returns `accepting connections` and `docker ps` shows the container `Up`. Sometimes the smoking gun is `docker exec` itself: `Error: No such container: louvorflow_db` for a container that is demonstrably running.
+
+**Cause**: The launcher reads config out of `.env` with `grep -E "^KEY=" .env | cut -d'=' -f2`. On Windows/WSL the `.env` was saved with **CRLF** line endings — extremely common: the file was created or edited by a Windows editor, or the repo was cloned with `core.autocrlf=true`. `cut` keeps everything up to the `\n`, so the value carries a trailing `\r`: `container_name` becomes `louvorflow_db\r`, `db_user` becomes `admin\r`. Then `docker exec "louvorflow_db\r" pg_isready` fails with `No such container` on **every** attempt. The `\r` is invisible in normal terminal output (it just returns the cursor to column 0), so the values *look* perfectly correct in every log line — that invisibility is the single most time-consuming part of the diagnosis.
+
+**Detection**:
+
+```bash
+cat -A "$ENV_FILE" | head        # CRLF shows as ^M$ at each line end; LF shows as $
+file "$ENV_FILE"                 # → "ASCII text, with CRLF line terminators"
+printf '[%q]\n' "$container_name"  # → [$'louvorflow_db\r']  (the \r is now visible)
+```
+
+**Fix in the dev script**: strip `\r` on every value read out of a `.env` (or any file that might be CRLF). See `bash-patterns.md` §"Reading values out of `.env` (CRLF-safe)" for the `read_env` helper; the one-line form is `... | cut -d'=' -f2- | tr -d '\r'`.
+
+**Why it stays hidden**: `docker compose --env-file .env` and most `dotenv` libraries tolerate CRLF, so the container starts fine and the app boots — only the **shell-side** `grep|cut` reads break. That asymmetry (compose works, the script's own healthcheck doesn't) is itself a tell. If you own the repo, also normalize defensively (`*.env text eol=lf` in `.gitattributes`, plus `sed -i 's/\r$//' .env`), but the script must **not** assume that was done — strip `\r` at read time regardless, because the next contributor on Windows will reintroduce it.
+
+## P19 — `node_modules` built on another platform: "Failed to load native binding"
+
+**Symptom**: Postgres and the backend come up fine; the frontend dev server crashes immediately:
+
+```text
+failed to load config from /repo/packages/frontend/vite.config.ts
+error when starting dev server:
+Error: Failed to load native binding
+    at Object.<anonymous> (/repo/node_modules/@swc/core/binding.js:333:11)
+```
+
+The same class of failure comes from any package with a compiled `.node` addon: esbuild (`Cannot start service: ... invalid ELF header`), `better-sqlite3`, `sharp`, `bcrypt`, `@rollup/rollup-*` — messages like `was compiled against a different Node.js version`, `wrong ELF class`, `cannot open shared object file`.
+
+**Cause**: `node_modules` was populated on a **different OS/arch** than the one now running the script — almost always a repo carried across the **Windows↔WSL boundary** (installed under Windows `nvm`, now run under WSL Linux), or copied between machines, or installed once with `--ignore-optional`. Native packages ship their platform binary as an *optional* dependency (`@swc/core-linux-x64-gnu`, `@esbuild/linux-x64`, …); when the install ran on a different platform, only the *other* platform's optional package landed (or none did). `node_modules/@swc/` then contains `core/` but no `core-linux-*` sibling, and the loader's "find my native binding" walk comes up empty. The error names the binding, never the *platform mismatch*, which is what makes it slow to place.
+
+**Detection**:
+
+```bash
+ls -1d node_modules/@swc/core-*    # present platform pkgs; empty/ENOENT = the bug
+node -e "console.log(process.platform, process.arch)"   # what the binary SHOULD be (e.g. linux x64)
+```
+
+**Fix**: re-run the install **on the target platform** so the correct native binaries are fetched — `yarn install` / `npm ci` / `pnpm install` from inside WSL (not from Windows). When the tree is half-populated from another platform, `rm -rf node_modules` first is the reliable form.
+
+**What the dev script can do**: this is an *install-time* defect, so don't auto-reinstall (silent, slow, surprising). But when a service dies at boot with a native-binding signature, the launcher should **name the likely cause** instead of letting the raw stack trace stand. A cheap pre-flight for known-native stacks (Vite/swc):
+
+```bash
+if [[ -d node_modules/@swc/core ]] && ! ls -d node_modules/@swc/core-* >/dev/null 2>&1; then
+  log_warn "node_modules/@swc has no platform binary (core-* sibling missing) — node_modules looks built for another OS. Run 'yarn install' inside this environment (WSL), not on Windows."
+fi
+```
+
+Pairs with the skill's boot-time sanity-check philosophy (§idempotency-and-state "sanity check"): surface environment drift loudly rather than letting it masquerade as a code bug.
+
+## P20 — `yarn` name collision: the launcher invokes the wrong binary (Debian `cmdtest`)
+
+**Symptom**, in two stages that look unrelated:
+
+1. First run fails with `dev.sh: line NNN: yarn: command not found` at the first `yarn` step (Prisma generate, install, etc.) — even though `node`, `npm`, and `corepack` are all present.
+2. The user "fixes" it with `apt install yarn`; the next run fails *differently*:
+
+```text
+==> Gerando Prisma Client...
+Parsing scenario file prisma
+ERROR: [Errno 21] Is a directory: 'prisma'
+```
+
+**Cause**: Modern Node (≥ 16.10) ships **yarn and pnpm via [Corepack](https://nodejs.org/api/corepack.html)**, which is *not enabled by default* — so there is no `yarn` on `PATH` out of the box even though Node is installed. The "command not found" pushes users to `apt install yarn`, and on Debian/Ubuntu the `yarn` apt package is **`cmdtest`** — Lars Wirzenius's unrelated scenario-test runner (`/usr/bin/yarn`, a Python script, `--version` → `0.32+git`). It parses its arguments as "scenario files", so `yarn prisma generate` becomes "parse the scenario file `prisma`" → `Is a directory`. `dpkg -S /usr/bin/yarn` → `cmdtest` confirms the impostor. (Same trap exists for other apt/name collisions; `yarn`↔`cmdtest` is the canonical one.)
+
+**Detection**:
+
+```bash
+command -v yarn                 # /usr/bin/yarn = suspicious; nvm/…/bin/yarn = the real shim
+yarn --version                  # real Yarn → 1.22.x or 3/4.x ; cmdtest → 0.32+git
+dpkg -S "$(command -v yarn)" 2>/dev/null   # → cmdtest: /usr/bin/yarn  (the impostor)
+file "$(command -v yarn)"       # cmdtest's is a "Python script"
+```
+
+**Fix (environment)**: `corepack enable`. It writes real `yarn`/`yarnpkg`/`pnpm` shims into the **Node bin dir** (`$(dirname "$(command -v node)")`), which on an nvm/fnm setup sits **earlier on `PATH`** than `/usr/bin` — so the genuine shim *shadows* the `cmdtest` impostor without `sudo` and without removing the apt package. Verify with `yarn --version` → a real semver. (If Node is system-installed and its bin dir is *after* `/usr/bin`, `apt remove cmdtest` and `npm i -g yarn`, or invoke `corepack yarn` explicitly.)
+
+**Fix in the generated script** — don't hardcode a bare `yarn`/`pnpm` and trust `PATH`. Resolve the package manager once at the top and sanity-check it. See `bash-patterns.md` §"Resolve the package manager (Corepack-aware)". At minimum, before the first use:
+
+```bash
+if command -v yarn >/dev/null 2>&1 && ! yarn --version 2>/dev/null | grep -qE '^[0-9]+\.'; then
+  log_error "The 'yarn' on PATH is not the JS package manager ($(command -v yarn)). Run 'corepack enable' (or remove the 'cmdtest' apt package)."
+  exit 1
+fi
+```
+
+**Why it's worth a guard**: both failure modes (`command not found` and `Parsing scenario file`) read as "my project/Prisma is broken", not "my PATH resolves the wrong `yarn`". Naming the real cause in the launcher saves the next contributor the same detour.

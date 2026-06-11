@@ -27,6 +27,42 @@ cd "$DIR"
 
 `set -euo pipefail` is non-negotiable — without `pipefail` a failure inside a piped command silently ignored. With these on, every command that can fail will halt the script.
 
+## Resolve the package manager (Corepack-aware)
+
+Don't hardcode a bare `yarn`/`pnpm` and trust `PATH`. Modern Node (≥ 16.10) ships yarn and pnpm through **Corepack**, which is *not enabled by default* — so a fresh machine has Node but no `yarn` on `PATH`, and the "command not found" pushes users to `apt install yarn`, which on Debian/Ubuntu installs the unrelated **`cmdtest`** `yarn` (parses its args as "scenario files" → `Parsing scenario file …` / `Is a directory`). See `pitfalls.md` §P20. Resolve once at the top and validate it's the real thing:
+
+```bash
+# Pick the package manager from the lockfile, then make sure the binary is genuine.
+detect_pm() {
+  [[ -f pnpm-lock.yaml ]] && { echo pnpm; return; }
+  [[ -f yarn.lock      ]] && { echo yarn; return; }
+  echo npm
+}
+PM="$(detect_pm)"
+
+ensure_pm() {
+  # Real yarn/pnpm print a semver; cmdtest's yarn prints 0.32+git, npm/pnpm are fine.
+  if ! command -v "$PM" >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      log_warn "$PM not on PATH — falling back to 'corepack $PM' (run 'corepack enable' to make it permanent)."
+      PM="corepack $PM"
+      return
+    fi
+    log_error "$PM not found and corepack unavailable. Install $PM or run 'corepack enable'."
+    exit 1
+  fi
+  if [[ "$PM" == yarn ]] && ! yarn --version 2>/dev/null | grep -qE '^[0-9]+\.'; then
+    log_error "The 'yarn' on PATH is the cmdtest impostor ($(command -v yarn)). Run 'corepack enable' or 'apt remove cmdtest'."
+    exit 1
+  fi
+}
+ensure_pm
+
+# Use $PM everywhere instead of a literal 'yarn':  $PM install ; $PM prisma generate ; ( cd "$DIR" && $PM dev )
+```
+
+`corepack enable` is the cleanest fix for the missing/colliding binary: it drops real `yarn`/`pnpm` shims into the Node bin dir, which on nvm/fnm sits *before* `/usr/bin` on `PATH`, shadowing the `cmdtest` impostor without `sudo`. Document it as a prerequisite in the script's onboarding notes when the project uses yarn/pnpm.
+
 ## Color logging — terse, prefix-able
 
 ```bash
@@ -365,6 +401,46 @@ trap cleanup EXIT SIGINT SIGTERM
 ```
 
 The `setsid npm run dev` pattern (start child in a new process group) plus `kill -- -PID` is the only reliable way to kill `npm` and its descendants together. Without `setsid` the child inherits the parent's pgid and `kill -- -$!` ends up SIGTERM'ing the whole script.
+
+**Don't mask the exit code in the trap.** A cleanup bound to `EXIT` runs on *every* exit — success or failure. If the trap ends with `exit 0` (a tempting way to "exit cleanly"), it overwrites the real status: a launcher that aborted on a failed healthcheck (`exit 1`) then reports **success** to its caller, to CI, and to anything reading `$?` or a background-task exit code — masking the failure right when you most need it visible. Let the trap fall off its end so the shell exits with the status that triggered it, or preserve it explicitly. Never write a literal `exit 0` in an `EXIT` trap:
+
+```bash
+cleanup() {
+  local code=$?          # capture the triggering status FIRST, before any command resets $?
+  echo ""
+  log_warn "Shutting down…"
+  # … kill children, optional --down (each of these resets $?, which is why we saved it) …
+  exit "$code"           # only needed if the trap runs commands after capture; never `exit 0`
+}
+trap cleanup EXIT SIGINT SIGTERM
+```
+
+## Reading values out of `.env` (CRLF-safe)
+
+The launcher often needs values *from* a `.env` — a container name, a DB user, a port — to drive `docker exec`, `pg_isready`, or a healthcheck. The naive read has a Windows/WSL landmine:
+
+```bash
+# WRONG on a CRLF .env — the value carries a trailing \r
+container_name="$(grep -E '^CONTAINER_NAME=' "$ENV_FILE" | cut -d'=' -f2)"
+docker exec "$container_name" pg_isready   # → Error: No such container: louvorflow_db
+```
+
+A `.env` saved by a Windows editor (or cloned with `core.autocrlf=true`) has CRLF line endings; `cut` keeps the `\r`, so `container_name` is `louvorflow_db\r`. `docker exec` then can't find the container, the healthcheck fails all its attempts, and every log line *looks* correct because `\r` is invisible (it just parks the cursor at column 0). `docker compose --env-file` and dotenv tolerate CRLF, which is exactly why only the shell-side reads break — see `pitfalls.md` §P18.
+
+Read through a helper that strips `\r` (and is robust to `=` inside the value and duplicate keys):
+
+```bash
+# read_env <file> <key> — value with CR stripped
+read_env() {
+  grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '\r'
+}
+
+CONTAINER_NAME="$(read_env "$ENV_FILE" CONTAINER_NAME)"
+DB_USER="$(read_env "$ENV_FILE" POSTGRES_USERNAME)"
+PG_PORT="$(read_env "$ENV_FILE" POSTGRES_LOCAL_PORT)"
+```
+
+`cut -d'=' -f2-` (note the trailing `-`) keeps everything after the first `=`, so secrets / URLs / base64 that themselves contain `=` survive; `head -1` ignores a duplicated key; `tr -d '\r'` is the actual fix. To read many keys at once you can source a sanitized copy — `set -a; . <(tr -d '\r' < "$ENV_FILE"); set +a` — but only when you trust every line is `KEY=value`, because sourcing *executes* the file.
 
 ## Patching `.env` files in place
 

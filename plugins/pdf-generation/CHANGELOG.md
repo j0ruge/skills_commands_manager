@@ -1,5 +1,15 @@
 # Changelog — pdf-generation
 
+## [1.5.0] — 2026-06-11
+
+### Added
+
+- **SKILL.md § Phase 4 "Keep a Block Together" + references/pdfmake-patterns.md**: padrão `unbreakable` para manter um bloco "título + corpo" indivisível. Envolver `[título, ...corpo]` num único nó `{ stack, unbreakable: true }` impede que o pdfmake quebre entre o título e o corpo — se não couber no espaço restante, o bloco **inteiro** desce para a próxima página (sem título órfão). Documenta a ressalva de **degradação graciosa**: um bloco mais alto que uma página volta a quebrar normalmente (sem clipping nem página em branco), então valide com um render de bloco alto / muitos itens.
+
+### Why / Origin
+
+Sessão de ajustes no PDF da Proposta Comercial (`sales_quote/015`): o bloco "TERMOS E CONDIÇÕES DE VENDA" partia no meio entre páginas, com o título órfão no fim da página. A skill não tinha **nenhuma** cobertura de keep-together/`unbreakable` (grep zero) — lacuna real, não duplicata. Universal para qualquer seção pdfmake que não deva ser dividida.
+
 ## [1.4.0] — 2026-05-29
 
 ### Added

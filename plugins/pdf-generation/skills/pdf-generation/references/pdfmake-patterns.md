@@ -468,6 +468,24 @@ const docDefinition = {
 
 **Por que escapa dos testes**: em uma cotação de **1 página** os dois layouts são visualmente idênticos — o bug só se manifesta na página 2. Por isso a Phase 6 exige renderizar e inspecionar **a página 2+**, não só a primeira. Cuidado também com a margem superior/inferior da página (`pageMargins`): com header/footer nos slots, reserve espaço suficiente para eles não sobreporem o conteúdo.
 
+### Bloco se parte no meio / título de seção fica órfão — agrupe com `unbreakable`
+
+Sintoma: o título de uma seção (ex.: "TERMOS E CONDIÇÕES") aparece sozinho no fim de uma página e o corpo desce para a próxima; ou um bloco "título + parágrafos" é cortado no meio por uma quebra de página.
+
+**Causa**: título e corpo são nós **irmãos** no `content[]` — o fluxo do documento pode quebrar entre quaisquer dois nós quando o espaço da página acaba. Não existe "keep-together" implícito.
+
+**Fix**: envolva o bloco inteiro num único nó `stack` marcado `unbreakable: true`. O pdfmake trata o stack como indivisível: se não couber no espaço restante da página atual, desce **inteiro** para a próxima — sem deixar o título órfão.
+
+```typescript
+// ❌ título e corpo soltos no fluxo → o título pode orfanar no fim da página
+content: [ horizontalRule, sectionTitle, ...paragraphs ]
+
+// ✅ bloco indivisível → desce inteiro se não couber
+content: [ { stack: [ horizontalRule, sectionTitle, ...paragraphs ], unbreakable: true } ]
+```
+
+**Ressalva (degradação graciosa)**: `unbreakable` só mantém junto o que **cabe em uma página**. Um bloco mais alto que a página inteira não tem como ser mantido indiviso — o pdfmake volta a quebrar normalmente (sem clipping nem página em branco), só não faz o impossível. Por isso valide com um render de bloco **alto / muitos itens**, não só um curto.
+
 ### SVG com fills via `<style>`/classe não renderiza — inline os `fill`
 
 Um SVG exportado de ferramenta de design (Illustrator/Figma) costuma definir as cores num bloco `<style>` com seletores de classe, em vez de atributos diretos:

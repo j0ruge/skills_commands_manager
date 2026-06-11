@@ -1,7 +1,7 @@
 ---
 name: pdf-generation
 metadata:
-  version: 1.4.0
+  version: 1.5.0
 description: "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Includes vector-logo (SVG) handling: pdfmake renders SVG natively (no svg-to-pdfkit dependency), SVGs with `<style>`/class fills render without color unless inlined, and small vectors ship as `.ts` constants to survive `tsc`/`dist` builds and gitignored asset dirs. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF, pdfmake SVG logo, vector logo PDF, SVG logo blank/black, SVG fills not rendering."
 ---
 
@@ -132,6 +132,17 @@ footer: (currentPage, pageCount) => ({
   margin: [40, 10]
 })
 ```
+
+#### Keep a Block Together (no orphaned heading)
+
+A section heading and its body are separate sibling nodes in `content[]` by default, so pdfmake will happily break between them — leaving the heading stranded at the bottom of a page while the body flows onto the next. Wrap the heading + body in a single `{ stack: [...], unbreakable: true }` node and pdfmake keeps the whole block on one page: if it doesn't fit in the remaining space, the entire block moves to the next page.
+
+```typescript
+// Heading + body never split across a page boundary
+{ stack: [horizontalRule, sectionTitle, ...paragraphs], unbreakable: true }
+```
+
+Caveat worth knowing: `unbreakable` only keeps the block together when it fits within **one** page. A block taller than a full page can't be kept whole, so pdfmake falls back to normal breaking — it degrades gracefully (no clipping, no blank page), it just can't do the impossible. So verify with a tall / many-item render, not only a short one.
 
 #### Vector Logos (SVG)
 

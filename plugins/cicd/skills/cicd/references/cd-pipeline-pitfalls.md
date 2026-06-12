@@ -32,6 +32,59 @@ Three classes of failure that bite hardest in mid-flight cutovers, when the CD p
 
 **Adjacent lesson**: the same applies to `VITE_OIDC_CLIENT_ID`, `VITE_OIDC_AUTHORITY`, and any other build-time secret. Updating the secret without rebuild = SPA continues running with the old value. If you change the IdP configuration (regenerated client_id, new authority hostname), the frontend rebuild is mandatory, not optional.
 
+### §1b. The flip side — a server-side secret must be RUNTIME, never a build-arg
+
+The corollary of "VITE_* are baked into the bundle": **anything secret must NOT be a
+`VITE_*`/build-arg**, because it would end up readable in the JS. The classic case is
+a frontend that proxies an upstream API and injects a bearer token server-side (the
+Vite dev server does this via `server.proxy.configure`; in prod the nginx container
+must replicate it). The token has to be injected at **container runtime**, not build
+time.
+
+Use the **official nginx image's envsubst template mechanism** — no custom entrypoint:
+
+```nginx
+# packages/frontend/nginx/default.conf.template  →  copied to /etc/nginx/templates/
+location /api/ {
+  proxy_pass https://api.example.com;
+  proxy_ssl_server_name on;
+  proxy_set_header Authorization "Bearer ${JRC_API_TOKEN}";   # resolved at RUNTIME
+}
+location / { try_files $uri $uri/ /index.html; }               # $uri NOT clobbered
+```
+
+```dockerfile
+# runtime stage (nginx:stable-alpine) — entrypoint roda envsubst sobre *.template
+COPY packages/frontend/nginx/default.conf.template /etc/nginx/templates/default.conf.template
+```
+
+```yaml
+# compose / docker run — token entra como env de RUNTIME, jamais build-arg
+environment:
+  JRC_API_TOKEN: ${JRC_API_TOKEN}
+```
+
+Two non-obvious points that make this safe:
+
+- **nginx's own `$uri`/`$host`/`$scheme` survive envsubst.** The official entrypoint
+  (`20-envsubst-on-templates.sh`) substitutes **only the env vars actually present**
+  in the container (it builds the var list from `printenv`), so `$uri` is left intact
+  because there's no env var named `uri`. Don't reach for a custom entrypoint or
+  `envsubst '$ONLY $THESE'` gymnastics — the default already does the right thing as
+  long as you don't have env vars colliding with nginx variable names.
+- **The token never reaches the bundle (verify it).** Because it's runtime-only, a
+  grep of the built static files must come up empty:
+
+  ```bash
+  docker exec <frontend> sh -c 'grep -rl "<token-value>" /usr/share/nginx/html/ || echo CLEAN'
+  ```
+
+  And confirm the runtime conf DID get it: `docker exec <frontend> grep Authorization /etc/nginx/conf.d/default.conf`.
+
+So: **build-args for the non-secret, environment-specific config (URLs, client_id);
+runtime env + envsubst for anything secret.** Mixing these up either leaks a secret
+into the JS or bakes an env-specific value that can't be rotated without a rebuild.
+
 ---
 
 ## §2. Operator clone of the repo on the deploy host is a footgun

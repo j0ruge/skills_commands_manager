@@ -212,6 +212,42 @@ npm exec -w <ws> -- vitest run --coverage
 
 **Quando NÃO trocar:** se a base de testes depende fortemente de APIs jsdom-only (canvas image diff, layout testing, complexa medição de DOM), avaliar polyfill em `setup.ts` substituindo `globalThis.AbortController` pelo nativo do Node antes do msw carregar — resolve só o Symptom B, não o A. Para Symptom A nesse caso: declarar `jsdom` como devDep da raiz para forçar hoist.
 
+### 9. CI typecheck passa verde mas erros de tipo escapam pra produção
+
+**Sintoma**: o job de CI roda `tsc --noEmit`, sai 0, mas erros de tipo reais
+chegam em produção; o `vite build` nunca os pega.
+
+**Causa**: o `tsconfig.json` raiz padrão de projetos Vite/Lovable usa **project
+references** — `"files": []` + `"references": [{ "path": "./tsconfig.app.json" }, ...]`.
+Com `files` presente (mesmo vazio) e sem `include`, `tsc --noEmit` (sem `-b`)
+**ignora as references e checa ZERO arquivos** — sai 0 sempre. É um gate falso.
+E o `vite build` usa esbuild/swc, que **transpila sem type-check**, então também
+não pega nada.
+
+```bash
+# ❌ vacuo — checa 0 arquivos (files:[] + references)
+tsc --noEmit            # exit 0, silêncio
+
+# ✅ checa de fato os projetos referenciados
+tsc -b --noEmit
+```
+
+**Fix**: o script de typecheck do frontend deve ser **`tsc -b --noEmit`** (TS 5.6+).
+No `package.json`:
+
+```json
+{ "scripts": { "typecheck": "tsc -b --noEmit" } }
+```
+
+**Corolário (esperado, não é bug seu)**: introduzir esse gate num projeto que
+**nunca** type-checou (só `vite build`) costuma revelar um **backlog de erros de
+tipo latentes** — fixtures de teste desatualizadas, frições de tipo de libs (ex.:
+`@xyflow/react` v12 exigindo `data extends Record<string, unknown>`), `Record<...>`
+de enum incompleto. Planeje o esforço de zerar o baseline antes de tornar o gate
+bloqueante (ou rode-o `continue-on-error` até zerar). `tsc -b` grava
+`*.tsbuildinfo`; se o arquivo for versionado no repo, ele "sujará" o working tree
+a cada run — restaure com `git checkout --` ou adicione ao `.gitignore`.
+
 ---
 
 ## Diagnosis Flow — Frontend

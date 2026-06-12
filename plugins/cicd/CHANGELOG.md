@@ -2,6 +2,44 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.13.0] - 2026-06-12
+
+### Adicionado
+
+- **Lessons Learned 37–40 (`SKILL.md`)** — 4 armadilhas de monorepo npm-workspaces
+  descobertas no `sales_quote` (feature 017), ausentes da skill:
+  - **37 `[B]`** — backend roda via `tsx`, não `node dist/`, quando os workspaces shared
+    exportam TS source (`main: ./src/index.ts`): o `dist` compilado morre com
+    `ERR_MODULE_NOT_FOUND`/`ERR_UNKNOWN_FILE_EXTENSION` no `.ts` do sibling. Não repontar
+    `exports` p/ `dist` (quebra o Vite do frontend).
+  - **38 `[F]`** — `tsc --noEmit` é VAZIO em `tsconfig.json` com project references
+    (`files: []`), checa zero arquivos → gate de CI falso; usar `tsc -b --noEmit`.
+  - **39 `[B]`** — workspace importa sibling não declarado (só hoist) → `npm ci -w` escopado
+    quebra no Docker; usar `npm ci` cheio no builder descartado.
+  - **40 `[S]`** — `USER node` + named volume novo = `EACCES`; `mkdir`+`chown` na imagem
+    antes do `USER` (volume herda ownership do path).
+- **`SKILL.md` Quick Troubleshooting** — 3 rows com sintomas verbatim (`ERR_MODULE_NOT_FOUND`
+  em `node dist`, typecheck verde-fake, `EACCES` em named volume).
+- **`references/troubleshooting-backend.md`** — seção "Monorepo npm workspaces — armadilhas
+  de build/runtime na imagem" (tsx-runtime com snippet Dockerfile + sibling não declarado +
+  volume ownership).
+- **`references/troubleshooting-frontend.md`** — cenário 9 "CI typecheck passa verde mas erros
+  de tipo escapam" (project references + corolário do backlog latente + churn de `*.tsbuildinfo`).
+- **`references/cd-pipeline-pitfalls.md` §1b** — a contrapartida do build-time baking: injetar
+  um secret de RUNTIME no nginx do frontend via templates/`envsubst` da imagem oficial (sem
+  custom entrypoint; `$uri`/`$host` sobrevivem; grep de prova de que o token não está no bundle).
+- **`SKILL.md` description + metadata.version**: bump 2.12.0 → 2.13.0 + trigger keywords
+  compactas (sem inchar a prose — a description já estava acima do alvo enxuto).
+- **`plugin.json`**: bump 2.12.0 → 2.13.0 + keywords novas (`tsx-runtime-monorepo`,
+  `node-dist-esm-resolution`, `tsc-b-project-references`, `vacuous-typecheck`,
+  `named-volume-ownership`, `nginx-envsubst-runtime-token`).
+- **`marketplace.json`**: bump idem.
+
+### Por que minor (não patch)
+
+Só adições (4 lições + 1 seção nova + 1 cenário + §1b). Nenhuma regressão para consumidores
+de 2.12.0.
+
 ## [2.12.0] - 2026-05-13
 
 ### Adicionado

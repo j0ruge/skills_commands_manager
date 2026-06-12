@@ -4,9 +4,9 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "2.12.0",
+  "version": "2.13.0",
   "category": "development",
-  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys", "registration-token", "chicken-and-egg", "enoent-bootstrap", "soft-failure-fatigue", "yellow-warning", "best-effort-write-narrow-catch", "errnoexception", "gha-bind-mount-uid-mismatch", "compose-wait-scope", "compose-up-wait-services", "tls-handshake-timeout", "docker-login-retry", "mtu-mismatch", "tls-inspection-proxy"],
+  "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys", "registration-token", "chicken-and-egg", "enoent-bootstrap", "soft-failure-fatigue", "yellow-warning", "best-effort-write-narrow-catch", "errnoexception", "gha-bind-mount-uid-mismatch", "compose-wait-scope", "compose-up-wait-services", "tls-handshake-timeout", "docker-login-retry", "mtu-mismatch", "tls-inspection-proxy", "tsx-runtime-monorepo", "node-dist-esm-resolution", "tsc-b-project-references", "vacuous-typecheck", "named-volume-ownership", "nginx-envsubst-runtime-token"],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"
 }

@@ -2,6 +2,52 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-12 — Monorepo npm-workspace build/runtime traps + `tsc -b` project references — bump 2.12.0 → 2.13.0
+
+Source: project `sales_quote` (feature 017, primeiro CI/CD do repo). Quatro armadilhas
+não-óbvias que custaram tempo real, todas ausentes da skill (verificado por grep):
+
+- **Backend não roda como `node dist/` quando workspaces shared exportam TS source.** Os
+  pacotes `@sales-quote/shared-*` têm `main: ./src/index.ts` (TS cru, import com extensão
+  `.js`). A imagem compilada morria no boot com `ERR_MODULE_NOT_FOUND`/`ERR_UNKNOWN_FILE_EXTENSION`
+  no `.ts` do sibling — `tsc` não inlina workspace deps e `node` não carrega `.ts`. Fix:
+  rodar a imagem via `tsx src/index.ts` (igual ao dev). Repontar o `exports` do shared p/
+  `dist` quebraria o Vite do frontend, então `tsx` é a mudança de menor blast-radius.
+- **`tsc --noEmit` é um gate de CI VAZIO** num `tsconfig.json` raiz com project references
+  (`files: []` + `references`) — checa zero arquivos, sai 0. O `vite build` (esbuild) também
+  não type-checa. Resultado: erros de tipo escapam pra produção com o CI verde. Fix: o script
+  de typecheck é `tsc -b --noEmit`. Corolário documentado: introduzir o gate num projeto que
+  nunca type-checou revela um backlog de erros latentes (ex.: `@xyflow/react` v12, enum map
+  incompleto, fixtures desatualizadas).
+- **Workspace importando sibling NÃO declarado** (resolve só por hoist) quebra `npm ci -w`
+  escopado no Docker; fix é `npm ci` cheio no builder descartado.
+- **`USER node` + named volume novo = `EACCES`** na primeira gravação; Docker herda a
+  ownership do path da imagem no volume novo — `mkdir`+`chown` antes do `USER`.
+
+Além disso, a contrapartida de §1 (build-args bake'd): **como injetar um secret de RUNTIME**
+no nginx do frontend (token server-side que não pode vazar no bundle) via o mecanismo de
+templates/`envsubst` da imagem oficial — `${VAR}` substitui só env vars presentes, então
+`$uri`/`$host` do nginx sobrevivem; verificação por grep de que o token NÃO está no bundle.
+
+### Adicionado
+
+- `SKILL.md` — Lessons Learned 37–40 (`[B]` tsx-runtime, `[F]` tsc -b project refs, `[B]`
+  undeclared-sibling `npm ci`, `[S]` named-volume ownership) + 3 linhas na Quick
+  Troubleshooting (sintomas verbatim: `ERR_MODULE_NOT_FOUND`, typecheck verde-fake, EACCES
+  em volume) + trigger keywords compactas (sem inchar a prose da description).
+- `references/troubleshooting-backend.md` — seção "Monorepo npm workspaces — armadilhas de
+  build/runtime na imagem" (tsx-runtime com Dockerfile, sibling não declarado, volume ownership).
+- `references/troubleshooting-frontend.md` — cenário 9 "CI typecheck passa verde mas erros
+  escapam" (project references + corolário do backlog + churn de `*.tsbuildinfo`).
+- `references/cd-pipeline-pitfalls.md §1b` — runtime-secret via nginx envsubst (contrapartida
+  do build-time baking).
+
+### Por que minor (não patch)
+
+Adiciona 4 lições, 3 linhas de troubleshooting, uma seção nova em `troubleshooting-backend.md`,
+um cenário em `troubleshooting-frontend.md` e §1b em `cd-pipeline-pitfalls.md`. Só adições —
+nenhuma regressão para consumidores de 2.12.0.
+
 ## 2026-05-13 — GHCR `TLS handshake timeout` distinguished from `unauthorized` — bump 2.11.0 → 2.12.0
 
 Source: project `LouvorFlow`, CD-staging-backend run from commit `415b345` (2026-05-13). The `deploy` job on `[self-hosted, staging]` failed at the docker login step with `Error: Error response from daemon: Get "https://ghcr.io/v2/": net/http: TLS handshake timeout`. The existing skill only documented the `unauthorized` variant — operator instinct was to rotate the PAT, but credentials were healthy: build-and-push on `ubuntu-latest` in the same workflow run pushed the image successfully. The asymmetry alone proved GHCR was up and the credential was valid; the failure was network-layer on the runner host.

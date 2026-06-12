@@ -184,6 +184,76 @@ docker run --rm -e DB_URL=<url> --network <network> \
 
 ---
 
+## Monorepo npm workspaces — armadilhas de build/runtime na imagem
+
+Três problemas que só aparecem quando o backend vive num monorepo com workspaces
+`@scope/shared-*` (descobertos no `sales_quote`, 2026-06-12).
+
+### `ERR_MODULE_NOT_FOUND` / `ERR_UNKNOWN_FILE_EXTENSION` ao rodar `node dist/index.js`
+
+**Sintoma**: o build (`tsc`) passa, a imagem sobe, mas o processo morre no boot:
+
+```text
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../packages/shared/api-types/src/enums.js'
+  imported from .../packages/shared/api-types/src/index.ts
+```
+
+**Causa**: os pacotes compartilhados exportam **código-fonte TypeScript** —
+`"main": "./src/index.ts"` — usando a convenção de import com extensão `.js`
+(`export * from "./enums.js"` apontando para `enums.ts`). O `tsc` do backend
+**não inlina** workspace deps (preserva o specifier bare `@scope/shared-x`), e o
+`node` resolve isso para o `./src/index.ts` do sibling — que ele **não consegue
+carregar** (`.ts` não é executável; e o type-stripping nativo do Node não faz o
+remapeamento `.js`→`.ts`).
+
+**Fix**: rodar a imagem via **`tsx`** (esbuild) em vez de `node dist/`. É
+exatamente como o app roda em dev (`tsx watch`); `tsx` carrega `.ts` e faz o
+remapeamento. O estágio runtime mantém o `tsx` (devDep) e o source:
+
+```dockerfile
+# runtime stage
+COPY --from=builder /app/node_modules ./node_modules   # inclui tsx + Prisma Client gerado
+COPY --from=builder /app/packages/backend ./packages/backend
+COPY --from=builder /app/packages/shared ./packages/shared   # symlinks de workspace apontam p/ cá
+WORKDIR /app/packages/backend
+CMD ["npx", "tsx", "src/index.ts"]
+```
+
+**Não "consertar"** repontando o `exports`/`main` dos pacotes shared para `dist`
+— isso quebra o **frontend**, cujo Vite/bundler consome o source TS desses
+mesmos pacotes. O `tsx` no backend é a mudança de menor blast-radius.
+
+> Migrations/seed continuam como one-off do Prisma CLI (`npx prisma migrate
+> deploy` / `npx prisma db seed`), que já funcionam — o `db seed` roda
+> `tsx prisma/seed.ts` dentro da imagem.
+
+### Vite/Build do frontend falha resolvendo um sibling — `npm ci -w` escopado não basta
+
+Se um workspace **importa um sibling que NÃO declarou** em `dependencies` (resolve
+só pelo hoist do npm na raiz), um `npm ci -w @scope/frontend` no Docker **não cria
+o symlink** desse sibling → o build falha em resolvê-lo. Ex.: o frontend importa
+`@scope/shared-api-types` sem declará-lo. **Fix**: usar `npm ci` **cheio** no
+estágio builder (que é descartado — só `dist/` vai à imagem final, então o
+tamanho extra é irrelevante). Para imagens onde o runtime é enxuto (backend), aí
+sim vale o `npm ci -w <pkg>` escopado — mas só se o `package.json` declara todos
+os siblings que usa.
+
+### Container não-root não grava no named volume
+
+Imagens com `USER node` (não-root) que montam um **named volume** novo num path de
+escrita (storage de PDFs, uploads) batem `EACCES` na primeira gravação. Docker
+inicializa o named volume novo a partir do conteúdo **e da ownership** do path na
+imagem; se o dir não existe ou é root-owned, o volume nasce root-owned.
+
+```dockerfile
+RUN mkdir -p /app/storage/pdfs && chown -R node:node /app/storage   # ANTES do USER
+USER node
+```
+
+(Só vale p/ **named volumes** — bind mounts não copiam ownership da imagem.)
+
+---
+
 ## Diagnosis Flow — Backend
 
 ```text

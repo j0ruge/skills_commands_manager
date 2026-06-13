@@ -110,7 +110,7 @@ Apply these 5 principles as analysis lenses to all CODE files (reduced rigor for
 
 ---
 
-## Additional Detection Passes (6.1–6.8)
+## Additional Detection Passes (6.1–6.10)
 
 ### 6.1 Bug Detection
 
@@ -305,6 +305,63 @@ Applies to any frontend framework that renders HTML.
 - **URL/link fields accepting dangerous protocols**: `javascript:`, `data:`, `vbscript:` accepted. → **CRITICAL**
 - **Inconsistent validation schemas**: Same field validated differently across endpoints. → **HIGH**
 - **Test fakes/mocks missing fields from real schema**: Fakes don't mirror all schema fields. → **MEDIUM**
+
+### 6.9 Dead Code & Unused Symbols
+
+Dead code is the inverse of a bug: it doesn't break anything, it just *accumulates* — unread, untested, and silently misleading the next reader into thinking it matters. Left alone it bloats build output, hides real bugs (a "fixed" path replaced but the old one left wired), and rots into broken references no one notices because nothing runs it. This pass surfaces it and **recommends cleanup** — it never deletes anything (the skill is strictly read-only).
+
+**Executor — read this first**: unlike passes 6.1–6.8 and 6.10, this pass is **NOT run by the per-file sonnet agents**. Each per-file agent sees only one file plus its diff, so it physically cannot tell whether an exported symbol is referenced *elsewhere* in the repo. Dead-code detection is inherently a **whole-repo reference-graph** question. It is therefore executed by the dedicated **Dead Code Sweep agent (Phase B2 in `SKILL.md`)**, which has the changed-file list, the diff, and grep/tooling access to the entire repository. The per-file agents must NOT attempt 6.9.
+
+**Scope is hybrid** — two buckets, reported separately:
+
+- **Bucket A — introduced or orphaned by THIS PR (primary, always reported).** Dead code the diff *created* or *exposed*. This is the part that belongs to the PR under review and is the most actionable:
+  - **Newly-added-but-unused**: a symbol (function/class/const/export/file) added in this diff that nothing references yet.
+  - **Diff-orphaned**: the diff removed the last caller/import of an existing symbol, or deleted the last importer of a file, leaving it dead. The PR *caused* this — it's a loose end the author should resolve before merge.
+- **Bucket B — pre-existing (secondary, capped summary).** Dead code that already existed and this PR didn't touch, surfaced opportunistically by repo tooling. Label it **"pre-existing (not introduced by this PR)"** and **cap it** (e.g. top ~10 by impact + a total count) so it never drowns the PR-relevant findings. This is the "keep the project healthy" signal — useful, but it must not turn every small PR into a repo-wide audit dump.
+
+**Detection categories** (apply to both buckets where relevant):
+
+- Unused **exports** (exported symbol referenced nowhere outside its own file).
+- **Orphaned files** (a module that exports things but is imported by nothing).
+- Unused **imports**, **local variables**, and **private members/fields/methods**.
+- **Unreachable code** (statements after `return` / `throw` / `break` / `continue`, or inside an always-false branch).
+- **Unused dependencies** (a `package.json` / `requirements` entry no longer imported anywhere; or a dep the diff stopped using).
+
+**Deepsearch method** (the grep fallback — always available, no tooling required):
+
+1. For each symbol defined or exported in the changed files, grep the **whole repo** (excluding the defining file) for references — not just `import` lines but name usages, **and references in non-code files**: HTML/JSX templates, JSON/YAML config, SQL, route manifests, DI registration files, `.env`. A symbol used only from a template is **not** dead.
+2. Zero references **AND** not part of the public API surface **AND** not framework/dynamically wired → candidate (apply the guardrails below before flagging).
+3. **Diff-orphan check**: when the diff deletes a call/import, grep the remaining repo for any other reference to that target; if none remain → it became dead in this PR (Bucket A).
+
+**Opportunistic tooling** (read-only — same pattern as ggshield/gitleaks in pass 6.10): if any of these are on `PATH` / runnable in the repo, use them and **merge + dedup** (`{file, symbol, kind}`) with the grep results; tool-surfaced whole-repo findings feed **Bucket B**:
+
+- TS/JS: `npx knip`, `npx ts-prune`, `npx depcheck` (deps), ESLint `no-unused-vars`.
+- Python: `vulture`, `ruff` (`F401` unused import, `F811` redefinition, `F841` unused local).
+- .NET/C#: Roslyn analyzers `IDE0051` (unused private member) / `CS0169` surfaced via `dotnet build` warnings.
+- Go: `deadcode`, `staticcheck` (`U1000`).
+- Rust: `cargo build` `dead_code` warnings, `cargo +nightly udeps` (deps).
+
+If none are available, say so in the agent's notes and rely on the grep deepsearch — do **not** treat "no tooling" as "no dead code".
+
+**False-positive guardrails — the heart of this pass. Be conservative; recommending deletion of live code is worse than missing some dead code.** Do NOT flag (or flag only at **LOW** with an explicit *"verify — may be referenced via X"* note) when:
+
+- **Public API surface**: the symbol is a declared package entry point (`main`/`module`/`exports` in `package.json`, a library crate's `pub` items, a barrel `index.ts` / `__init__.py` re-export, a published SDK function). Absence of *internal* references doesn't mean it's unused — external consumers are invisible to the repo grep.
+- **Framework / dynamic wiring** (invisible to a static grep): route handlers, DI-registered services, decorators (`@Injectable`, `@Component`, `@EventHandler`, `[Route]`), reflection, dynamic `import()` / `require()` with computed paths, string-keyed registries/factories, ORM entities, (de)serialization targets, CLI command auto-discovery, test auto-discovery.
+- **Referenced from non-code files** (templates, config, SQL, manifests) — see deepsearch step 1.
+- **Re-exports / barrels**: a symbol re-exported through an index that is itself consumed is *used*.
+- **Test-only utilities**: a helper used only by tests is **not** dead — tests are real consumers.
+- **Conditional compilation / platform-specific**: `#if`, `Platform.OS === ...`, feature-flag-gated code, `__DEV__` blocks.
+- **Just-added scaffolding**: a symbol added in *this* diff but not yet wired may be intentional groundwork for a follow-up. Flag at **LOW** with *"added but unused — intentional scaffolding or forgotten wiring?"* rather than asserting it's dead.
+
+Every finding carries a **Confidence** (High / Medium / Low) reflecting how many guardrails it cleared. A plain unreachable-statement-after-`return` is High confidence; an unreferenced exported function in a library package is Low.
+
+**Severity** — dead code is **hygiene, never a blocker**:
+
+- **MEDIUM** when the diff itself orphaned something (Bucket A diff-orphan — the PR left a loose end the author should close) **or** a whole file is orphaned.
+- **LOW** for everything else (newly-added-but-unused scaffolding, pre-existing tooling-surfaced dead code, unused imports/locals, cleanup suggestions).
+- **Never CRITICAL or HIGH. This pass never forces the grade to F and never blocks a PR.** It is a cleanliness recommendation, not a gate. (Contrast pass 6.10, which always blocks.)
+
+**Output format**: include the symbol/file, the kind (unused export / orphaned file / unreachable / unused import / unused dependency / diff-orphaned), the location, the bucket (PR / pre-existing), the confidence, and a one-line recommended cleanup. Populate the **🧹 Dead Code & Cleanup** section in the report (see `references/report-template.md`); findings flow into Recommended Actions → *Consider Fixing (MEDIUM/LOW)* and contribute to the **Code Quality (Zen)** grade rationale.
 
 ### 6.10 Hardcoded Secrets Detection
 

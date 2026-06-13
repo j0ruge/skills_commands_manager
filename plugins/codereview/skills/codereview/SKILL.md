@@ -1,8 +1,8 @@
 ---
 name: codereview
 metadata:
-  version: 1.10.0
-description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, and **contract drift in tests** (exported enum/tuple/schema grew or reshaped without its `expect(X).toEqual([...])` assertion getting updated — silent rot that surfaces later as "pre-existing failure from another feature"). The final report ALWAYS includes the Overall Grade table and Recommended Actions block — even on zero-findings happy path, focus-area runs, or token-tight reviews. Stack-agnostic with TypeScript/React defaults and dotnet preset. Triggers — code review, pre-PR, secrets scan, ggshield, accessibility audit, contract drift, stale test contract, exported const drift, test-vs-source-of-truth drift, grade table missing.
+  version: 1.11.0
+description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, contract drift in tests (exported const grew without its assertion updated), and **dead code** via a parallel whole-repo sweep — unused exports, orphaned files, unreachable code (knip/ts-prune/vulture or grep) — with cleanup recs. Final report always includes the Overall Grade table + Recommended Actions. Stack-agnostic with TypeScript/React defaults, dotnet preset. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, unused exports, cleanup, code health.
 ---
 
 ## User Input
@@ -14,7 +14,7 @@ $ARGUMENTS
 You **MUST** consider the user input before proceeding (if not empty). Valid inputs:
 
 - Empty: full review of all changed files
-- Focus area: `security`, `performance`, `types`, `bugs`, `tests`, `docs`, `a11y`, `race-conditions`
+- Focus area: `security`, `performance`, `types`, `bugs`, `tests`, `docs`, `a11y`, `race-conditions`, `dead-code`
 - File path or glob: review only matching changed files
 - Key-value overrides: `baseDir=app/ fileExtensions=ts,js` (see `references/configuration.md`)
 
@@ -238,6 +238,85 @@ Note any imports from other changed files for cross-reference by the main model.
 
 For **TOCTOU/race condition** analysis that spans multiple files (e.g., service reads from DB, controller calls service), the sonnet agent flags the single-file pattern and notes "cross-file verification needed". Opus handles the cross-file judgment in Phase C.
 
+### Phase B2: Dead Code Sweep (sonnet agent, parallel)
+
+Spawn **one dedicated agent** for pass 6.9 (Dead Code & Unused Symbols), launched **in the same parallel batch** as the Phase B per-file agents. It is a separate agent — not one of the per-file ones — because dead-code detection is a **whole-repo reference-graph** question: a per-file agent sees only its one file and cannot tell whether an exported symbol is referenced anywhere else. This agent has the changed-file list, the diff, and grep/tooling access to the entire repo.
+
+**When to run it:**
+- **Full review** (empty `$ARGUMENTS`) → run it.
+- Focus `dead-code` → run it (and skip the per-file passes — this is the only analysis).
+- Focus `bugs` → run it (dead code often masks or accompanies bugs).
+- Narrow focuses (`security`, `a11y`, `types`, `performance`, `docs`, `tests`, `race-conditions`) → **skip it.** Unlike pass 6.10 (secrets), dead code is hygiene, not a gate — it is not always-on, and surfacing it during a focused security review is noise.
+- **≤3 CODE files** (model routing skipped) → run the sweep **inline in the main model** instead of spawning an agent.
+
+> **Output discipline** — same rule as Phase A/B: the orchestrator sees only the agent's **final assistant message**. Its grep/tool outputs are not propagated. The final message MUST contain the structured findings filled into the template below — not "done" or "scan complete".
+
+```
+Agent(model: "sonnet", prompt: "
+You are performing a whole-repo DEAD CODE sweep for a pre-PR review. You RECOMMEND
+cleanup only — never modify or delete anything. All commands you run must be read-only.
+
+## Context
+- Repository root: {REPO}
+- Branch: {BRANCH_NAME} → {BASE_BRANCH}
+- Merge base: {MERGE_BASE}
+- Framework: {frameworkPatterns}
+- Changed CODE/CONFIG files: {LIST_OF_CHANGED_FILES}
+
+## Instructions
+1. Read pass 6.9 from: references/detection-passes.md — apply its detection categories,
+   deepsearch method, opportunistic tooling, and (critically) the false-positive guardrails.
+2. Get the diff for context: git diff {MERGE_BASE}...HEAD
+3. Build two buckets:
+   - BUCKET A (introduced/orphaned by THIS PR): symbols/files the diff ADDED that nothing
+     references yet, and symbols/files the diff ORPHANED (last caller/import removed). For
+     each candidate, grep the WHOLE repo (excluding the defining file) for references —
+     including non-code files (HTML/JSX templates, JSON/YAML config, SQL, route manifests,
+     DI registration, .env). Zero refs + not public-API + not framework/dynamically-wired
+     → flag.
+   - BUCKET B (pre-existing, opportunistic): if any dead-code tooling is runnable
+     (npx knip / npx ts-prune / npx depcheck / vulture / ruff / dotnet build warnings /
+     deadcode / staticcheck), run it READ-ONLY and collect repo-wide dead code NOT touched
+     by this PR. CAP this bucket at ~10 highest-impact entries + a total count. If no
+     tooling is available, say so and leave Bucket B with only what the grep deepsearch
+     surfaced.
+4. Apply the guardrails before flagging anything: public API surface, framework/dynamic
+   wiring (routes, DI, decorators, reflection, dynamic import, string-keyed registries,
+   ORM entities, serialization, test discovery), references in non-code files, barrels/
+   re-exports, test-only utilities, conditional compilation, just-added scaffolding.
+   Each finding gets a Confidence (High/Medium/Low) reflecting how many guardrails it cleared.
+5. Severity: MEDIUM only for diff-orphaned items or whole orphaned files; LOW for everything
+   else. NEVER CRITICAL/HIGH. This pass never blocks the PR.
+
+## RETURN TEMPLATE — your final message must be in this exact shape
+
+TOOLING_AVAILABLE: <comma-separated tools you ran, or 'none — grep deepsearch only'>
+
+BUCKET_A (introduced/orphaned by this PR):
+- symbol_or_file: <name>
+  kind: unused-export | orphaned-file | unreachable | unused-import | unused-local | unused-dependency | diff-orphaned
+  location: <path>:<line>
+  severity: MEDIUM | LOW
+  confidence: High | Medium | Low
+  recommendation: <one-line cleanup>
+- ... (or 'none')
+
+BUCKET_B (pre-existing, capped):
+- symbol_or_file: <name>
+  kind: <...>
+  location: <path>:<line>
+  severity: LOW
+  confidence: <...>
+  recommendation: <one-line cleanup>
+- ... (or 'none')
+TOTAL_PREEXISTING: <N>   (full count before the cap, if a tool reported more)
+
+END_OF_DEAD_CODE_SWEEP
+")
+```
+
+If the agent under-reports (response missing `END_OF_DEAD_CODE_SWEEP`, or a bare status sentence), the orchestrator re-runs the grep deepsearch inline in the main session for the changed files — but unlike the secrets gate, an absent dead-code result is **non-blocking**: note "dead-code sweep incomplete" in the report and proceed.
+
 ### Phase C: Cross-File Review & Final Report (main model — opus)
 
 After all sonnet agents return, the main model:
@@ -268,7 +347,12 @@ After all sonnet agents return, the main model:
    - Prepend a BLOCKED banner to the report (see report template).
    - Add an entry under "Must Fix (CRITICAL)" per file with the remediation block from detection-passes.md pass 6.10.
    - If `secrets_prescan.errors` is non-empty (script crashed, ggshield timed out), also surface a warning to the user — the gate may have under-reported.
-9. **Produce the final report** — read `references/report-template.md` and output the structured Markdown report with:
+9. **Merge dead-code findings** — fold the Phase B2 Dead Code Sweep output (Bucket A = introduced/orphaned by this PR; Bucket B = pre-existing, capped) into the report. Calibration rules:
+   - Dead code is **MEDIUM/LOW only** — never promote to HIGH/CRITICAL, and it **never** affects the secrets gate or forces grade F.
+   - Honor the agent's per-finding **Confidence**: drop or footnote Low-confidence items that the guardrails couldn't clear (e.g. an unreferenced library export — external consumers are invisible to repo grep).
+   - Keep Bucket B a **capped summary** labeled "pre-existing (not introduced by this PR)" so it doesn't drown the PR-relevant Bucket A findings.
+   - If the sweep was skipped (narrow focus) or under-reported, note that in the Dead Code section rather than omitting it.
+10. **Produce the final report** — read `references/report-template.md` and output the structured Markdown report with:
    - BLOCKED banner (only if step 8 triggered)
    - **Secrets Detection table** (always present; shows "Status: PASS" with 0 rows when clean)
    - Findings table (ordered: CRITICAL > HIGH > MEDIUM > LOW, grouped by file)
@@ -276,6 +360,7 @@ After all sonnet agents return, the main model:
    - Bug/Security/Performance/Types summary
    - Test coverage table
    - Documentation sync table
+   - **🧹 Dead Code & Cleanup section** (when the sweep ran — Bucket A primary, Bucket B as a capped pre-existing summary; dead-code findings also feed Recommended Actions → Consider Fixing and the Code Quality grade rationale)
    - **Overall Grade table** (ALWAYS present; see "Mandatory final sections" below)
    - Recommended actions (ALWAYS present, even when empty — show "_None._" under each bucket)
 

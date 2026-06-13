@@ -81,8 +81,11 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 | Performance | {n} | {n} | {n} | {n} | {n} |
 | Type Safety | {n} | {n} | {n} | {n} | {n} |
 | Documentation | {n} | {n} | {n} | {n} | {n} |
+| **Dead Code (pass 6.9)** | {n} | 0 | 0 | {n} | {n} |
 
 > Secrets never carry MEDIUM/LOW severity. They are either CRITICAL (prod code, config, or credentialed connection strings) or HIGH (inline test-file literals). Env-var lookups are not counted at all.
+>
+> Dead code is the mirror image: it never carries CRITICAL/HIGH. MEDIUM only for diff-orphaned items or whole orphaned files; LOW otherwise. It is a cleanup recommendation, never a gate.
 
 ---
 
@@ -125,6 +128,24 @@ If more than 50 findings total, show all CRITICAL/HIGH/MEDIUM findings first, th
 > Only count functions/methods/classes that are new or modified in this branch.
 > A function counts as "documented" if it has a JSDoc/XML doc/docstring that matches its current behavior.
 > If the project specifies a documentation language (e.g., PT-BR), docstrings in the wrong language count as MISSING.
+
+---
+
+### 🧹 Dead Code & Cleanup
+
+Render this section when the **Dead Code Sweep (Phase B2 / pass 6.9)** ran — i.e. on full reviews, `bugs` focus, or `dead-code` focus. On a narrow focus where the sweep was skipped, render a single line: `_Dead-code sweep skipped (focused review on {area})._` Dead code is a **cleanup recommendation, never a blocker** — it carries MEDIUM/LOW severity only, never forces grade F, and never gates the PR.
+
+| Symbol / File | Kind | Location | Origin | Confidence | Recommended Cleanup |
+|---------------|------|----------|--------|-----------|---------------------|
+| `formatLegacyQuote` | unused-export | src/utils/quote.ts:88 | PR (diff-orphaned) | High | Last caller removed in this PR — delete the export or wire it back |
+| src/hooks/useOldFlow.ts | orphaned-file | src/hooks/useOldFlow.ts | PR | Medium | File imported nowhere after this change — remove or import |
+| `legacyParse` | unused-export | src/parser/legacy.ts:12 | pre-existing | Low | No internal refs (verify external consumers before deleting) |
+
+- **Origin** is either `PR` (Bucket A — introduced or orphaned by this diff; **primary**, list all) or `pre-existing` (Bucket B — surfaced by repo tooling, **not** touched by this PR; show a **capped** summary of ~10 highest-impact + a total count).
+- **Confidence** reflects the false-positive guardrails (public API, framework/dynamic wiring, non-code references, barrels, test-only, conditional compilation). Footnote or drop Low-confidence items rather than asserting deletion.
+- If the sweep ran and found nothing: `**Status**: clean — no dead code detected.` If tooling was unavailable: note `Tooling: none — grep deepsearch only` so the user knows coverage was reduced.
+
+> Dead-code findings also flow into **Recommended Actions → Consider Fixing (MEDIUM/LOW)** and contribute to the **Code Quality (Zen)** rationale in the Overall Grade table. They do **not** add a row to that table.
 
 ---
 

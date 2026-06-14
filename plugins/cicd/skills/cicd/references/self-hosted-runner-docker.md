@@ -281,6 +281,22 @@ ENTRYPOINT ["/usr/local/bin/jrc-entrypoint.sh"]
 CMD ["./bin/Runner.Listener", "run", "--startuptype", "service"]
 ```
 
+> **Como descobrir o `@sha256:` (e aplicar às imagens do app também).** O pin por
+> digest acima não é só para o runner — vale para `node`, `nginx`, `postgres` nos
+> Dockerfiles/compose do app: uma tag flutuante (`node:22-alpine`, `postgres:17`)
+> re-resolve para um build diferente a cada rebuild → imagem não reprodutível.
+> Para resolver o digest **sem baixar a imagem** (lê só o manifest do registry):
+>
+> ```bash
+> docker buildx imagetools inspect node:22-alpine | grep Digest
+> # Digest: sha256:9385cd9f3001dfc3431e8ead12c43e9e1f87cc1b9b5c6cfd0f73865d405b27c4
+> ```
+>
+> Depois fixe tag + digest (a tag legível fica para humanos; o digest garante a
+> imutabilidade): `FROM node:22-alpine@sha256:…` no Dockerfile, ou
+> `image: postgres:17@sha256:…` no compose. Atualizar o digest passa a ser uma
+> decisão deliberada (re-rodar o `imagetools inspect`), não um drift silencioso.
+
 **`infra/docker/runner/entrypoint.sh`**:
 
 ```bash

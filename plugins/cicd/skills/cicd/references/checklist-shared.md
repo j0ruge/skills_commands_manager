@@ -80,3 +80,29 @@ git push
 ```
 
 > **Note:** If you create the workflows in `main` and merge into `develop`, the workflows will be in both branches. CD Staging only fires when there is a push to `develop`.
+
+---
+
+## 6. CI gating — branch protection vs workflow trigger
+
+Um `ci.yml` que dispara **só** em `pull_request` NÃO gateia um `push` direto a um
+branch protegido. Se um admin (ou um merge feito fora de PR) empurra direto pra
+`develop`/`main`, lint/typecheck/test **não rodam** — o gate é puramente
+convencional até a branch protection ser configurada.
+
+- [ ] Branch protection em `develop`/`main` com **"Require status checks to pass"**
+      marcando os jobs `frontend` e `backend` (os nomes de job são o contrato).
+- [ ] **E/OU** trigger `push:` no `ci.yml` para os branches protegidos, p/ o gate
+      rodar também no merge / push direto:
+
+```yaml
+on:
+  pull_request:
+    branches: [develop, staging, main]
+  push:
+    branches: [develop, main]   # staging fica fora: push a staging dispara o cd-staging.yml (que já tem CI gate)
+```
+
+> Os dois mecanismos são complementares: branch protection **bloqueia** o merge sem
+> os checks verdes; o trigger `push:` **roda** os checks também em pushes diretos
+> (defesa em profundidade para o caso de um admin com bypass).

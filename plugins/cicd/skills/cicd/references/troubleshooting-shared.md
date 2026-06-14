@@ -523,3 +523,65 @@ awk -F= '
 Se `LEADING WHITESPACE` aparece em qualquer linha, reescreva o arquivo do zero — sed não vai te ajudar.
 
 **Por que isso confunde**: aplicações que usam o `.env` (docker-compose, dotenv-cli, vite, etc.) toleram o whitespace e funcionam. Você "vê" o secret carregando no container e assume que o arquivo está OK. Só percebe quando precisa fazer manutenção via sed/awk e o regex não casa, ou quando uma ferramenta mais estrita (alguns parsers Go/Rust) recusa ler.
+
+---
+
+## 11. CI gate duplicado entre `ci.yml` e `cd-staging.yml` → composite action
+
+**Sintoma**: o `ci.yml` tem jobs `frontend`/`backend` (lint + typecheck + test +
+build) e o `cd-staging.yml` tem `ci-gate-frontend`/`ci-gate-backend` que re-rodam
+os **mesmos passos** antes de buildar. Os dois blocos são copy-paste; qualquer
+mudança (novo comando de lint, flag de cache) precisa ser feita nos dois lugares e
+fatalmente drifta.
+
+**Fix**: extrair os passos compartilhados para uma **composite action** local em
+`.github/actions/<gate>/action.yml` — fonte única reusada pelos dois workflows.
+
+```yaml
+# .github/actions/ci-gate-frontend/action.yml
+name: CI Gate Frontend
+description: Lint + typecheck + testes + build com gate de chunks.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@<sha>   # v4.x
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+    - run: npm ci
+      shell: bash                       # OBRIGATÓRIO em todo step `run:` de composite
+    - run: npm run lint -w packages/frontend
+      shell: bash
+    - run: npm run typecheck -w packages/frontend
+      shell: bash
+    - run: npm run test -w packages/frontend
+      shell: bash
+```
+
+```yaml
+# ci.yml E cd-staging.yml — ambos os jobs viram 2 linhas:
+jobs:
+  frontend:                 # nome do job é CONTRATUAL (required status check) — não renomear
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<sha>    # checkout ANTES — pré-requisito de qualquer `uses: ./...`
+      - uses: ./.github/actions/ci-gate-frontend
+```
+
+**Pegadinhas**:
+
+1. **`actions/checkout` fica no job chamador, não na composite.** Um
+   `uses: ./.github/actions/...` referencia um path local que **só existe depois do
+   checkout** — por isso a composite NÃO pode fazer o próprio checkout (o path dela
+   ainda não está no disco quando o runner resolve o `uses`).
+2. **Todo step `run:` de composite exige `shell:` explícito** — sem ele o
+   `actionlint`/runner recusa (`run` em composite não herda shell default).
+3. **Nomes de job permanecem contratuais**: se `frontend`/`backend` são required
+   checks na branch protection, mantenha os mesmos nomes de job — a composite muda
+   só o *conteúdo* dos steps, não o id do job.
+4. **Valide local com `actionlint`** antes de commitar (ele resolve o `uses: ./...`
+   e linta o YAML + shellcheck dos `run:`).
+
+> A composite cobre o que é idêntico entre CI e o re-gate de CD. Jobs exclusivos de
+> um workflow (ex.: `integration` com Testcontainers só no `ci.yml`) ficam inline —
+> não force tudo na composite só por simetria.

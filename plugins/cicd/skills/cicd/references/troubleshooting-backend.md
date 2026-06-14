@@ -252,6 +252,47 @@ USER node
 
 (Só vale p/ **named volumes** — bind mounts não copiam ownership da imagem.)
 
+### Corolário da imagem `tsx`-runtime: enxugar com `--omit=dev`
+
+A seção acima (e a lesson 37) deixam a imagem rodando via `tsx` e copiando o
+`node_modules` **cheio** do builder — o que carrega junto todo o test tooling
+(`vitest`, `testcontainers`, `supertest`, `nock`, `typescript`, `@types/*`) pra
+imagem de produção: dezenas de MB e superfície de ataque que o runtime não usa.
+
+A pegadinha: você **não pode** simplesmente fazer `npm ci --omit=dev`, porque as
+ferramentas que o runtime e os one-offs precisam — **`tsx`** (CMD) e o **Prisma
+CLI** (`prisma migrate deploy` / `db seed`) — normalmente vivem em
+`devDependencies`. Um `--omit=dev` as removeria e quebraria o boot/migrate.
+
+**Fix**: mover `tsx` e `prisma` de `devDependencies` para `dependencies` no
+`package.json` do backend. Aí o estágio runtime instala só produção:
+
+```dockerfile
+# builder: install CHEIO (precisa de prisma generate + resolver siblings, lesson 39)
+RUN npm ci -w @scope/backend --include-workspace-root=false --omit=dev
+#                                                            ^^^^^^^^^^
+# Com tsx + prisma em `dependencies`, o --omit=dev mantém runtime/migrate
+# funcionando e DESCARTA vitest/testcontainers/supertest/typescript da imagem.
+RUN npm run db:generate -w @scope/backend     # Prisma Client (prisma está em deps)
+```
+
+Sincronize o lockfile depois de mover as deps: `npm install --package-lock-only`
+(reclassifica as árvores de `tsx`/`prisma` como produção; sem isso `npm ci` falha).
+
+**Verificação** (no build real, não só no diff):
+
+```bash
+docker build -f packages/backend/Dockerfile -t app:slim .
+docker run --rm --entrypoint sh app:slim -c '
+  ls /app/node_modules/.bin/tsx /app/node_modules/.bin/prisma   # PRESENTES
+  ls -d /app/node_modules/vitest /app/node_modules/testcontainers 2>&1   # ABSENT
+'
+```
+
+> Nota: `typescript` às vezes permanece como dep de produção transitiva (peer de
+> algum pacote) — é minoritário (~22 MB) e não é o test tooling pesado; o ganho
+> principal (vitest/testcontainers fora) já vem do `--omit=dev`.
+
 ---
 
 ## Diagnosis Flow — Backend

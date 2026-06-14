@@ -369,3 +369,48 @@ Now compose only waits for the listed services to be Healthy; other services in 
 `|| true` is important — `docker compose logs <svc>` fails if the service wasn't started, and you don't want the log dump step to itself fail and hide everything.
 
 **Generalizes to**: any compose file that mixes "things your CI test needs" with "things your dev needs". Be explicit about scope when the cost of waiting differs by orders of magnitude.
+
+---
+
+## §8. Wrapper process as PID 1 swallows SIGTERM — no graceful shutdown
+
+**Symptom**: `docker stop` (or a rolling redeploy: `compose up -d` recreating the
+container) hangs for the full stop-grace-period (~10s default) and then the
+container dies with SIGKILL (`exit 137`). The app's shutdown logs never appear —
+no connection draining, no `prisma.$disconnect()`, no flushing of in-flight work.
+
+**Cause**: the container's `CMD` is a **wrapper** — `npx tsx src/index.ts`,
+`npm start`, `npm run …`, `yarn …`. That wrapper becomes PID 1, forks the real
+process (node), and does **not** forward SIGTERM to its child. Docker sends
+SIGTERM to PID 1 on stop; the wrapper ignores/eats it; the actual server never
+hears it and only dies when Docker escalates to SIGKILL after the grace period.
+
+This is the runtime cousin of lesson 37: a monorepo whose shared workspaces export
+TS source forces the image to run via `tsx` (`CMD ["npx","tsx","src/index.ts"]`) —
+which is exactly the wrapper-as-PID-1 shape that triggers this.
+
+**Fix** — give the container a real init that reaps zombies and forwards signals:
+
+```yaml
+# docker-compose.yml — simplest, no image change
+services:
+  backend:
+    image: ghcr.io/org/app:tag
+    init: true          # runs a tini-like init as PID 1; relays SIGTERM to the child
+```
+
+Or bake it into the image (works without `init: true` in compose):
+
+```dockerfile
+RUN apk add --no-cache tini          # alpine; debian: apt-get install -y tini
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["npx", "tsx", "src/index.ts"]
+```
+
+`node` itself forwards signals correctly when it IS PID 1, and nginx's master also
+handles SIGTERM/SIGQUIT fine as PID 1 — so this bites specifically when a shell or
+`npx`/`npm`/`yarn` wrapper sits in front of the real process.
+
+**Verify**: `docker stop <ctr>` should return in well under the grace period and the
+app's shutdown handlers should log. `docker inspect --format '{{.State.ExitCode}}'`
+after a clean stop is `0` (or `143` = 128+SIGTERM) instead of `137` (SIGKILL).

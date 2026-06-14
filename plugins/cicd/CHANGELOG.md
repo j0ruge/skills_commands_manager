@@ -2,6 +2,48 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.14.0] - 2026-06-13
+
+### Adicionado
+
+- **Lessons Learned 41–45 (`SKILL.md`)** — 5 lições do hardening pós code-review da
+  feature 017 do `sales_quote` (continuação das 37–40), ausentes da skill:
+  - **41 `[S]`** — wrapper como PID 1 no container (`npx tsx …`/`npm start`) não
+    repassa SIGTERM → SIGKILL após o grace period, sem shutdown gracioso. Fix:
+    `init: true` no compose (ou `tini` no ENTRYPOINT). Cousin de runtime da lesson 37.
+  - **42 `[B]`** — corolário da 37: mover `tsx`+`prisma` p/ `dependencies` deixa o
+    estágio runtime usar `npm ci --omit=dev` e tirar vitest/testcontainers/supertest
+    da imagem, sem quebrar boot/migrate.
+  - **43 `[S]`** — CI gate duplicado entre `ci.yml` e o re-gate de `cd-staging.yml`
+    → extrair `.github/actions/<gate>/action.yml` (composite). Pegadinhas: checkout
+    fica no job chamador; `shell:` obrigatório nos `run:`; nomes de job são contrato.
+  - **44 `[S]`** — CI só com trigger `pull_request` deixa push direto a branch
+    protegido escapar do gate. Fix: trigger `push:` + branch protection com required
+    checks.
+  - **45 `[S]`** — descobrir o digest p/ pinar imagem base sem pull cheio:
+    `docker buildx imagetools inspect <img> | grep Digest`; aplicar a node/nginx/
+    postgres, não só ao runner.
+- **`SKILL.md` Quick Troubleshooting** — 2 rows novas (SIGKILL pós grace por wrapper
+  PID 1; código entrou sem rodar CI por push direto).
+- **`references/cd-pipeline-pitfalls.md` §8** — wrapper PID 1 / SIGTERM / `init: true`.
+- **`references/troubleshooting-backend.md`** — corolário "enxugar a imagem
+  `tsx`-runtime com `--omit=dev`" (mover tsx/prisma p/ deps + verificação no build).
+- **`references/troubleshooting-shared.md` §11** — composite action p/ DRY do CI gate
+  (4 pegadinhas: checkout no chamador, `shell:` obrigatório, nomes de job
+  contratuais, validar com actionlint).
+- **`references/checklist-shared.md` §6** — CI gating: branch protection vs trigger
+  `push:` (defesa em profundidade contra push direto).
+- **`references/self-hosted-runner-docker.md`** — nota de como descobrir o `@sha256:`
+  via `docker buildx imagetools inspect`, generalizada às imagens do app.
+- **`SKILL.md` description + `plugin.json` + `marketplace.json`**: bump 2.13.0 →
+  2.14.0 + keywords compactas (sem inchar a prose — a description já estava acima do
+  alvo enxuto, mesmo critério da 2.13.0).
+
+### Por que minor (não patch)
+
+Só adições (5 lições + §8 + §11 + §6 + 1 corolário + 1 nota). Nenhuma regressão para
+consumidores existentes.
+
 ## [2.13.0] - 2026-06-12
 
 ### Adicionado

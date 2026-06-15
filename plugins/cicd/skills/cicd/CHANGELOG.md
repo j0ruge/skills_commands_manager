@@ -2,6 +2,36 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-15 — §7 recorrente: recipe de migração ACCESS_TOKEN in-place (o fix durável) — bump 2.14.0 → 2.15.0
+
+Source: project `sales_quote` (staging, 2º incidente do mesmo §7 — "não é a primeira
+vez"). O §7 (chicken-and-egg do `RUNNER_REGISTRATION_TOKEN` estático) voltou a derrubar
+o deploy: runner em crashloop `404 runner-registration`, `RestartCount=1397`, deploy
+queued sem runner. O recovery documentado (rotacionar token + recriar) destravou, mas é
+**paliativo** — e o skill só citava a migração ACCESS_TOKEN como opção teórica, então
+ninguém a executava e o problema reincidia. Este retrofit fecha o loop:
+
+- **Novo recipe `references/self-hosted-runner-docker.md` §7 → "Migração ACCESS_TOKEN
+  in-place"**: mantém o `runner` no compose do produto; troca `RUNNER_TOKEN: ${...}` →
+  `ACCESS_TOKEN: ${RUNNER_ACCESS_TOKEN:-}` + `RUNNER_SCOPE: repo`; entrypoint custom
+  passa a aceitar `ACCESS_TOKEN` OU `RUNNER_TOKEN` (antes exigia `RUNNER_TOKEN` sob
+  `set -u` → quebrava o modelo PAT). A imagem `myoung34` rebusca um registration token
+  fresco a cada start → JIT ephemeral re-registra limpo, §7 deixa de acontecer.
+- **Desmascarado que `EPHEMERAL:false` NÃO previne** o crashloop (o entrypoint limpa
+  `.runner` e re-registra a cada start) — era uma falsa mitigação que o skill insinuava.
+- **`gh` NÃO cunha PAT** (só web UI); `gh auth token` (escopo `repo`) serve de stopgap
+  com tradeoff de acoplamento ao login. PAT vive só no `.env` persistente do host.
+- **Calibração pré-recovery**: `gh api runners` vazio ⇒ sem fantasma a deletar; deploy
+  `up` escopado ⇒ match secret↔.env é irrelevante (runner roda do `.env` persistente do
+  operador, não do efêmero do CD).
+- **Validação canônica**: validar o PAT com `GH_TOKEN=… gh api .../registration-token`
+  ANTES de recriar; **provar a cura** com `docker restart` (re-registra sem 404).
+- `SKILL.md`: lição **46** + row na Quick Troubleshooting + 3 keywords de trigger.
+
+**Por quê**: transformar "opção mencionada" em recipe executável e marcar o recovery e o
+toggling de `EPHEMERAL` como paliativos — para o §7 parar de reincidir. Provado em staging
+do `sales_quote` (cutover + `docker restart` sem 404).
+
 ## 2026-06-12 — Monorepo npm-workspace build/runtime traps + `tsc -b` project references — bump 2.12.0 → 2.13.0
 
 Source: project `sales_quote` (feature 017, primeiro CI/CD do repo). Quatro armadilhas

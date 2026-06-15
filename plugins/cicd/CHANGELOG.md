@@ -2,6 +2,47 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.15.0] - 2026-06-15
+
+### Adicionado
+
+- **`references/self-hosted-runner-docker.md` §7 — "Migração ACCESS_TOKEN in-place"**
+  (novo recipe, o fix DURÁVEL). Motivação: o §7 (chicken-and-egg do registration
+  token estático) **recorreu** no `sales_quote` ("não é a primeira vez") porque o
+  skill documentava a migração ACCESS_TOKEN só como opção teórica ("compose
+  centralizado"), enquanto o recovery que se usa no incidente é só rotação de token
+  — que **não é cura**. Agora há recipe in-place completo: mantém o `runner` no
+  compose do produto e troca `RUNNER_TOKEN: ${...}` → `ACCESS_TOKEN:
+  ${RUNNER_ACCESS_TOKEN:-}` + `RUNNER_SCOPE: repo`; entrypoint custom passa a
+  aceitar `ACCESS_TOKEN` OU `RUNNER_TOKEN`; PAT vive só no `.env` persistente do
+  host (nunca GH secret nem no `.env` efêmero do CD); validar o PAT antes de
+  recriar e provar a cura com `docker restart` (re-registra sem 404).
+- **Callout "STOPGAP, não cura"** antes do "Fix permanente" no §7, com 2 enganos
+  comuns desmascarados: (1) **`EPHEMERAL:false` NÃO previne** o crashloop — o
+  entrypoint limpa `.runner` e re-registra a cada start, então qualquer restart
+  bate no token vencido (visto com RestartCount em milhares); (2) re-rotacionar o
+  token compra só ~1h.
+- **Calibração pré-recovery** no §7: `gh api runners` vazio ⇒ ephemeral já se
+  desregistrou, **sem fantasma** a deletar (passo (b) condicional); e se o job
+  `deploy` faz `up`/`pull` ESCOPADO (sem o `runner`), o match secret↔.env é
+  irrelevante — o runner roda do `.env` **persistente do operador**, separado do
+  `.env` efêmero que o CD gera e apaga (rotacionar a GH secret não conserta o
+  runner vivo).
+- **Fato operacional**: `gh` **NÃO cunha PAT** (não há API/CLI — só web UI); a
+  única credencial gh-only é o token OAuth do login (`gh auth token`, escopo
+  `repo`) como **stopgap**, com tradeoff de acoplamento ao login + escopo amplo
+  num host com `docker.sock`=root.
+- **`SKILL.md`** — lição **46** (§7 recorre / fix durável = ACCESS_TOKEN in-place /
+  `gh` não cunha PAT); nova row na Quick Troubleshooting ("deploy queued de novo");
+  3 keywords de trigger.
+
+### Por quê
+
+Fechar o loop de recorrência: transformar a migração ACCESS_TOKEN de "opção
+mencionada" em recipe executável e marcar explicitamente que o recovery e o
+toggling de `EPHEMERAL` são paliativos. Provado no staging do `sales_quote`
+(2026-06-15): cutover + `docker restart` re-registrando sem 404.
+
 ## [2.14.0] - 2026-06-13
 
 ### Adicionado

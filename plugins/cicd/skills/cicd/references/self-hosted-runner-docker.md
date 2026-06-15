@@ -448,6 +448,8 @@ echo "$TOK" | gh secret set RUNNER_REGISTRATION_TOKEN --repo "$REPO" --env produ
 echo "$TOK" | gh secret set RUNNER_REGISTRATION_TOKEN --repo "$REPO"  # repo-level fallback
 
 # (b) Apagar registro fantasma no GH ANTES de re-registrar (§6).
+#     PULE este passo se `gh api runners` veio VAZIO — o ephemeral já se
+#     desregistrou e não há fantasma; só faz sentido se houver entrada `offline`.
 EXISTING=$(gh api "/repos/${REPO}/actions/runners" \
   --jq '.runners[]? | select(.name=="<runner-name>") | .id')
 [ -n "$EXISTING" ] && gh api -X DELETE "/repos/${REPO}/actions/runners/${EXISTING}"
@@ -481,7 +483,99 @@ Após (c), o próximo `docker compose up -d` do CD vê o runner **com labels cor
 
 **Por que só "passos (a)+(c)" não bastam**: se você atualizar o secret mas trazer o runner via `docker run`, faltam labels compose; se trouxer via compose mas com token diferente do secret, no próximo deploy o `compose up` recria. O match-de-token + labels-de-compose é o que evita o segundo round de chicken-and-egg.
 
-**Fix permanente recomendado**: sair do design "secret estática + nodiff coincidence" e adotar um dos dois caminhos:
+> **⚠️ Este recovery é STOPGAP, não cura — e por isso RECORRE.** Enquanto a
+> credencial do runner for um *registration token* (vence ~1h), todo re-registro
+> futuro repete o 404. Dois enganos que NÃO resolvem:
+> - **`EPHEMERAL: "false"`** (tornar o runner "reutilizável/persistente") **não
+>   previne** o crashloop: se o entrypoint custom limpa `.runner` e re-registra a
+>   cada start (§3), QUALQUER restart do container dispara `config.sh` com o token
+>   vencido. Visto recorrer com `RestartCount` em milhares mesmo com `EPHEMERAL:false`.
+> - **Re-rotacionar o token** compra só mais ~1h. Para parar de vez → migre para
+>   ACCESS_TOKEN (logo abaixo).
+>
+> **Antes do recovery, calibre 2 coisas no SEU pipeline:**
+> - **`gh api runners` veio vazio?** O runner ephemeral já se desregistrou por
+>   inteiro — então **não há fantasma** a deletar; pule o passo (b). A lista só
+>   traz uma entrada `offline` se o runner morreu sem desregistrar.
+> - **O job `deploy` faz `compose up` do service `runner`?** Se o `up`/`pull` do
+>   CD é ESCOPADO aos services de imagem (`up -d frontend backend postgres`) e
+>   NÃO toca o runner, então o trap "recriar runner mid-job" não existe e o
+>   match secret↔.env do passo (a) é **IRRELEVANTE** — o runner roda de um `.env`
+>   **PERSISTENTE do operador** (ex.: `/opt/<proj>/infra/staging/.env`), SEPARADO
+>   do `.env` efêmero que o CD gera no workspace e apaga ao fim (logo: rotacionar a
+>   GH secret NÃO conserta o runner vivo). Nesse caso o recovery é só: editar a
+>   linha do token no `.env` persistente do host + `compose -p <proj> up -d
+>   --no-deps --force-recreate runner`.
+
+### Migração ACCESS_TOKEN in-place — o fix durável (recomendado)
+
+Mantém o `runner` no compose do produto (não precisa centralizá-lo); só troca a
+credencial de *registration token* (expira ~1h) por um **PAT**, que a imagem
+`myoung34` usa para gerar um registration token FRESCO a cada start. O JIT
+ephemeral passa a re-registrar limpo e o §7 deixa de acontecer. Provado no
+staging do `sales_quote` (2026-06): `docker restart` re-registra sem 404.
+
+**1. Criar o PAT — `gh` NÃO cunha PAT.** Não existe endpoint de API/CLI para
+criar Personal Access Token (clássico ou fine-grained); só a **web UI**
+(`github.com/settings/tokens`). As únicas credenciais que o `gh` produz sozinho
+são: (a) o próprio token OAuth do login — `gh auth token` — que serve como
+`ACCESS_TOKEN` SE tiver escopo `repo`, mas **acopla o runner ao login do operador**
+(re-auth/revoke quebra o runner) e é mais amplo (`workflow`/`gist`/`read:org`)
+num host com `docker.sock`=root → use só como **stopgap**; e (b) um registration
+token (vence 1h — é o próprio problema). Durabilidade real = **PAT dedicado**
+(clássico escopo `repo`, ou fine-grained 1-repo com `Administration: R/W`).
+
+**2. Compose** — trocar a credencial e fixar o escopo:
+
+```yaml
+runner:
+  environment:
+    RUNNER_SCOPE: repo                      # exigido p/ ACCESS_TOKEN gerar token via API
+    ACCESS_TOKEN: ${RUNNER_ACCESS_TOKEN:-}  # PAT; o default vazio `:-` é CRÍTICO
+    # ...sem RUNNER_TOKEN...
+```
+
+O `:-` (default vazio) evita que comandos `docker compose` do CD — que parseiam
+o arquivo inteiro mas NÃO sobem o runner (deploy escopado) — falhem por var
+não-setada.
+
+**3. Entrypoint custom** — se ele EXIGE `RUNNER_TOKEN` (`: "${RUNNER_TOKEN:?}"`
+sob `set -u`), o modelo ACCESS_TOKEN quebra cedo. Aceite QUALQUER das duas:
+
+```bash
+if [[ -z "${ACCESS_TOKEN:-}" && -z "${RUNNER_TOKEN:-}" ]]; then
+  echo "defina ACCESS_TOKEN (PAT, durável) ou RUNNER_TOKEN (registration, 1h)" >&2
+  exit 1
+fi
+```
+
+**4. Onde vive o PAT** — SÓ no `.env` PERSISTENTE do host do runner; **nunca**
+como GH secret nem no `.env` que o CD gera (se o deploy não sobe o runner, ele
+não precisa da credencial). Remova o `RUNNER_REGISTRATION_TOKEN` morto do step
+"Gerar .env" do CD.
+
+**5. Cutover + validação**:
+
+```bash
+# (a) valida o PAT ANTES de recriar — se gera registration token, o escopo está OK:
+GH_TOKEN=<PAT> gh api -X POST "/repos/${REPO}/actions/runners/registration-token" --jq .token >/dev/null && echo "PAT OK"
+# (b) grava no .env persistente do host (token via stdin → fora de `ps`/sshd args):
+printf 'RUNNER_ACCESS_TOKEN=%s\n' "$PAT" | ssh host '
+  ENVF=/opt/<proj>/infra/staging/.env; L=$(cat)
+  grep -vE "^(RUNNER_ACCESS_TOKEN|RUNNER_REGISTRATION_TOKEN)=" "$ENVF" > "$ENVF.tmp" || true
+  printf "%s\n" "$L" >> "$ENVF.tmp"; mv "$ENVF.tmp" "$ENVF"; chmod 600 "$ENVF"'
+# (c) rebuild+recria SÓ o runner (entrypoint mudou → precisa de --build):
+ssh host 'cd /opt/<proj>/infra/staging && docker compose -p <proj> up -d --build --no-deps --force-recreate runner'
+# (d) PROVA de durabilidade — reinicie e confirme re-registro limpo (sem 404):
+ssh host 'docker restart <runner>; sleep 14; docker logs --tail 8 <runner> | grep -E "Listening|404"'
+# Esperado: "Listening for Jobs"; RestartCount sobe mas fica online — antes daria 404.
+```
+
+O passo (d) é o que **prova** que a migração curou de fato (vs só afirmar) —
+ele reproduz exatamente o evento (restart) que antes levava ao crashloop.
+
+**Outras variantes do fix permanente** (quando a migração in-place não encaixa —
+ex.: você quer o runner FORA do compose do produto, ou um token a quente por deploy):
 
 1. **Token gerado a quente no workflow**. No `cd-production.yml`, substituir o consumo de `secrets.RUNNER_REGISTRATION_TOKEN` por:
 
@@ -521,3 +615,6 @@ docker ps --format '{{.Names}}\t{{.Status}}' | grep -i runner
 | "A runner exists with the same name" / labels antigas mantidas | §6 (DELETE no GH antes) |
 | Deploy queued forever + `gh-runner` Restarting + log com `404 /actions/runner-registration` | §7 (chicken-and-egg) |
 | Após recovery manual, `compose up` falha com `Container gh-runner Conflict: name already in use` | §7 (use `compose -p <project> up`, não `docker run`) |
+| O §7 já recorreu / quero parar de vez (o recovery não cura) | §7 → Migração ACCESS_TOKEN in-place |
+| `EPHEMERAL:false` não impediu o crashloop de token | §7 (não é mitigação — entrypoint re-registra a cada start; migre p/ ACCESS_TOKEN) |
+| "É a primeira vez que `gh` não cria meu PAT?" / automatizar criação de PAT | §7 → in-place (PAT é só web UI; `gh auth token` serve de stopgap) |

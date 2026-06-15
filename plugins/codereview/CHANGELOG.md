@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.16.0] - 2026-06-15
+
+### Changed (pass 6.9 Dead Code — guardrail "over-export" agora distingue dois sub-casos com correções OPOSTAS)
+
+Motivação: numa sessão real de cleanup, o guardrail over-export (introduzido na
+v1.15.0) dava UMA correção — "remova o `export`". Mas símbolos usados só dentro do
+próprio arquivo se dividem em dois casos com remédios opostos, e aplicar o errado
+quebra código vivo:
+
+- **(a) plumbing interno** (não aparece em nenhuma assinatura exportada) → remover
+  `export` (como antes). Ex.: `DefField`.
+- **(b) superfície de tipo pública** — o símbolo aparece na assinatura de um símbolo
+  **exportado** (ex.: `AuthUser` tipando o campo `user` do `UseAuthReturn` exportado;
+  `UpdateArgs` dentro do `UseCotacaoMutationsReturn` exportado) → **manter o `export`**.
+  Removê-lo quebra o contrato de tipo público e pode disparar o erro TS *"exported X
+  has or is using private name Y"* (TS4023/TS4094) sob declaration emit / build
+  composto (`tsc -b`). Se a ferramenta ainda reclamar, **marcar intencional** com
+  `@public` (o knip honra) ou `@internal` — nunca deletar/narrowing.
+
+O grep within-file/exported-signature agora é **check obrigatório por-símbolo** em
+TODO achado "unused export", não uma anedota. (No caso real, um PRD derivado de
+review ainda mandou "apagar" `cotacaoQueryKey`/`cotacaoEventosQueryKey` — mesmo padrão
+do `DefField` já citado — prova de que a aplicação não era sistemática.)
+
+Editado: `references/detection-passes.md` §6.9 (bullet over-export reescrito em (a)/(b))
+e `SKILL.md` Phase B2 (resumo do guardrail espelha os dois sub-casos). Sem mudança na
+superfície de triggering — descrição inalterada.
+
 ## [1.15.0] - 2026-06-15
 
 ### Changed (codereview SKILL.md v1.11.0 → v1.12.0 — calibração do pass 6.9 Dead Code para a saída de `knip`/`ts-prune`)

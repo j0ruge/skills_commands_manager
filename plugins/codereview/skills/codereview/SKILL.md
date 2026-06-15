@@ -284,8 +284,11 @@ cleanup only — never modify or delete anything. All commands you run must be r
    wiring (routes, DI, decorators, reflection, dynamic import, string-keyed registries,
    ORM entities, serialization, test discovery), references in non-code files, barrels/
    re-exports, test-only utilities, conditional compilation, just-added scaffolding,
-   over-export (symbol used only WITHIN its own file → recommend dropping `export`, NOT
-   deletion), and regenerable scaffolding under generatedDirs (shadcn `components/ui/**`,
+   over-export (no external importer BUT used within its own file or in an exported symbol's
+   signature → NOT dead; in-file-only plumbing → drop `export`; part of an exported
+   type-surface/API → keep `export` and mark `@public`/`@internal`, never delete — dropping
+   `export` on a type used by an exported type can break `tsc -b`/declaration emit with
+   "uses private name"; see detection-passes.md §6.9), and regenerable scaffolding under generatedDirs (shadcn `components/ui/**`,
    `**/generated/**` → Bucket B, Low confidence, capped — never an actionable app finding).
    Each finding gets a Confidence (High/Medium/Low) reflecting how many guardrails it cleared.
 5. Severity: MEDIUM only for diff-orphaned items or whole orphaned files; LOW for everything

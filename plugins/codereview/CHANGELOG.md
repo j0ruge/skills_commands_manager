@@ -2,6 +2,33 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.15.0] - 2026-06-15
+
+### Changed (codereview SKILL.md v1.11.0 → v1.12.0 — calibração do pass 6.9 Dead Code para a saída de `knip`/`ts-prune`)
+
+Motivação: numa sessão real, o agente de Dead Code Sweep (Phase B2) rodou `knip` e
+produziu dois falsos-positivos que exigiram correção manual. Esta versão codifica
+as duas lições como guardrails, para o agente acertar de forma determinística em vez
+de depender de julgamento.
+
+- **Categoria "unused export" precisada** em `references/detection-passes.md`: agora
+  distingue *morto de fato* (sem referência em lugar nenhum, inclusive no próprio
+  arquivo) de **over-export** (símbolo usado DENTRO do próprio arquivo, mas sem
+  importadores externos). `knip`/`ts-prune` reportam over-export como "unused export"
+  porque só contam referências *cross-file* — mas o símbolo está vivo.
+- **Novo guardrail "Over-exported (used only within its own file)"**: a correção é
+  **remover o `export`** (tornar module-private), **não deletar o símbolo**. Flag em
+  LOW/cleanup. Motivado por caso real: um helper `DefField` usado 11× no próprio
+  módulo, reportado como unused-export — deletá-lo quebraria a página.
+- **Novo guardrail "Regenerable / generated scaffolding"** sob `generatedDirs`
+  (`src/components/ui/**`, `**/generated/**`): primitivos de design-system (shadcn/ui
+  re-adicionáveis via `npx shadcn add`) e saída de codegen. `knip` os surfaceia em
+  massa (dump de ~30 arquivos que afoga os achados do PR) → mantê-los em **Bucket B**,
+  **Low confidence**, capados, rotulados "regenerable scaffolding"; nunca como
+  dead-code acionável do app, salvo se o próprio diff orfanou um.
+- **Phase B2 (`SKILL.md`)**: a lista de guardrails do agente de sweep agora cita
+  explicitamente over-export e scaffolding regenerável.
+
 ## [1.14.0] - 2026-06-13
 
 ### Added (codereview SKILL.md v1.10.0 → v1.11.0 — pass 6.9 Dead Code + Phase B2 dedicated sweep agent)

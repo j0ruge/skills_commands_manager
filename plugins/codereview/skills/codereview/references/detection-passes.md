@@ -321,7 +321,7 @@ Dead code is the inverse of a bug: it doesn't break anything, it just *accumulat
 
 **Detection categories** (apply to both buckets where relevant):
 
-- Unused **exports** (exported symbol referenced nowhere outside its own file).
+- Unused **exports** (exported symbol referenced **nowhere at all** — including within its own file). If the symbol *is* used inside its defining file but has no external importers, that's **over-export**, not dead code — see the over-export guardrail below.
 - **Orphaned files** (a module that exports things but is imported by nothing).
 - Unused **imports**, **local variables**, and **private members/fields/methods**.
 - **Unreachable code** (statements after `return` / `throw` / `break` / `continue`, or inside an always-false branch).
@@ -352,6 +352,8 @@ If none are available, say so in the agent's notes and rely on the grep deepsear
 - **Test-only utilities**: a helper used only by tests is **not** dead — tests are real consumers.
 - **Conditional compilation / platform-specific**: `#if`, `Platform.OS === ...`, feature-flag-gated code, `__DEV__` blocks.
 - **Just-added scaffolding**: a symbol added in *this* diff but not yet wired may be intentional groundwork for a follow-up. Flag at **LOW** with *"added but unused — intentional scaffolding or forgotten wiring?"* rather than asserting it's dead.
+- **Over-exported (used only within its own file)**: a symbol that *is* referenced inside its defining file but has no external importers is **not dead** — `knip`/`ts-prune` report it as an "unused export" because they only count *cross-file* references. The fix is to **drop the `export` keyword** (make it module-private), **not delete the symbol**. Flag at **LOW** as cleanup with *"used only in-file — remove `export`, keep the symbol."* (Verify by grepping the symbol within its own file before recommending anything.) Real case that motivated this: a `DefField` helper used 11× in its own module, reported as an unused export — deleting it would have broken the page.
+- **Regenerable / generated scaffolding** under `generatedDirs` (default `src/components/ui/**`, `**/generated/**`): design-system primitives (e.g. shadcn/ui components re-addable via `npx shadcn add`) and codegen output. Tooling like `knip` surfaces unused ones **in bulk** — a 30-file dump that buries the PR-relevant findings. Keep these in **Bucket B**, **Low confidence**, lean on the cap, and label them *"regenerable scaffolding (not introduced by this PR)"* — do **not** present them as actionable app dead code unless the diff itself orphaned one.
 
 Every finding carries a **Confidence** (High / Medium / Low) reflecting how many guardrails it cleared. A plain unreachable-statement-after-`return` is High confidence; an unreferenced exported function in a library package is Low.
 

@@ -1,7 +1,7 @@
 ---
 name: codereview
 metadata:
-  version: 1.11.0
+  version: 1.12.0
 description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, contract drift in tests (exported const grew without its assertion updated), and **dead code** via a parallel whole-repo sweep — unused exports, orphaned files, unreachable code (knip/ts-prune/vulture or grep) — with cleanup recs. Final report always includes the Overall Grade table + Recommended Actions. Stack-agnostic with TypeScript/React defaults, dotnet preset. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, unused exports, cleanup, code health.
 ---
 
@@ -283,7 +283,10 @@ cleanup only — never modify or delete anything. All commands you run must be r
 4. Apply the guardrails before flagging anything: public API surface, framework/dynamic
    wiring (routes, DI, decorators, reflection, dynamic import, string-keyed registries,
    ORM entities, serialization, test discovery), references in non-code files, barrels/
-   re-exports, test-only utilities, conditional compilation, just-added scaffolding.
+   re-exports, test-only utilities, conditional compilation, just-added scaffolding,
+   over-export (symbol used only WITHIN its own file → recommend dropping `export`, NOT
+   deletion), and regenerable scaffolding under generatedDirs (shadcn `components/ui/**`,
+   `**/generated/**` → Bucket B, Low confidence, capped — never an actionable app finding).
    Each finding gets a Confidence (High/Medium/Low) reflecting how many guardrails it cleared.
 5. Severity: MEDIUM only for diff-orphaned items or whole orphaned files; LOW for everything
    else. NEVER CRITICAL/HIGH. This pass never blocks the PR.

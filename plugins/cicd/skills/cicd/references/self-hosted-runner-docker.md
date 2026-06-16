@@ -11,6 +11,9 @@ A imagem `myoung34/github-runner` é a fonte mais usada para conteinerizar o run
 - Runner sobe mas o GitHub vê labels erradas (`default` em vez de `production`/`staging`).
 - Workflows com `runs-on: [self-hosted, production]` reportam "No runner matching the specified labels".
 - Build do Dockerfile do runner falha em `gpg --dearmor` (`cannot open '/dev/tty'`).
+- Runner conecta e lista jobs mas o log diz `Runner version vX is deprecated and cannot receive messages` (§8).
+- Log repete `Failed to create a session. The runner registration has been deleted from the server` (§9).
+- `DISABLE_AUTO_UPDATE: "0"` não ligou o auto-update, ou runner pinado por digest deprecou meses depois (§8a).
 
 ## §1. CMD herdado é zerado quando você define ENTRYPOINT
 
@@ -603,6 +606,79 @@ docker ps --format '{{.Names}}\t{{.Status}}' | grep -i runner
 # se é só esse runner → token-quente no workflow tem menos blast radius.
 ```
 
+## §8. Binário do runner deprecado → "cannot receive messages" (crashloop independente do token)
+
+**Sintoma**: deploy `queued` para sempre; no host, `docker ps` mostra o runner **`Up <segundos>` mas com `RestartCount` na casa dos milhares** (o tell de crashloop — não está "down", está ciclando). `docker logs` revela:
+
+```text
+√ Connected to GitHub
+Current runner version: '2.333.0'
+2026-xx-xx: Listening for Jobs
+An error occurred: Runner version v2.333.0 is deprecated and cannot receive messages.
+```
+
+O runner **registra e conecta com sucesso** (não é problema de token nem de registro), chega a "Listening for Jobs", e então o GitHub **recusa entregar jobs** porque a versão do binário foi deprecada → o agente sai → o container reinicia → loop. No GitHub o `status` pode piscar entre `online`/`offline` conforme cicla.
+
+**Causa**: a imagem (tipicamente `myoung34/github-runner:latest`) foi baixada **uma vez** e nunca re-puxada, **e** `DISABLE_AUTO_UPDATE` está ligado — então o binário não se auto-atualiza e apodrece. O GitHub deprecia versões antigas do runner periodicamente e passa a recusá-las. É o pior-dos-dois: nem refresh de imagem, nem auto-update do binário. (Provável gatilho de origem do offline que depois leva ao §9.)
+
+> **Isolation key — §8 vs §7 vs §9**: os três dão "deploy queued + runner crashloop", mas o log os separa em 3 segundos:
+> - `404 .../actions/runner-registration` + `Not configured` → **§7** (registration token vencido).
+> - `registration has been deleted from the server` → **§9** (config stale reaproveitada).
+> - `Runner version vX is deprecated and cannot receive messages` → **§8** (binário velho). Conectou e listou jobs antes de morrer — prova que credencial/registro estão OK.
+
+**Fix imediato** (no host, no diretório do compose):
+
+```bash
+docker compose pull                       # imagem fresca = binário de runner atual
+docker compose up -d --force-recreate
+sleep 14
+docker logs --tail 10 <runner> | grep -E 'Current runner version|Listening for Jobs|deprecated'
+# Esperado: versão nova, "Listening for Jobs", SEM "deprecated". RestartCount volta a 0.
+```
+
+**Fix durável — ligar o auto-update (recomendado)**. Ver §8a. Com auto-update o binário se atualiza em runtime e o §8 deixa de recorrer; `docker compose pull` periódico vira só cinto-e-suspensório.
+
+### §8a. `DISABLE_AUTO_UPDATE` é footgun: qualquer valor não-vazio (até `"0"`) desliga
+
+O entrypoint do `myoung34` faz `[ -n "${DISABLE_AUTO_UPDATE}" ]` → **qualquer string não-vazia ativa o `--disableupdate`**, inclusive `"0"` e `"false"`. Para **LIGAR** o auto-update é preciso **REMOVER a variável** do compose, não setá-la como `"0"`:
+
+```yaml
+runner:
+  environment:
+    ACCESS_TOKEN: ${RUNNER_ACCESS_TOKEN:-}
+    # NÃO definir DISABLE_AUTO_UPDATE — presença de QUALQUER valor desliga o auto-update.
+    # Sem a var, o binário se auto-atualiza quando o GitHub exige (evita o §8).
+```
+
+Aplicar exige recriar o container (a env é lida no start): `docker compose up -d --force-recreate <runner>`. Confirmar que sumiu de fato: `docker exec <runner> printenv DISABLE_AUTO_UPDATE` deve **não** retornar nada.
+
+> **Corolário — caveat à lição 45 (pin por digest)**: pinar a imagem do **runner** por digest é **contraproducente sem cadência de bump**. A lição 45 vale para `node`/`nginx`/`postgres` (imutabilidade desejável), mas o GitHub **força currency de versão** do runner — um digest congelado garante que, em 1–2 meses, a versão fica deprecada e cai no §8. Para o runner, escolha conscientemente: (a) `:latest` + auto-update ligado (sempre atual, menos reproduzível), OU (b) pin por digest + **cron/rotina mensal de `docker compose pull`**. Não pine sem o (b).
+
+## §9. Config-reuse ressuscita credencial morta após o GitHub apagar o registro
+
+**Sintoma**: `RestartCount` alto; `docker logs` repete:
+
+```text
+Failed to create a session. The runner registration has been deleted from the server,
+please re-configure. Runner registrations are automatically deleted for runners that
+have not connected to the service recently.
+...
+Runner reusage is enabled / The runner has already been configured /
+Reusage is enabled. Storing data to /home/runner/config/<repo>
+```
+
+**Causa**: o GitHub **apaga o registro server-side** de runners offline por tempo demais (semanas). Com `CONFIGURED_ACTIONS_RUNNER_FILES_DIR` apontando para um **named volume** (reuso de config ligado), o entrypoint encontra o `.runner`/`.credentials` persistidos, decide "já está configurado" e **reaproveita a credencial morta** em vez de re-registrar com o PAT → a sessão falha → crashloop.
+
+**Distinto do §6**: o §6 é conflito de **nome** ao tentar re-registrar (precisa `DELETE` no GitHub antes). O §9 é o oposto — o runner **nem tenta** re-registrar porque o reuso o convence de que está configurado; o registro já sumiu do lado do GitHub (nada a deletar). Fix é **limpar o estado local**, não o remoto:
+
+```bash
+docker compose down
+docker volume rm <project>_<config-volume>     # ex.: louvorflow-runners_runner-config-louvorflow
+docker compose up -d                            # config.sh fresco → re-registra via ACCESS_TOKEN
+```
+
+> **ACCESS_TOKEN não é imune (nuance à lição 46)**: migrar para `ACCESS_TOKEN` (PAT) cura o **§7** (expiry de registration token), mas **não** o §8 (binário velho) nem o §9 (config stale reaproveitada) — são modos ortogonais ao modelo de credencial. Um runner em ACCESS_TOKEN ainda crashloopa por versão deprecada e por config morta reaproveitada. Não assuma que ACCESS_TOKEN = à prova de balas.
+
 ## Sintomas → seção
 
 | Sintoma | Vai para |
@@ -618,3 +694,7 @@ docker ps --format '{{.Names}}\t{{.Status}}' | grep -i runner
 | O §7 já recorreu / quero parar de vez (o recovery não cura) | §7 → Migração ACCESS_TOKEN in-place |
 | `EPHEMERAL:false` não impediu o crashloop de token | §7 (não é mitigação — entrypoint re-registra a cada start; migre p/ ACCESS_TOKEN) |
 | "É a primeira vez que `gh` não cria meu PAT?" / automatizar criação de PAT | §7 → in-place (PAT é só web UI; `gh auth token` serve de stopgap) |
+| `Runner version vX is deprecated and cannot receive messages` (conectou e listou jobs antes de morrer) | §8 (binário velho — `compose pull` + ligar auto-update) |
+| Liguei `DISABLE_AUTO_UPDATE: "0"` esperando ATIVAR o auto-update e não ativou | §8a (qualquer valor não-vazio desliga — REMOVER a var) |
+| Pinei o runner por digest e meses depois caiu em crashloop de versão | §8a (caveat à lição 45 — runner precisa de currency; `:latest`+auto-update ou pin+bump mensal) |
+| `Failed to create a session. The runner registration has been deleted from the server` | §9 (config stale reaproveitada — `docker volume rm <config-volume>`) |

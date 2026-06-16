@@ -2,6 +2,38 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-15 — §8/§9: crashloops do runner ortogonais ao token (versão deprecada + config stale) — bump 2.15.0 → 2.16.0
+
+Source: project `LouvorFlow` (staging, `192.168.0.6`). Deploy `queued` indefinidamente,
+runner `louvorflow-runner` em crashloop com `RestartCount=50296`. Dois modos de falha
+**não cobertos** pelo skill (que só tinha §7/token e §6/nome), e ambos **mordem mesmo em
+runners já migrados para `ACCESS_TOKEN`** — desfazendo a impressão (da lição 46) de que
+ACCESS_TOKEN seria à prova de balas:
+
+- **§8 — `Runner version vX is deprecated and cannot receive messages`**: o runner
+  registra, conecta e chega a "Listening for Jobs"; só então o GitHub recusa entregar
+  jobs porque o binário foi deprecado → exit → restart. Causa: imagem `:latest` baixada
+  uma vez e nunca re-puxada **+** `DISABLE_AUTO_UPDATE` ligado (nem refresh de imagem nem
+  auto-update do binário). Tell: `Up <segundos>` com `RestartCount` milhares; status
+  piscando online/offline. Fix imediato `docker compose pull` + `up -d --force-recreate`;
+  durável = ligar auto-update. (No incidente: v2.333.0 deprecada → pull trouxe v2.335.1,
+  RestartCount voltou a 0, os 2 deploys presos rodaram sozinhos sem `gh run rerun`.)
+- **§8a — footgun `DISABLE_AUTO_UPDATE`**: `[ -n "${DISABLE_AUTO_UPDATE}" ]` no entrypoint
+  do `myoung34` → QUALQUER valor não-vazio (até `"0"`) desliga. Para LIGAR auto-update,
+  REMOVER a variável (não setar `"0"`). Verificar com `printenv DISABLE_AUTO_UPDATE` vazio.
+- **Caveat à lição 45**: pinar a imagem do **runner** por digest é contraproducente sem
+  cadência de bump — GitHub força currency e a versão congela até deprecar (→ §8). Opções:
+  `:latest`+auto-update OU pin+`compose pull` mensal. Lição 45 atualizada com a exceção.
+- **§9 — `Failed to create a session. The runner registration has been deleted from the
+  server`**: GitHub apaga o registro de runner offline por semanas; com reuso de config
+  (`CONFIGURED_ACTIONS_RUNNER_FILES_DIR` + named volume) o entrypoint reaproveita o
+  `.runner` morto em vez de re-registrar via PAT. Distinto do §6 (lá há fantasma a deletar
+  no GitHub; aqui o registro já sumiu — limpa-se o estado LOCAL: `docker volume rm
+  <project>_<config-volume>`).
+- **Nuance à lição 46** adicionada: ACCESS_TOKEN cura só o §7; §8/§9 são ortogonais.
+- Acrescentadas 3 linhas no Quick Troubleshooting do `SKILL.md`, lições **47/48/49**, e a
+  "isolation key" dos 3 crashloops pelo log.
+
 ## 2026-06-15 — §7 recorrente: recipe de migração ACCESS_TOKEN in-place (o fix durável) — bump 2.14.0 → 2.15.0
 
 Source: project `sales_quote` (staging, 2º incidente do mesmo §7 — "não é a primeira

@@ -2,6 +2,38 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.16.0] - 2026-06-15
+
+### Adicionado
+
+- **`references/self-hosted-runner-docker.md` §8 — "Binário do runner deprecado →
+  cannot receive messages"** (novo modo de falha). Motivação: incidente no
+  `LouvorFlow` (staging) — deploy `queued`, runner em crashloop com
+  `RestartCount=50296`, log `Runner version v2.333.0 is deprecated and cannot receive
+  messages`. O runner **registrava, conectava e listava jobs** (token/registro OK), e
+  só então o GitHub recusava entregar trabalho porque o binário fora deprecado. O skill
+  não cobria isso — só §7 (token) e o cenário de "registration deleted". Causa: imagem
+  `:latest` baixada uma vez e nunca re-puxada + `DISABLE_AUTO_UPDATE` ligado → binário
+  apodrece. Fix imediato `docker compose pull` + recreate; durável = ligar auto-update.
+- **§8a — footgun do `DISABLE_AUTO_UPDATE`**: o entrypoint do `myoung34` faz
+  `[ -n "${DISABLE_AUTO_UPDATE}" ]`, então **qualquer valor não-vazio (até `"0"`/`"false"`)
+  DESLIGA** o auto-update. Para LIGAR é preciso **remover a variável**. Incluído o
+  comando de verificação (`docker exec <runner> printenv DISABLE_AUTO_UPDATE`).
+- **Caveat à lição 45 (pin por digest)**: pinar a imagem do **runner** por digest é
+  contraproducente sem cadência de bump — o GitHub força currency de versão e a versão
+  congelada deprecia em ~1–2 meses (cai no §8). Escolha consciente: `:latest`+auto-update
+  OU pin+`docker compose pull` mensal.
+- **§9 — config-reuse ressuscita credencial morta**: log `Failed to create a session.
+  The runner registration has been deleted from the server`. Distinto do §6 (conflito
+  de nome ao re-registrar): aqui o reuso de config (`CONFIGURED_ACTIONS_RUNNER_FILES_DIR`
+  + named volume) convence o entrypoint de que "já está configurado" e ele reaproveita o
+  `.runner` morto. Fix: `docker volume rm <project>_<config-volume>` (limpa estado LOCAL).
+- **Nuance à lição 46**: `ACCESS_TOKEN` cura SÓ o §7 (expiry de token) — **não imuniza**
+  contra §8 (binário velho) nem §9 (config stale), que são ortogonais ao modelo de
+  credencial. Adicionadas linhas no Quick Troubleshooting, lições 47/48/49, e a
+  "isolation key" pelos 3 logs (`404 registration`=§7, `registration deleted`=§9,
+  `version deprecated`=§8).
+
 ## [2.15.0] - 2026-06-15
 
 ### Adicionado

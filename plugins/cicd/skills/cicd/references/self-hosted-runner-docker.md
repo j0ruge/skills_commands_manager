@@ -679,6 +679,20 @@ docker compose up -d                            # config.sh fresco → re-regist
 
 > **ACCESS_TOKEN não é imune (nuance à lição 46)**: migrar para `ACCESS_TOKEN` (PAT) cura o **§7** (expiry de registration token), mas **não** o §8 (binário velho) nem o §9 (config stale reaproveitada) — são modos ortogonais ao modelo de credencial. Um runner em ACCESS_TOKEN ainda crashloopa por versão deprecada e por config morta reaproveitada. Não assuma que ACCESS_TOKEN = à prova de balas.
 
+## §10. Falhas EMPILHADAS: §9 → PAT 401 → §8 (descascar em ordem)
+
+Os modos §7/§8/§9 não são só ortogonais e isoláveis pelo log — eles **empilham no mesmo runner**, e **cada correção desmascara a próxima**. Num caso real, um único *Deploy queued* exigiu os três em sequência. O erro é parar no primeiro fix: a assinatura no log **muda** a cada camada removida.
+
+**Triagem inicial — "ausente" vs "offline"**: `gh api repos/<org>/<repo>/actions/runners` lista os runners repo-scoped **incluindo os offline** (com `DISABLE_AUTOMATIC_DEREGISTRATION: "true"`, um container parado continua aparecendo como `offline`). Se o runner com o label esperado está **totalmente ausente** — apesar de deploys verdes no passado — o registro foi apagado server-side (§9) ou nunca registrou (token). Ausente ≠ offline.
+
+**A sequência de descascamento (de baixo p/ cima):**
+
+1. **§9 — config morta reusada.** Log: `registration has been deleted from the server`. Fix: `docker volume rm <project>_<config-volume>` + `up -d`. ⚠️ Isso **desmascara** a camada 2: enquanto o reuso de config estava ligado, o runner reaproveitava o `.runner` salvo e **nunca chamava a API com o PAT** — então um `ACCESS_TOKEN` expirado ficava invisível.
+2. **PAT expirado (§7-adjacente), exposto só agora.** Com a config limpa, o registro fresh chama a API e falha: `curl: (22) ... 401` / `Invalid configuration provided for token. Terminating unattended configuration`. **Valide o PAT novo ANTES de gravar no host** — `GH_TOKEN=<pat> gh api -X POST repos/<org>/<repo>/actions/runners/registration-token` (201+token = ok; 401 = ruim). Grave via stdin (fora de `ps`/argv), troque **só** a linha `ACCESS_TOKEN` do `.env`, depois `up -d --force-recreate`. O PAT é **host-wide** (o compose central compartilha `ACCESS_TOKEN` entre todos os runners do host) → um PAT expirado derruba todos; um PAT novo conserta todos de uma vez.
+3. **§8 — binário deprecado, exposto só agora.** O registro agora sucede (`√ Runner successfully added`) e o runner conecta — mas: `An error occured: Runner version vX is deprecated and cannot receive messages` (porque `DISABLE_AUTO_UPDATE` estava ligado — §8a). Fix: `docker compose pull` (imagem com binário atual) + `up -d --force-recreate`. Aí fica online e o job `queued` é pego **automaticamente**.
+
+**Regra**: depois de cada fix, **re-leia os logs** (`docker logs <runner> --tail`) antes de concluir — a falha de cima costuma esconder a de baixo. Resolva na ordem config morta → token → binário, e só declare resolvido quando o log mostrar `Listening for Jobs` sem `deprecated`/`401`/`registration deleted`.
+
 ## Sintomas → seção
 
 | Sintoma | Vai para |
@@ -698,3 +712,5 @@ docker compose up -d                            # config.sh fresco → re-regist
 | Liguei `DISABLE_AUTO_UPDATE: "0"` esperando ATIVAR o auto-update e não ativou | §8a (qualquer valor não-vazio desliga — REMOVER a var) |
 | Pinei o runner por digest e meses depois caiu em crashloop de versão | §8a (caveat à lição 45 — runner precisa de currency; `:latest`+auto-update ou pin+bump mensal) |
 | `Failed to create a session. The runner registration has been deleted from the server` | §9 (config stale reaproveitada — `docker volume rm <config-volume>`) |
+| Deploy queued; ao corrigir, o log MUDA de assinatura a cada fix (`registration deleted` → `401`/`Invalid configuration` → `version deprecated`) | §10 (falhas empilhadas — descascar §9 → PAT → §8 em ordem, re-ler logs) |
+| Runner **ausente** (não só `offline`) em `gh api …/actions/runners` apesar de deploys verdes no passado | §10 (triagem ausente vs offline — registro apagado/§9 ou nunca registrou/token) |

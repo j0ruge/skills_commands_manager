@@ -2,6 +2,12 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-17 — §10: falhas de runner EMPILHADAS (§9 → PAT 401 → §8) + description enxugada — bump 2.16.0 → 2.17.0
+
+**O quê:** nova seção `references/self-hosted-runner-docker.md §10` + Lição 50 + linhas no Quick Troubleshooting e na tabela "Sintomas → seção". A `description` (SKILL.md + plugin.json + marketplace.json) foi enxugada de ~2440 → ~660 chars (1 frase + diferenciais + `Triggers` compacto).
+
+**Por quê:** incidente no `erp_api` (staging) — um único deploy `queued` exigiu resolver §9, PAT expirado e §8 **em sequência**, cada fix desmascarando o próximo. O `docker volume rm` (§9, config morta) revela um `ACCESS_TOKEN` expirado (`401` / `Invalid configuration provided for token`), **invisível** enquanto o reuso de config nunca exercia o PAT; o PAT novo revela o binário deprecado (§8). A skill já tratava os três como ortogonais/isoláveis-pelo-log, mas não que **empilham** e que a assinatura do log **muda** a cada camada — então parar no primeiro fix declarava resolvido cedo demais. Inclui a triagem **"ausente vs offline"** (`gh api …/actions/runners` lista offline também → ausência total = registro apagado/§9 ou nunca registrou/token) e a natureza **host-wide** do PAT (um expira → derruba todos os runners do host; um PAT novo + `up -d --force-recreate` conserta todos). A description vinha virando um paredão de notas por-versão (~2440 chars) que dilui o triggering e pode ser truncada na lista `/skills`; detalhe migrou para os `references/**` e o README.
+
 ## 2026-06-15 — §8/§9: crashloops do runner ortogonais ao token (versão deprecada + config stale) — bump 2.15.0 → 2.16.0
 
 Source: project `LouvorFlow` (staging, `192.168.0.6`). Deploy `queued` indefinidamente,

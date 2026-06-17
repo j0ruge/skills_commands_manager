@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.17.0] - 2026-06-17
+
+### Adicionado
+
+- **`references/self-hosted-runner-docker.md` §10 — "Falhas EMPILHADAS: §9 → PAT 401
+  → §8"** + Lição 50 (+ linhas no Quick Troubleshooting e na tabela "Sintomas →
+  seção"). Motivação: incidente no `erp_api` (staging) — um único deploy `queued`
+  exigiu resolver as TRÊS falhas de runner **em sequência**, cada fix desmascarando a
+  próxima:
+  1. §9 (config morta reusada → `registration has been deleted`) → `docker volume rm`
+     **desmascara** ⤵ (enquanto reusava a config, o runner nunca exercia o PAT);
+  2. `ACCESS_TOKEN` expirado → `curl (22) … 401` / `Invalid configuration provided for
+     token` no registro fresh → PAT novo **desmascara** ⤵;
+  3. §8 (binário deprecado, `Runner version … is deprecated`) → `docker compose pull`
+     → online + job da fila pego automaticamente.
+  A skill já documentava §7/§8/§9 como ortogonais/isoláveis-pelo-log, mas **não** que
+  podem empilhar e que a assinatura do log **muda** a cada camada — então quem parava
+  no primeiro fix declarava resolvido cedo demais. Inclui a triagem **"ausente vs
+  offline"** (`gh api …/actions/runners` lista os offline também → ausência total =
+  registro apagado/§9 ou nunca registrou/token) e a natureza **host-wide** do PAT.
+
+### Alterado
+
+- `description` (SKILL.md + plugin.json + marketplace.json) **enxugada de ~2440 →
+  ~660 chars**: 1 frase do que faz + diferenciais + `Triggers` compacto. Vinha
+  acumulando notas por-versão (paredão que dilui o triggering e pode ser cortado na
+  lista `/skills`); o detalhe agora vive nos `references/**` e na linha do README.
+
 ## [2.16.0] - 2026-06-15
 
 ### Adicionado

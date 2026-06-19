@@ -2,6 +2,40 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.18.0] - 2026-06-19
+
+### Adicionado
+
+- **`references/self-hosted-runner-docker.md` §11 — "Detecção proativa: não descubra o
+  deploy `queued` semanas depois"** (preflight gate + watchdog, com YAML) + Lição 51
+  (+ linha no Quick Troubleshooting e 2 linhas na tabela "Sintomas → seção"; a nota de
+  trigger do reference passou a citar §11). Motivação: incidente no
+  `digital_service_report_frontend` (staging) — o deploy ficou `queued` por **~5
+  semanas** sem ninguém perceber. Um job `deploy` em `runs-on: [self-hosted, <label>]`
+  fica em fila **silenciosamente** quando o runner está offline: sem ❌, sem e-mail, e
+  o **`timeout-minutes` não conta tempo em fila** (só começa após um runner pegar o
+  job); pior, o site segue no ar com a imagem antiga, então não há sintoma externo. A
+  skill cobria §7–§10 (como CONSERTAR o runner morto), mas **nada sobre ser alertado**
+  antes de perder semanas. §11 adiciona duas camadas em `ubuntu-latest` (independentes
+  do runner doente):
+  1. **Preflight gate** — job antes do `deploy` que lista `/actions/runners` e falha o
+     deploy no push se não há runner online com o label. Gotcha crítico: o
+     **`GITHUB_TOKEN` NÃO lista self-hosted runners** (exige admin, sem scope setável)
+     → precisa de PAT `Administration: Read`; degradar para no-op (`exit 0`) sem o
+     secret torna o merge seguro.
+  2. **Watchdog** agendado (cron) que detecta deploy preso e falha (e-mail nativo do
+     GitHub). Gotchas: cheque status de **JOB** (o run fica `in_progress` enquanto o
+     job `deploy` fica `queued`; filtrar `?status=queued` nos runs erra) e **`schedule`
+     só roda a partir do branch default** (o arquivo precisa chegar à `main`). Não
+     precisa de secret (`actions: read`).
+  É **detecção, não cura** — o root-cause segue host-side (§7–§10).
+
+### Alterado
+
+- Trigger compacto `deploy stuck/queued (silent)` + 3 keywords (`deploy-queued-silent`,
+  `runner-preflight-gate`, `deploy-watchdog`) espelhados em SKILL.md, plugin.json e
+  marketplace.json (description 660 → 690 chars, dentro do teto).
+
 ## [2.17.0] - 2026-06-17
 
 ### Adicionado

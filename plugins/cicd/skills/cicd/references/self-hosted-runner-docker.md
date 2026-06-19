@@ -693,6 +693,80 @@ Os modos §7/§8/§9 não são só ortogonais e isoláveis pelo log — eles **e
 
 **Regra**: depois de cada fix, **re-leia os logs** (`docker logs <runner> --tail`) antes de concluir — a falha de cima costuma esconder a de baixo. Resolva na ordem config morta → token → binário, e só declare resolvido quando o log mostrar `Listening for Jobs` sem `deprecated`/`401`/`registration deleted`.
 
+## §11. Detecção proativa: não descubra o deploy `queued` semanas depois
+
+§7–§10 ensinam a **consertar** um runner morto. Mas o problema anterior a isso é que **ninguém percebe**: um job `deploy` em `runs-on: [self-hosted, <label>]` fica `queued` **silenciosamente** quando não há runner online — sem ❌, sem e-mail, sem timeout.
+
+**Por que o `timeout-minutes` não salva:** ele só começa a contar **depois** que um runner pega o job. Enquanto o job está em fila esperando runner, o relógio não anda — então um runner morto deixa o deploy `queued` para sempre, sem virar falha. Pior: o site continua no ar servindo a imagem **antiga** (o container atual não é tocado), então não há sintoma externo. Num incidente real isso passou **~5 semanas** despercebido.
+
+Defesa em profundidade — duas camadas, ambas em `ubuntu-latest` (não dependem do runner doente):
+
+### A. Preflight gate — falha rápida no push
+
+Job antes do `deploy` que lista os runners e barra se não houver um online com o label do ambiente:
+
+```yaml
+preflight:
+  runs-on: ubuntu-latest
+  timeout-minutes: 5
+  steps:
+    - name: Verificar runner online
+      env:
+        GH_TOKEN: ${{ secrets.RUNNER_STATUS_PAT }}
+      run: |
+        set -euo pipefail
+        LABEL=staging   # 'production' no cd-production.yml
+        if [ -z "${GH_TOKEN:-}" ]; then
+          echo "::warning::RUNNER_STATUS_PAT ausente — gate desativado."; exit 0
+        fi
+        ONLINE=$(gh api "repos/${{ github.repository }}/actions/runners" \
+          --jq "[.runners[] | select(.status==\"online\" and any(.labels[]; .name==\"$LABEL\"))] | length")
+        [ "${ONLINE:-0}" -ge 1 ] || { echo "::error::Nenhum runner '[$LABEL]' online"; exit 1; }
+
+deploy:
+  needs: [build-and-push, preflight]   # antes era: needs: build-and-push
+```
+
+**Gotcha crítico:** o **`GITHUB_TOKEN` NÃO lista self-hosted runners** — `GET /actions/runners` exige permissão **admin**, que não existe como scope setável no `GITHUB_TOKEN`. Precisa de um **PAT com `Administration: Read`** (pode ser o mesmo PAT da stack de runners). Padrão de rollout seguro: se o secret não existir, **degradar para no-op** (`exit 0` com warning) — assim o gate pode ser mergeado antes de o secret existir, sem bloquear deploys.
+
+### B. Watchdog agendado — rede de segurança periódica
+
+Workflow em `schedule` que detecta deploy preso e **falha** — a falha de um workflow agendado dispara o e-mail nativo do GitHub para quem editou o cron, sem precisar de webhook/secret:
+
+```yaml
+on:
+  schedule: [{ cron: '0 */6 * * *' }]
+  workflow_dispatch:
+permissions: { actions: read, contents: read }
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env: { GH_TOKEN: ${{ github.token }}, REPO: ${{ github.repository }}, THRESHOLD_MIN: '30' }
+    steps:
+      - run: |
+          set -euo pipefail
+          stuck=0; now=$(date -u +%s)
+          for wf in cd-staging.yml cd-production.yml; do
+            for id in $(gh api "repos/$REPO/actions/workflows/$wf/runs?status=in_progress&per_page=20" --jq '.workflow_runs[].id'); do
+              q=$(gh api "repos/$REPO/actions/runs/$id/jobs" --jq '[.jobs[] | select(.status=="queued")] | length')
+              [ "$q" -gt 0 ] || continue
+              created=$(gh api "repos/$REPO/actions/runs/$id" --jq '.created_at')
+              [ $(( (now - $(date -u -d "$created" +%s)) / 60 )) -ge "$THRESHOLD_MIN" ] \
+                && { echo "::error::deploy preso: $wf run $id"; stuck=1; }
+            done
+          done
+          [ "$stuck" -eq 0 ] || exit 1
+```
+
+Dois gotchas que tornam ingênua a primeira tentativa:
+
+1. **Cheque status de JOB, não de RUN.** Um deploy esperando runner deixa o **run** como `in_progress` (ci/build já rodaram) com o **job** `deploy` em `queued`. Filtrar `?status=queued` nos *runs* **erra** esse caso — itere `status=in_progress` e olhe `.jobs[].status=="queued"`.
+2. **Workflows `schedule` só rodam a partir do branch default** (ex.: `main`). O arquivo do watchdog precisa chegar à default branch para o cron ativar — não basta estar na branch de integração (`develop`). Isso costuma exigir um PR separado direto p/ `main`.
+3. Diferente do §A, **não precisa de secret**: listar *runs/jobs* só exige `actions: read` (que o `GITHUB_TOKEN` tem); listar *runners* é que exige admin.
+
+**Quando aplicar:** sempre que houver deploy self-hosted disparado por push/tag. O preflight dá ❌ imediato no push (e protege contra deploy sem runner); o watchdog cobre qualquer deploy que já tenha ficado preso (inclusive os disparados quando o runner já estava morto). Juntos transformam "semanas de silêncio" em "falha vermelha em minutos / ≤6h". Lembre: isto é **detecção**, não cura — o root-cause (§7–§10) continua sendo operacional/host-side.
+
 ## Sintomas → seção
 
 | Sintoma | Vai para |
@@ -714,3 +788,5 @@ Os modos §7/§8/§9 não são só ortogonais e isoláveis pelo log — eles **e
 | `Failed to create a session. The runner registration has been deleted from the server` | §9 (config stale reaproveitada — `docker volume rm <config-volume>`) |
 | Deploy queued; ao corrigir, o log MUDA de assinatura a cada fix (`registration deleted` → `401`/`Invalid configuration` → `version deprecated`) | §10 (falhas empilhadas — descascar §9 → PAT → §8 em ordem, re-ler logs) |
 | Runner **ausente** (não só `offline`) em `gh api …/actions/runners` apesar de deploys verdes no passado | §10 (triagem ausente vs offline — registro apagado/§9 ou nunca registrou/token) |
+| Deploy ficou `queued` e ninguém percebeu por dias/semanas (sem ❌, sem alerta; site no ar com imagem velha) | §11 (detecção proativa — `timeout-minutes` não conta em fila; preflight gate + watchdog) |
+| Preflight precisa listar runners mas o `GITHUB_TOKEN` dá 403 / lista vazia | §11 (`/actions/runners` exige admin → PAT `Administration: Read`; watchdog usa só `GITHUB_TOKEN`/`actions:read`) |

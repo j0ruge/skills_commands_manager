@@ -2,6 +2,12 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-19 — §11: detecção proativa de deploy `queued` silencioso (preflight gate + watchdog) — bump 2.17.0 → [2.18.0]
+
+**O quê:** nova seção `references/self-hosted-runner-docker.md §11` (preflight gate + watchdog, com YAML) + Lição 51 + linha no Quick Troubleshooting + 2 linhas na tabela "Sintomas → seção" + a nota de trigger do reference passou a citar §11. Trigger compacto `deploy stuck/queued (silent)` e 3 keywords (`deploy-queued-silent`, `runner-preflight-gate`, `deploy-watchdog`) espelhados em SKILL.md/plugin.json/marketplace.json.
+
+**Por quê:** incidente no `digital_service_report_frontend` (staging) — o deploy ficou `queued` por **~5 semanas** sem ninguém perceber. Um job `deploy` em `runs-on: [self-hosted, <label>]` fica em fila **silenciosamente** quando o runner está offline: sem ❌, sem e-mail, e o **`timeout-minutes` não conta tempo em fila** (só começa após um runner pegar o job). Pior: o site segue no ar servindo a imagem antiga, então não há sintoma externo. A skill já cobria §7–§10 (como CONSERTAR o runner morto), mas **nada sobre ser alertado** antes de perder semanas — então o operador depende de notar por acaso. §11 fecha essa lacuna com duas camadas em `ubuntu-latest` (independentes do runner doente): (a) **preflight gate** que lista `/actions/runners` e falha o deploy no push se não há runner online com o label — gotcha crítico: o **`GITHUB_TOKEN` NÃO lista runners** (exige admin; não há scope setável), precisa de PAT `Administration: Read`, e o padrão de rollout seguro é degradar para no-op (`exit 0`) sem o secret; (b) **watchdog** agendado (cron) que detecta deploy preso e falha (e-mail nativo do GitHub) — gotchas: cheque status de **JOB** (o run fica `in_progress` enquanto o job `deploy` fica `queued`; filtrar `?status=queued` nos runs erra) e **`schedule` só roda do branch default** (o arquivo precisa chegar à `main`, não basta `develop`). É **detecção, não cura** — o root-cause segue host-side (§7–§10).
+
 ## 2026-06-17 — §10: falhas de runner EMPILHADAS (§9 → PAT 401 → §8) + description enxugada — bump 2.16.0 → 2.17.0
 
 **O quê:** nova seção `references/self-hosted-runner-docker.md §10` + Lição 50 + linhas no Quick Troubleshooting e na tabela "Sintomas → seção". A `description` (SKILL.md + plugin.json + marketplace.json) foi enxugada de ~2440 → ~660 chars (1 frase + diferenciais + `Triggers` compacto).

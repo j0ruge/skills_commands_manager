@@ -714,20 +714,27 @@ preflight:
       env:
         GH_TOKEN: ${{ secrets.RUNNER_STATUS_PAT }}
       run: |
-        set -euo pipefail
+        set -uo pipefail   # sem -e: tratamos a falha da API explicitamente (com -e o gate falha FECHADO)
         LABEL=staging   # 'production' no cd-production.yml
         if [ -z "${GH_TOKEN:-}" ]; then
           echo "::warning::RUNNER_STATUS_PAT ausente — gate desativado."; exit 0
         fi
-        ONLINE=$(gh api "repos/${{ github.repository }}/actions/runners" \
-          --jq "[.runners[] | select(.status==\"online\" and any(.labels[]; .name==\"$LABEL\"))] | length")
-        [ "${ONLINE:-0}" -ge 1 ] || { echo "::error::Nenhum runner '[$LABEL]' online"; exit 1; }
+        # fail-OPEN se a API/PAT falhar (erro de token é ortogonal à disponibilidade do runner);
+        # fail-CLOSED só quando a API responde e confirma zero runners online.
+        if ! ONLINE=$(gh api "repos/${{ github.repository }}/actions/runners" \
+            --jq "[.runners[] | select(.status==\"online\" and any(.labels[]; .name==\"$LABEL\"))] | length" 2>/tmp/err); then
+          echo "::warning::Falha ao consultar /actions/runners (PAT inválido/expirado?): $(cat /tmp/err). Gate degradado — NÃO bloqueia."
+          exit 0
+        fi
+        [ "${ONLINE:-0}" -ge 1 ] || { echo "::error::Nenhum runner '[$LABEL]' online — ver docs/cicd-troubleshooting.md"; exit 1; }
 
 deploy:
   needs: [build-and-push, preflight]   # antes era: needs: build-and-push
 ```
 
 **Gotcha crítico:** o **`GITHUB_TOKEN` NÃO lista self-hosted runners** — `GET /actions/runners` exige permissão **admin**, que não existe como scope setável no `GITHUB_TOKEN`. Precisa de um **PAT com `Administration: Read`** (pode ser o mesmo PAT da stack de runners). Padrão de rollout seguro: se o secret não existir, **degradar para no-op** (`exit 0` com warning) — assim o gate pode ser mergeado antes de o secret existir, sem bloquear deploys.
+
+**Fail-open vs fail-closed (decisão deliberada):** o gate precisa decidir o que fazer quando **não consegue verificar**. `set -e` + `ONLINE=$(gh api …)` faz o job abortar na primeira falha do `gh api` — então um **PAT expirado/revogado bloqueia TODO deploy** com a mensagem enganosa "nenhum runner online" (os runners podem estar perfeitos; quem quebrou foi o token). O snippet acima faz a escolha certa: **fail-open em erro de API/PAT** (`::warning::` + `exit 0` — um problema de token é ortogonal à disponibilidade do runner) e **fail-closed só com zero runners confirmados**. Por isso `set -uo pipefail` (sem `-e`) + `if ! ONLINE=$(…)`. **Coupling de rotação:** reusar o `ACCESS_TOKEN` host-wide dos runners como `RUNNER_STATUS_PAT` é um atalho válido (evita cunhar PAT novo no web UI — `gh` não cunha PAT), mas é o **mesmo** PAT que registra os runners; quando rotacionar/expirar, **atualize o secret também** (`gh secret set RUNNER_STATUS_PAT`), senão o gate degrada para fail-open (avisa, mas perde a proteção). Valide antes de gravar: `GH_TOKEN=<pat> gh api repos/<org>/<repo>/actions/runners`.
 
 ### B. Watchdog agendado — rede de segurança periódica
 

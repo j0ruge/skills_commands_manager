@@ -2,6 +2,12 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-19 — §11 patch: preflight fail-open em erro de PAT — bump 2.18.0 → [2.18.1]
+
+**O quê:** refino do snippet do preflight (§11.A) + parágrafo "fail-open vs fail-closed" + ajuste da Lição 51.
+
+**Por quê:** ao **ativar** o §11 no `digital_service_report_frontend` (secret `RUNNER_STATUS_PAT` reusando o `ACCESS_TOKEN` host-wide dos runners), o snippet de v2.18.0 falhava **fechado**: `set -euo pipefail` + `ONLINE=$(gh api …)` aborta o job na primeira falha do `gh api`, então um PAT expirado/rotacionado **bloqueia todo deploy** com a msg enganosa "nenhum runner online" — quando os runners podem estar perfeitos e quem quebrou foi o token. E como o PAT reusado é o **mesmo** que registra os runners, a rotação dele derrubaria o gate. Fix: **fail-open em erro de API/PAT** (`::warning::` + `exit 0`, ortogonal à disponibilidade do runner) e **fail-closed só com zero runners confirmados** (`set -uo pipefail` sem `-e` + `if ! ONLINE=$(…)`); + caveat do **coupling de rotação** (atualizar o secret junto) e validar o PAT antes de gravar.
+
 ## 2026-06-19 — §11: detecção proativa de deploy `queued` silencioso (preflight gate + watchdog) — bump 2.17.0 → [2.18.0]
 
 **O quê:** nova seção `references/self-hosted-runner-docker.md §11` (preflight gate + watchdog, com YAML) + Lição 51 + linha no Quick Troubleshooting + 2 linhas na tabela "Sintomas → seção" + a nota de trigger do reference passou a citar §11. Trigger compacto `deploy stuck/queued (silent)` e 3 keywords (`deploy-queued-silent`, `runner-preflight-gate`, `deploy-watchdog`) espelhados em SKILL.md/plugin.json/marketplace.json.

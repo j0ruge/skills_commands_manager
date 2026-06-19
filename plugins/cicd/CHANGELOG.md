@@ -2,6 +2,22 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.18.1] - 2026-06-19
+
+### Corrigido
+
+- **§11 preflight gate — fail-open em erro de PAT.** O snippet de v2.18.0 usava
+  `set -euo pipefail` + `ONLINE=$(gh api …)`: com `-e`, a primeira falha do `gh api`
+  aborta o job, então um **PAT expirado/revogado bloqueia TODO deploy** com a mensagem
+  enganosa "nenhum runner online" (os runners podem estar perfeitos — quem quebrou foi o
+  token). Refinado para **fail-open em erro de API/PAT** (`::warning::` + `exit 0`, pois
+  é ortogonal à disponibilidade do runner) e **fail-closed só com zero runners
+  confirmados** (`set -uo pipefail` sem `-e` + `if ! ONLINE=$(…)`). Motivação: surgiu ao
+  **ativar** o gate reusando o `ACCESS_TOKEN` host-wide dos runners como
+  `RUNNER_STATUS_PAT` — esse PAT é o mesmo que registra os runners, então a rotação dele
+  quebraria o gate. Documentado o **coupling de rotação** (atualizar o secret junto) e a
+  validação do PAT antes de gravar (`GH_TOKEN=<pat> gh api …/actions/runners`).
+
 ## [2.18.0] - 2026-06-19
 
 ### Adicionado

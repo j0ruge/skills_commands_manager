@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "2.18.0",
+  "version": "2.18.1",
   "category": "development",
   "keywords": ["cicd", "github-actions", "docker", "ghcr", "troubleshooting", "deployment", "self-hosted-runner", "myoung34", "containerized-runner", "deploy-keys", "registration-token", "chicken-and-egg", "enoent-bootstrap", "soft-failure-fatigue", "yellow-warning", "best-effort-write-narrow-catch", "errnoexception", "gha-bind-mount-uid-mismatch", "compose-wait-scope", "compose-up-wait-services", "tls-handshake-timeout", "docker-login-retry", "mtu-mismatch", "tls-inspection-proxy", "tsx-runtime-monorepo", "node-dist-esm-resolution", "tsc-b-project-references", "vacuous-typecheck", "named-volume-ownership", "nginx-envsubst-runtime-token", "init-true-sigterm", "graceful-shutdown-pid1", "npm-ci-omit-dev-slim", "composite-action-ci-gate", "ci-pull-request-push-bypass", "image-digest-pin-imagetools", "runner-access-token-migration", "ephemeral-false-not-a-fix", "gh-cannot-mint-pat", "runner-version-deprecated", "runner-binary-rot", "disable-auto-update-footgun", "registration-has-been-deleted", "stacked-runner-failures", "deploy-queued-silent", "runner-preflight-gate", "deploy-watchdog"],
   "platforms": ["claude-code", "cursor"],

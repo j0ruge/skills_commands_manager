@@ -2,6 +2,12 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.5.2] - 2026-06-27
+
+### Changed
+
+- **Unified the skill description** across the three triggering surfaces (SKILL.md frontmatter, `plugin.json`, `marketplace.json`), which had drifted to three different wordings. Adopted the frontmatter form (one sentence + distinctive differentiators + a compact `Triggers —` list) and folded in the `model (+ effort badge)` differentiator that previously lived only in `marketplace.json`. Identical text in all three now, keeping the triggering signal consistent and lean (~250 chars).
+
 ## [1.5.1] - 2026-06-27
 
 ### Fixed

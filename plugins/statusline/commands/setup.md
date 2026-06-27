@@ -1,7 +1,7 @@
 ---
-description: Interactive wizard to configure Claude Code status line — model, context bar, git branch/PR, cost, and 5h/weekly usage limits. Cross-platform (Bash + PowerShell). Triggers — statusline, status bar, footer, rate limit, usage window, PR state.
+description: Interactive wizard to configure Claude Code status line — model (+ effort badge), context bar, git branch/PR, cost, and 5h/weekly usage limits. Cross-platform (Bash + PowerShell). Triggers — statusline, status bar, footer, rate limit, usage window, PR state.
 metadata:
-  version: 1.5.1
+  version: 1.5.2
 ---
 
 ## Status Line Setup

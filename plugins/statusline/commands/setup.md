@@ -1,7 +1,7 @@
 ---
 description: Interactive wizard to configure Claude Code status line — model, context bar, git branch/PR, cost, and 5h/weekly usage limits. Cross-platform (Bash + PowerShell). Triggers — statusline, status bar, footer, rate limit, usage window, PR state.
 metadata:
-  version: 1.5.0
+  version: 1.5.1
 ---
 
 ## Status Line Setup
@@ -382,20 +382,28 @@ $parts += "$eFolder $BLUE$folder$RST"
 
 Bash:
 ```bash
-# $cost_raw is set by the Python JSON parser in the header
-cost=$(printf "%.2f" "$cost_raw")
+# $cost_raw is set by the Python JSON parser in the header.
+# LC_NUMERIC=C forces a dot decimal separator — without it, printf errors
+# ("invalid number") and renders $0,00 on comma-decimal locales (pt-BR, de-DE, fr-FR, ...).
+cost=$(LC_NUMERIC=C printf "%.2f" "$cost_raw")
 parts+=("💰 ${YELLOW}\$${cost}${RST}")
 ```
 
 PowerShell:
 ```powershell
 $cost = if ($json.cost.total_cost_usd) { $json.cost.total_cost_usd } else { 0 }
-$costFormatted = "{0:N2}" -f [double]$cost
+# InvariantCulture forces a dot decimal separator — "{0:N2}" -f formats in the
+# current culture and would render a comma (e.g. 0,37) on pt-BR/de-DE Windows.
+$costFormatted = ([double]$cost).ToString("F2", [System.Globalization.CultureInfo]::InvariantCulture)
 $parts += "$eMoney $YELLOW`$$costFormatted$RST"
 ```
 
-> **IMPORTANT (Windows):** Always format cost to 2 decimal places with `"{0:N2}" -f [double]$cost`.
-> Without formatting, the raw float value displays too many decimals (e.g. `$0.55226375` instead of `$0.55`).
+> **IMPORTANT (locale safety):** Cost formatting must be locale/culture-independent.
+> On Bash, wrap `printf "%.2f"` with `LC_NUMERIC=C` — otherwise it errors with "invalid number"
+> and renders `$0,00` on comma-decimal locales (pt-BR, de-DE, fr-FR, ...).
+> On PowerShell, use `([double]$cost).ToString("F2", [CultureInfo]::InvariantCulture)` — `"{0:N2}" -f`
+> formats in the current culture and would render a comma (e.g. `$0,37`).
+> Both also fix the raw-float-too-many-decimals case (e.g. `$0.55226375` → `$0.55`).
 
 **Section 6 — Session duration:**
 
@@ -696,7 +704,8 @@ If there is an error, diagnose and fix the script.
 | Emojis appear as `??` | Missing UTF-8 encoding in the script | Add `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` in the header |
 | Emojis cause parsing error | Inline emoji in PowerShell code | Use variables with `[char]::ConvertFromUtf32()` — never embed emoji directly in the string |
 | Progress bar shows diamonds | Characters `█░` incompatible with font | Use `#` and `-` instead |
-| Cost with too many decimal places | Unformatted float value | Format with `"{0:N2}" -f [double]$cost` |
+| Cost with too many decimal places | Unformatted float value | Format with `([double]$cost).ToString("F2", [CultureInfo]::InvariantCulture)` |
+| Cost shows `$0,00` / `printf: invalid number` (Bash) or comma decimal (PowerShell) | Locale/culture uses comma as decimal separator (pt-BR, de-DE, fr-FR, ...) — applies on Linux/macOS too, not Windows-only | Bash: `LC_NUMERIC=C printf "%.2f"`. PowerShell: `.ToString("F2", [CultureInfo]::InvariantCulture)` |
 | Script blocked by execution policy | Default Windows policy | Use `-ExecutionPolicy Bypass` in the settings.json command |
 | Error "unrecognized escape sequence" | Backslash `\` in test JSON | Use forward slashes `/` in paths inside the JSON |
 | settings.json validation fails | Invalid `"enabled": true` field | Use `"type": "command"` instead of `"enabled": true` |

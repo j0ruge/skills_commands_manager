@@ -2,7 +2,7 @@
   "name": "statusline",
   "description": "Interactive setup for Claude Code status line — model, context bar, git branch/PR state, cost, and 5h/weekly usage limits. Cross-platform: generates Bash (.sh) or PowerShell (.ps1) based on OS.",
   "author": { "name": "Chewiesoft" },
-  "version": "1.5.0",
+  "version": "1.5.1",
   "category": "customization",
   "keywords": ["statusline", "status-bar", "footer", "customization", "ui", "claude-code", "rate-limit", "pull-request"],
   "platforms": ["claude-code"],

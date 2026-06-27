@@ -2,6 +2,14 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.5.1] - 2026-06-27
+
+### Fixed
+
+- **Section 5 (Session cost) — locale-safe formatting**: cost rendered as `$0,00` (and `printf` errored with "invalid number") on machines whose locale uses a comma as the decimal separator. Observed live on a pt-BR Linux machine: `printf "%.2f" "0.37"` rejects the dot because the locale expects `0,37`. The Bash block now wraps `printf` with `LC_NUMERIC=C` to force a dot separator.
+- **PowerShell parity** for the same root cause: `"{0:N2}" -f [double]$cost` formats in the current culture and would render a comma (e.g. `$0,37`) on pt-BR/de-DE Windows. Replaced with `([double]$cost).ToString("F2", [System.Globalization.CultureInfo]::InvariantCulture)`.
+- Updated the IMPORTANT note and added a troubleshooting row documenting that this is **not Windows-only** — it affects any comma-decimal locale on Linux/macOS too.
+
 ## [1.5.0] - 2026-06-09
 
 ### Added

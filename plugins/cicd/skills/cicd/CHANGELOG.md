@@ -2,6 +2,12 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-06-27 — Suporte a backend Django/gunicorn + gotchas cross-stack — bump 2.18.1 → [2.19.0]
+
+**O quê:** nova reference `references/django-backend.md` (variante Django do blueprint) + detecção de projeto Django no SKILL.md + 4 linhas na Quick Troubleshooting + entrada na routing table/trigger + lessons 52–57 + descrição enxugada (Django entra; `bind-mount EACCES`/`tsx/tsc-b` saem da descrição, ficam nas keywords/refs).
+
+**Por quê:** ao fazer um deploy real de **Django + React** num staging espelhando o blueprint Node, surgiram lições que a skill (até então só Node/Prisma/Biome no backend) não cobria. A mais cara: **`ALLOWED_HOSTS` sem `127.0.0.1` faz o healthcheck interno do container responder 400 → nunca fica `healthy` → o `wait-healthy` do CD estoura mesmo com login/pull/migrate verdes** (derrubou o 1º deploy; isolation key é `GET /healthz/ 400` no log com Host `127.0.0.1`). Também: admin 403 CSRF sob HTTPS atrás de proxy sem `CSRF_TRUSTED_ORIGINS`/`SECURE_PROXY_SSL_HEADER` (a API JWT não); imagem prod = gunicorn + `collectstatic` em build (SECRET_KEY dummy) + WhiteNoise `CompressedStaticFilesStorage` (Manifest quebra dev) + healthcheck via `python -c urllib` (slim sem curl); migração one-off. Cross-stack: owner do GHCR precisa lowercase (`github.repository_owner` preserva caixa); pacote GHCR privado por padrão → `docker exec` no container rodando para one-offs (não `compose run`, que re-puxa sem login); `paths-ignore` p/ docs-only (só pula quando todos os arquivos batem).
+
 ## 2026-06-19 — §11 patch: preflight fail-open em erro de PAT — bump 2.18.0 → [2.18.1]
 
 **O quê:** refino do snippet do preflight (§11.A) + parágrafo "fail-open vs fail-closed" + ajuste da Lição 51.

@@ -2,6 +2,37 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.19.0] - 2026-06-27
+
+### Adicionado
+
+- **Suporte a backend Django/gunicorn** (`references/django-backend.md`) — a skill
+  agora auto-roteia também backends Python, não só Node/Prisma/Biome. Motivação: o
+  deploy real de um Django + React num staging que espelha o blueprint Node já
+  existente. Lições novas (não-óbvias):
+  - **§1 `ALLOWED_HOSTS` → healthcheck 400** (lesson 52): o HEALTHCHECK do container
+    bate em `127.0.0.1:8000/healthz/`; com `DEBUG=False` o Django responde **400** a
+    `Host` fora de `ALLOWED_HOSTS`, então o `wait-healthy` do CD estoura **mesmo com
+    login/pull/migrate OK**. Isolation key: `GET /healthz/ 400` no log. Fix: incluir
+    `localhost,127.0.0.1`. (Foi o bug que derrubou o 1º deploy.)
+  - **§3 HTTPS atrás de proxy** (lesson 53): admin 403 CSRF sem `CSRF_TRUSTED_ORIGINS`
+    + `SECURE_PROXY_SSL_HEADER` (a API por JWT não precisa — só admin/sessão).
+  - **§2 imagem prod** (lesson 54): gunicorn + `collectstatic` em build (SECRET_KEY
+    dummy, sem DB) + WhiteNoise `CompressedStaticFilesStorage` (NÃO `Manifest…`, que
+    quebra dev) + HEALTHCHECK via `python -c urllib` (slim não tem curl); migração
+    one-off `manage.py migrate --noinput` (análogo ao `prisma migrate deploy`).
+  - **§5 two-origin** Django+SPA via CORS + `VITE_API_URL` build-arg.
+- **Gotchas cross-stack** (valem também para o lado Node): lowercase do owner do GHCR
+  (`tr '[:upper:]' '[:lower:]'` — `github.repository_owner` preserva a caixa,
+  lesson 55); pacote GHCR **privado por padrão** → `docker exec` no container rodando
+  para one-offs em vez de `docker compose run` (que re-puxa sem login → `unauthorized`,
+  lesson 56); `paths-ignore: ['**.md','docs/**']` para não redeployar em commit só de
+  doc — só pula quando **TODOS** os arquivos batem (lesson 57).
+- **SKILL.md**: detecção de projeto Django (`manage.py`/`requirements.txt` →
+  Backend (Django)), 4 linhas novas na Quick Troubleshooting, entrada na routing table
+  + trigger de `django-backend.md`, lessons 52–57, e descrição **enxugada** (troquei
+  `bind-mount EACCES`/`monorepo tsx/tsc-b` por Django; permanecem nas keywords/refs).
+
 ## [2.18.1] - 2026-06-19
 
 ### Corrigido

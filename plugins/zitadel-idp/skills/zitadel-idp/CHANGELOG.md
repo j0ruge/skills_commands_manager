@@ -2,6 +2,28 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-07-15 — Admin Console `[unknown] Failed to fetch` (environment.json api http vs issuer https) + description slim — bump 0.9.0 → 0.10.0
+
+Source: sessão de ops no `sales_quote` — subir a infra local pediu o IdP de `validade_bateria_estoque` up; o Console admin do Zitadel (`/ui/console`) carregava a shell mas estourava "[unknown] Failed to fetch" em toda chamada de API. Investigação (Playwright + `docker inspect`) isolou uma causa nova e não-óbvia que os quirks existentes (incluindo o 15, o triad de TLS) não cobriam.
+
+- **Quirk 43 — O Console admin do Zitadel 404a todas as chamadas de API com "[unknown] Failed to fetch" quando o `environment.json` gerado traz `api: http://…` e `issuer: https://…`.** O Console é uma SPA Angular servida pelo binário em `/ui/console`; ela lê `/ui/console/assets/environment.json` (gerado **em memória, sem arquivo no disco**) pra base da API. `issuer` é construído da **config de instância persistida** (escrita no FirstInstance), então fica `https`; `api` é computado **por-request** pelo esquema da conexão que o binário detecta. Rodando com **`--tlsMode disabled`** atrás de um proxy que termina TLS, o Zitadel NÃO confia no `X-Forwarded-Proto: https` do proxy, então `api` sai `http://` — e uma página HTTPS chamando origem `http://` é **mixed content ativo**, bloqueado pelo browser antes do request sair (surfa como `TypeError: Failed to fetch`). O **split** `issuer` https / `api` http é a impressão digital que separa isso de um proxy-misconfig genérico: login OIDC e apps downstream seguem funcionando (usam `issuer`), então só o Console quebra e é fácil descartar como "o console é meio instável". **Armadilha composta**: `docker start`/`restart` revive os `Args`/env de **criação** do container, NÃO relê os compose files — um container criado do compose base (`--tlsMode disabled`, `EXTERNALSECURE=false`) fica quebrado mesmo depois de você adicionar o override com `--tlsMode external`; ressuscitá-lo com `docker start` só traz de volta a config errada. A cura é `docker compose … up -d --force-recreate <svc>`. **Diagnóstico em 3**: `curl -sk …/ui/console/assets/environment.json` (comparar esquema `api` vs `issuer`) · `docker inspect <ctr> --format '{{json .Args}}'` (`--tlsMode` external ou disabled?) · fetch in-browser `http://…/oauth/v2/keys` → `Failed to fetch` enquanto o gêmeo `https://` retorna 200. Fix: garantir o triad do quirk 15 (`EXTERNALSECURE=true` + `TLS_ENABLED=false` + `--tlsMode external`) E que o container foi **recriado** daquela config; depois `api` renderiza `https` e casa com `issuer`. Browser pode reter o `environment.json` antigo via service worker/cache → hard-reload.
+
+- **Descrição enxugada e espelhada.** As descrições de `plugin.json` e `marketplace.json` tinham virado paredões append-only (~3–3.5k chars) empilhando cada versão — ruim pra triggering (dilui o sinal, e descrições longas demais podem ser cortadas na lista `/skills`). Substituídas por UMA descrição enxuta (~660 chars, padrão `Triggers —`) **espelhada** em `SKILL.md` + `plugin.json` + `marketplace.json`. Nada perdido: o detalhe versionado vive no README + neste CHANGELOG.
+
+### Adicionado
+
+- `SKILL.md` — "forty-two" → "forty-three" quirks; entry **43** (Console mixed-content) no formato consistente com 36-42; descrição do frontmatter enxugada/espelhada (43 quirks + triggers `tlsMode external`, `console Failed to fetch`, `mixed content`).
+- `references/troubleshooting.md` — nova entry sob "Reverse proxy / TLS termination": `### Zitadel admin Console: [unknown] Failed to fetch (environment.json api http vs issuer https)` (Symptom / Cause / Compounding trap / Diagnose / Fix).
+- `references/docker-compose-bootstrap.md` — novo bullet de pitfall no §7 (TLS reverse proxy) com cross-ref pra Quirk 43.
+- `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` (repo root) — bump 0.9.0 → 0.10.0; descrição enxuta espelhada; keywords novas (`tls-mode-external`, `console-failed-to-fetch`, `mixed-content`, `docker-start-stale-config`).
+- `README.md` — contagem 42 → 43 nas três tabelas; versão 0.9.0 → 0.10.0; frase v0.10.0 na linha detalhada.
+
+### Por que minor (não patch)
+
+1 quirk novo substantivo (mixed-content do Console + a armadilha do `docker start` revivendo config stale — não coberto pelo quirk 15) + nova entry de troubleshooting + cross-ref, mesma magnitude dos bumps 0.5–0.9 (cada um adicionou quirks). A higiene de descrição (enxugar/espelhar) não quebra backwards-compat. Pre-1.0 minor é o padrão pra essa magnitude.
+
+---
+
 ## 2026-05-18 — Seed-user grant reconciliation gap + browser CORS preflight 401 + Playwright self-signed Zitadel recipe — bump 0.8.0 → 0.9.0
 
 Source: project `sales_quote`, branch `011-sales-quote-frontend-wiring`, smoke E2E real T150 — the first time a real browser exercised the full SPA↔backend↔Zitadel loop end-to-end. Two of the five lessons surfaced were genuinely new pitfalls (quirks 41 and 42); one was a browser-side counterpart of an existing quirk (now a recipe in `spa-recipes.md`); two were operational tweaks to existing quirks (30 and 39).

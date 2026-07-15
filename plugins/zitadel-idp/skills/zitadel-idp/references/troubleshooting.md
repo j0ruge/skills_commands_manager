@@ -568,6 +568,36 @@ services:
 
 See `docker-compose-bootstrap.md §"TLS terminated by reverse proxy"` for a full Caddy + Zitadel example.
 
+### Zitadel admin Console: `[unknown] Failed to fetch` (environment.json `api` http vs `issuer` https)
+
+**Symptom**: The Zitadel **admin Console** at `/ui/console/...` loads its shell but shows "[unknown] Failed to fetch", and every Console API call fails in the browser network tab as `TypeError: Failed to fetch` — a network-level failure, not an HTTP 4xx/5xx. OIDC login and your own downstream apps work fine; only the Console is broken. The page is served over HTTPS.
+
+**Cause**: The Console reads `/ui/console/assets/environment.json` (generated in-memory by the Zitadel binary — **there is no file on disk to edit**) for its API base. That file has `"api": "http://<host>"` while `"issuer": "https://<host>"`. The page is HTTPS, so calling the `http://` api is **active mixed content** and the browser blocks it before the request leaves the page. Why the split: `issuer` is built from the **persisted instance config** (written at FirstInstance) so it stays `https`; `api` is computed **per-request** from the scheme the binary detects on the connection. When the container runs with **`--tlsMode disabled`** behind a TLS-terminating proxy, Zitadel does not trust the proxy's `X-Forwarded-Proto: https`, so `api` renders `http`. This is the Console-facing symptom of the Quirk 15 triad being incomplete.
+
+**Compounding trap**: `docker start` / `docker restart` on an existing container reuses its **create-time** `Args`/env — it does NOT re-read the compose files. A container first created from a base compose (`--tlsMode disabled`, `EXTERNALSECURE=false`) stays broken even after you add the override that sets `--tlsMode external`. Reviving it with `docker start` just resurrects the wrong config.
+
+**Diagnose (3 commands)**:
+
+```bash
+# 1) the smoking gun — compare api vs issuer scheme
+curl -sk https://<host>/ui/console/assets/environment.json
+# 2) is the running container actually on --tlsMode external?
+docker inspect <container> --format '{{json .Args}}'      # expect ...,"--tlsMode","external"
+# 3) reproduce the mixed-content block from the page origin (browser devtools console):
+#    fetch('http://<host>/oauth/v2/keys')  -> TypeError: Failed to fetch
+#    fetch('https://<host>/oauth/v2/keys') -> 200
+```
+
+**Fix**: Ensure the container runs the full Quirk 15 triad — `EXTERNALSECURE=true`, `TLS_ENABLED=false`, and start flag `--tlsMode external` — **and** that it was **recreated** from that config, not `docker start`ed:
+
+```bash
+docker compose -f base.yml -f override.yml up -d --force-recreate zitadel
+docker inspect <container> --format '{{json .Args}}'            # verify --tlsMode external
+curl -sk https://<host>/ui/console/assets/environment.json     # api now https, matches issuer
+```
+
+After the fix the browser may still serve the old `environment.json` from its service worker / disk cache → hard-reload (Ctrl+Shift+R) or unregister the service worker. See `docker-compose-bootstrap.md §"TLS terminated by reverse proxy"` for the Caddy + Zitadel example, and Quirk 15 for the triad rationale.
+
 ## Post-upgrade errors (v2.66 → v4)
 
 These show up specifically after bumping the Zitadel image from v2.66.x to v4.x. The full upgrade procedure (snapshot, schema migration, container split) lives in `references/migration-v2-to-v4.md` — this section is the lookup table for the four most common failure modes during the upgrade window.

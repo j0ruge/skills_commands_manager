@@ -1,5 +1,23 @@
 # Changelog — zitadel-idp
 
+## [0.10.0] — 2026-07-15
+
+### Added
+
+- Quirk 43 — o Console admin do próprio Zitadel mostra "[unknown] Failed to fetch" quando o
+  `environment.json` gerado traz `api: http://` enquanto `issuer: https://` (mixed content na
+  página HTTPS). O `issuer` vem da config de instância persistida (fica https); o `api` é
+  computado por-request e só sai https quando o binário confia no `X-Forwarded-Proto` do proxy,
+  i.e. sob `--tlsMode external` — é o sintoma facing-Console do triad incompleto do quirk 15.
+  Armadilha composta: `docker start`/`restart` revive os `Args`/env de **criação** do container
+  (não relê o compose), então um container criado do compose base (`--tlsMode disabled`) fica
+  quebrado mesmo depois de adicionar o override; a cura é `up -d --force-recreate`, nunca
+  `docker start`. Nova entry em `troubleshooting.md §Reverse proxy / TLS` + bullet de pitfall
+  no `docker-compose-bootstrap.md §7`.
+- Descrição do plugin/marketplace/SKILL.md **enxugada e espelhada** (~660 chars, padrão
+  `Triggers —`): os paredões append-only das versões anteriores diluíam o sinal de triggering;
+  o detalhe versionado permanece no README + neste CHANGELOG.
+
 ## [0.9.0] — 2026-05-18
 
 ### Added

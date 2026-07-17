@@ -2,6 +2,38 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.19.1] - 2026-07-17
+
+### Adicionado
+
+- **`self-hosted-runner-docker.md` §10a — PAT-401 STANDALONE (o "fix durável" da
+  migração ACCESS_TOKEN expirou)** (lesson 58). Motivação: num staging real, o PAT
+  dedicado gravado como `ACCESS_TOKEN` na migração §7 (2026-06-15) **expirou ~30 dias
+  depois** e recaiu no mesmo crashloop — durante o merge de uma PR → `staging` o deploy
+  ficou `queued` silencioso (§11), com o runner em `RestartCount=2351` e log
+  `curl (22) 401` / `Invalid configuration provided for token` ao `Obtaining the token`.
+  Lições novas (não-óbvias) que o runbook não cobria:
+  - **O "fix durável" §7 (PAT dedicado) TEM PRAZO.** Migrar `RUNNER_TOKEN`→`ACCESS_TOKEN`
+    cura o crashloop de *registration token* (`404`), mas o PAT gravado no `.env` é ele
+    próprio uma credencial expirável: um PAT clássico com validade (ou fine-grained, teto
+    1 ano) **recai no PAT-401 na cadência do vencimento**. Fix de fato durável = PAT **sem
+    expiração**, OU lembrete/cron de rotação, OU no mínimo registrar a data de expiração.
+  - **Isolation key §10a vs §7**: ambos dão "deploy queued + runner Restarting", mas o log
+    separa — `404 .../actions/runner-registration` = §7 (registration token); `curl 401` +
+    `Invalid configuration provided for token` ao `Obtaining the token` = §10a (PAT rejeitado).
+  - **O "host-wide" do §10 vale só p/ o compose CENTRALIZADO de runners.** No modelo
+    **per-produto** (cada app com seu `runner`+`.env` em `infra/*/`) um PAT-401 é **isolado
+    a um runner** — os demais runners do host seguem `Up` (sinal de triagem em 2 s).
+  - **Recovery-higiene**: o log do runner já é prova definitiva do PAT-401 — **não
+    re-extraia o secret do `.env` e o `curl`e contra a API "pra confirmar"** (ler segredo +
+    POST a host externo casa com padrão de exfiltração e um classifier de agente BLOQUEIA o
+    comando). Valide o PAT **candidato** via `gh api …/registration-token` (sessão do `gh`,
+    sem tocar no secret cru) e grave via **stdin** (fora de `ps`/argv/logs).
+- Reflexos: nova linha em **Quick Troubleshooting** e na tabela **Sintomas → seção**;
+  §10 passo-2 qualificado (host-wide só no modelo centralizado); §7 ganhou caveat de
+  expiração do PAT apontando p/ §10a. `description` inalterada (o cenário já triggava por
+  "self-hosted runner / runner crashloop / deploy queued / ACCESS_TOKEN/PAT migration").
+
 ## [2.19.0] - 2026-06-27
 
 ### Adicionado

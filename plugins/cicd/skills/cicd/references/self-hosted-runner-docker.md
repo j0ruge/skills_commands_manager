@@ -13,6 +13,7 @@ A imagem `myoung34/github-runner` é a fonte mais usada para conteinerizar o run
 - Build do Dockerfile do runner falha em `gpg --dearmor` (`cannot open '/dev/tty'`).
 - Runner conecta e lista jobs mas o log diz `Runner version vX is deprecated and cannot receive messages` (§8).
 - Log repete `Failed to create a session. The runner registration has been deleted from the server` (§9).
+- Runner com `ACCESS_TOKEN`/PAT: log `curl (22) 401` / `Invalid configuration provided for token` ao obter o token — o PAT (o "fix durável" da migração §7) expirou/foi revogado (§10a).
 - `DISABLE_AUTO_UPDATE: "0"` não ligou o auto-update, ou runner pinado por digest deprecou meses depois (§8a).
 
 ## §1. CMD herdado é zerado quando você define ENTRYPOINT
@@ -577,6 +578,15 @@ ssh host 'docker restart <runner>; sleep 14; docker logs --tail 8 <runner> | gre
 O passo (d) é o que **prova** que a migração curou de fato (vs só afirmar) —
 ele reproduz exatamente o evento (restart) que antes levava ao crashloop.
 
+> **⚠️ Caveat — o PAT dedicado TAMBÉM expira (o "fix durável" tem prazo de validade).**
+> Migrar p/ ACCESS_TOKEN cura o crashloop de *registration token* (§7), mas o PAT que
+> você grava no `.env` é ele próprio uma credencial com expiração: um PAT clássico com
+> data de validade (ou fine-grained, teto de 1 ano) **recai no §10 PAT-401** quando vence
+> — mesmo crashloop (`RestartCount` em milhares), mesmo deploy `queued` silencioso (§11).
+> Visto RECORRER ~1 mês depois num staging real (o PAT dedicado durou ~30 dias). Para o fix
+> ser de fato durável: **PAT sem expiração**, OU um lembrete/cron de rotação antes do
+> vencimento, OU no mínimo anote a data de expiração onde o time veja. Ver §10a.
+
 **Outras variantes do fix permanente** (quando a migração in-place não encaixa —
 ex.: você quer o runner FORA do compose do produto, ou um token a quente por deploy):
 
@@ -688,10 +698,69 @@ Os modos §7/§8/§9 não são só ortogonais e isoláveis pelo log — eles **e
 **A sequência de descascamento (de baixo p/ cima):**
 
 1. **§9 — config morta reusada.** Log: `registration has been deleted from the server`. Fix: `docker volume rm <project>_<config-volume>` + `up -d`. ⚠️ Isso **desmascara** a camada 2: enquanto o reuso de config estava ligado, o runner reaproveitava o `.runner` salvo e **nunca chamava a API com o PAT** — então um `ACCESS_TOKEN` expirado ficava invisível.
-2. **PAT expirado (§7-adjacente), exposto só agora.** Com a config limpa, o registro fresh chama a API e falha: `curl: (22) ... 401` / `Invalid configuration provided for token. Terminating unattended configuration`. **Valide o PAT novo ANTES de gravar no host** — `GH_TOKEN=<pat> gh api -X POST repos/<org>/<repo>/actions/runners/registration-token` (201+token = ok; 401 = ruim). Grave via stdin (fora de `ps`/argv), troque **só** a linha `ACCESS_TOKEN` do `.env`, depois `up -d --force-recreate`. O PAT é **host-wide** (o compose central compartilha `ACCESS_TOKEN` entre todos os runners do host) → um PAT expirado derruba todos; um PAT novo conserta todos de uma vez.
+2. **PAT expirado (§7-adjacente), exposto só agora.** Com a config limpa, o registro fresh chama a API e falha: `curl: (22) ... 401` / `Invalid configuration provided for token. Terminating unattended configuration`. **Valide o PAT novo ANTES de gravar no host** — `GH_TOKEN=<pat> gh api -X POST repos/<org>/<repo>/actions/runners/registration-token` (201+token = ok; 401 = ruim). Grave via stdin (fora de `ps`/argv), troque **só** a linha `ACCESS_TOKEN` do `.env`, depois `up -d --force-recreate`. O PAT é **host-wide SÓ no modelo de compose CENTRALIZADO** (um único compose de runners compartilha `ACCESS_TOKEN` entre todos os runners do host → um PAT expirado derruba todos; um PAT novo conserta todos de uma vez). No modelo **per-produto** (cada app tem seu próprio service `runner` + `.env` em `infra/*/`), cada runner carrega SEU PAT → um PAT-401 fica **isolado a um runner** e os demais do host seguem UP (sinal de triagem — ver §10a).
 3. **§8 — binário deprecado, exposto só agora.** O registro agora sucede (`√ Runner successfully added`) e o runner conecta — mas: `An error occured: Runner version vX is deprecated and cannot receive messages` (porque `DISABLE_AUTO_UPDATE` estava ligado — §8a). Fix: `docker compose pull` (imagem com binário atual) + `up -d --force-recreate`. Aí fica online e o job `queued` é pego **automaticamente**.
 
 **Regra**: depois de cada fix, **re-leia os logs** (`docker logs <runner> --tail`) antes de concluir — a falha de cima costuma esconder a de baixo. Resolva na ordem config morta → token → binário, e só declare resolvido quando o log mostrar `Listening for Jobs` sem `deprecated`/`401`/`registration deleted`.
+
+## §10a. PAT-401 STANDALONE: o "fix durável" (PAT dedicado) expirou
+
+O §10 mostra o PAT-401 como a **camada do meio** de uma pilha (`§9 → PAT-401 → §8`). Mas o PAT-401 também é um modo de falha **PRIMÁRIO e isolado** — e é o desfecho ESPERADO da migração ACCESS_TOKEN (§7) quando o PAT gravado no `.env` tem data de validade. Migrar p/ PAT cura o crashloop de *registration token*, mas **apenas empurra o relógio**: um PAT clássico com expiração (ou fine-grained, teto 1 ano) vence e recai exatamente aqui, na cadência do vencimento (visto RECORRER ~1 mês depois num staging real — o PAT dedicado durou ~30 dias).
+
+**Sintoma** (idêntico ao §7 no `docker ps`, distinto no LOG): deploy `queued` silencioso (§11); runner em `Restarting`/`RestartCount` na casa dos milhares; `gh api …/actions/runners` mostra o runner `offline`. `docker logs`:
+
+```text
+[entrypoint] ... auth=ACCESS_TOKEN(PAT, auto-renew) ...
+Obtaining the token of the runner
+curl: (22) The requested URL returned error: 401
+Invalid configuration provided for token. Terminating unattended configuration.
+```
+
+**Isolation key — §10a (PAT-401 standalone) vs §7 (registration token)**: ambos dão "deploy queued + runner Restarting", mas o log separa em 3 s:
+- `404` em `POST .../actions/runner-registration` → **§7** (registration token estático vencido; o runner usa `RUNNER_TOKEN`).
+- `curl (22) 401` ao **`Obtaining the token of the runner`** + `Invalid configuration provided for token` → **§10a** (o runner usa `ACCESS_TOKEN`/PAT e o GitHub REJEITOU o PAT ao trocá-lo por um registration token — PAT expirado/revogado).
+
+**Triagem "isolado vs host-wide" (2 s)** — os OUTROS runners do host estão UP?
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -i runner
+```
+
+- **Modelo per-produto** (cada app com seu `runner`+`.env` em `infra/*/`, imagens/composes distintos): só ESTE runner cai; os demais seguem `Up`. Conserta-se **só o `.env` deste produto**. (O "host-wide" do §10 vale só p/ o compose CENTRALIZADO de runners.)
+- **Modelo centralizado** (um compose, `ACCESS_TOKEN` compartilhado): TODOS caem juntos; um PAT novo + `up -d --force-recreate` conserta todos de uma vez.
+
+**Recovery (higiene de credencial)**:
+
+```bash
+# (a) O LOG do runner já é PROVA DEFINITIVA do PAT-401 — NÃO re-extraia o secret do
+# `.env` e o `curl`e contra a API "pra confirmar": ler segredo + POST a host externo
+# casa com padrão de EXFILTRAÇÃO e um classifier de agente BLOQUEIA o comando.
+# Valide o PAT CANDIDATO (novo) pela SESSÃO do gh (não toca no secret cru):
+gh api -X POST /repos/<org>/<repo>/actions/runners/registration-token --jq .expires_at
+# 201 + expires_at = o login/PAT tem escopo p/ cunhar registration token → serve de ACCESS_TOKEN.
+
+# (b) Grave via STDIN (fora de ps/argv/logs), trocando SÓ a linha do PAT, com backup:
+<comando-que-emite-o-token> | ssh host '
+  ENVF=/opt/<proj>/infra/<env>/.env
+  NEW=$(cat); [ -n "$NEW" ] || { echo "token vazio"; exit 1; }
+  cp "$ENVF" "$ENVF.bak.$(date +%s)"
+  grep -vE "^RUNNER_ACCESS_TOKEN=" "$ENVF" > "$ENVF.tmp"
+  printf "RUNNER_ACCESS_TOKEN=%s\n" "$NEW" >> "$ENVF.tmp"
+  mv "$ENVF.tmp" "$ENVF"; chmod 600 "$ENVF"'
+
+# (c) Recria SÓ o runner; o job queued é pego AUTOMATICAMENTE quando ele fica online:
+ssh host 'cd /opt/<proj>/infra/<env> && docker compose -p <project> --env-file .env up -d --force-recreate runner'
+# Esperado: "√ Runner successfully added" → "Connected to GitHub" → "Listening for Jobs"; RestartCount=0.
+```
+
+> **`gh auth token` como stopgap** (§7): desbloqueia já, mas é o token OAuth do login `gh`
+> (`gho_…`) — acopla o runner ao login daquela máquina (re-auth/revoke quebra) e é escopo
+> amplo. Aceitável p/ staging; **troque por PAT dedicado depois**.
+>
+> **Fix de fato durável** (senão o §10a volta na próxima expiração): PAT **sem data de
+> expiração**, OU um lembrete/cron de rotação antes do vencimento, OU no mínimo registrar
+> a data de expiração. Um PAT "dedicado" com validade de 30/60/90 dias apenas RE-AGENDA
+> este crashloop.
 
 ## §11. Detecção proativa: não descubra o deploy `queued` semanas depois
 
@@ -795,5 +864,6 @@ Dois gotchas que tornam ingênua a primeira tentativa:
 | `Failed to create a session. The runner registration has been deleted from the server` | §9 (config stale reaproveitada — `docker volume rm <config-volume>`) |
 | Deploy queued; ao corrigir, o log MUDA de assinatura a cada fix (`registration deleted` → `401`/`Invalid configuration` → `version deprecated`) | §10 (falhas empilhadas — descascar §9 → PAT → §8 em ordem, re-ler logs) |
 | Runner **ausente** (não só `offline`) em `gh api …/actions/runners` apesar de deploys verdes no passado | §10 (triagem ausente vs offline — registro apagado/§9 ou nunca registrou/token) |
+| Deploy `queued` + runner crashloop; log `curl (22) 401` / `Invalid configuration provided for token` ao `Obtaining the token` (STANDALONE, NÃO o `404` do §7; outros runners do host UP) | §10a (o PAT `ACCESS_TOKEN` — o "fix durável" da migração §7 — expirou/foi revogado; trocar SÓ a linha do PAT no `.env` persistente; fix durável = PAT sem expiração) |
 | Deploy ficou `queued` e ninguém percebeu por dias/semanas (sem ❌, sem alerta; site no ar com imagem velha) | §11 (detecção proativa — `timeout-minutes` não conta em fila; preflight gate + watchdog) |
 | Preflight precisa listar runners mas o `GITHUB_TOKEN` dá 403 / lista vazia | §11 (`/actions/runners` exige admin → PAT `Administration: Read`; watchdog usa só `GITHUB_TOKEN`/`actions:read`) |

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.3] — 2026-07-25
+
+### Corrigido
+
+- **Commits deste fluxo não levam mais o trailer `Co-Authored-By: Claude`.** Os dois
+  modos (completo e enxuto) mandavam explicitamente assinar com coautoria do Claude.
+  O usuário quer que o histórico do repositório dele mostre só o nome dele.
+- A regra ficou numa seção própria (*Autoria dos commits*) e é **afirmativa**, não
+  uma omissão: o prompt padrão do Claude Code instrui a terminar mensagens de commit
+  com esse trailer, então apenas apagar a menção deixaria o default vencer. Dizer
+  "sem `Co-Authored-By`" é o que efetivamente muda o comportamento.
+
+Editado: `commands/retrofit-skill.md` (modo completo, modo enxuto e nova seção).
+Sem mudança na superfície de triggering — descrição inalterada.
+
 ## [0.2.2] — 2026-06-06
 
 ### Adicionado

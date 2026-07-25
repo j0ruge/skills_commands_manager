@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.2.2
+  version: 0.2.3
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -88,18 +88,30 @@ em vez de rebasear com a edição já feita.
    - Atualize `<REPO>/README.md` (tabela de plugins) se a mudança afeta como
      a skill é descrita/versionada.
    - Rode `python scripts/validate-versions.py` e corrija o que apontar.
-   - Commit: `feat|fix($ARGUMENTS): vX.Y.Z — <resumo>` (com Co-Authored-By
-     do Claude). Push pra origin/main.
+   - Commit: `feat|fix($ARGUMENTS): vX.Y.Z — <resumo>`. **Sem trailer
+     `Co-Authored-By`** — ver *Autoria dos commits* abaixo. Push pra origin/main.
 
    **Modo enxuto (skill local de outro repo):**
    - Edite os arquivos da skill na pasta local (`SKILL.md`, `references/**`).
    - Adicione/atualize um `CHANGELOG.md` dentro da pasta da skill com a data
      de hoje, explicando O QUÊ e POR QUÊ. Se a skill não tem versionamento,
      não invente `plugin.json`/bump — só registre a lição.
-   - Commit NO REPO onde a skill vive: `feat|fix($ARGUMENTS): <resumo>` (com
-     Co-Authored-By do Claude). Push só se o usuário pedir.
+   - Commit NO REPO onde a skill vive: `feat|fix($ARGUMENTS): <resumo>`. **Sem
+     trailer `Co-Authored-By`** — ver *Autoria dos commits* abaixo. Push só se o
+     usuário pedir.
    - NÃO toque em `marketplace.json`, no README do marketplace, nem em versões
      do marketplace.
+
+## Autoria dos commits
+
+Os commits deste fluxo saem **apenas com a autoria do usuário**. Não acrescente o
+trailer `Co-Authored-By: Claude ...` — nem aqui, nem no corpo de PRs abertos por
+este fluxo.
+
+Vale a pena dizer isto explicitamente em vez de apenas omitir: o prompt padrão do
+Claude Code **instrui** a terminar mensagens de commit com esse trailer, então o
+silêncio deixaria o default vencer. A instrução do usuário tem precedência sobre o
+default — é o histórico do repositório dele, e ele decide de quem é a assinatura.
 
 ## Mantenha a descrição ENXUTA (triggering)
 

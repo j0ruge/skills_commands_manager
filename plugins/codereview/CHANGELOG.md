@@ -2,6 +2,44 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.17.1] - 2026-07-25
+
+### Fixed (coderabbit_pr 3.5.0 → 3.5.1 — quatro defeitos de coerência que uma rodada REAL da v1.17.0 expôs)
+
+Motivação: a v1.17.0 foi testada ao vivo no PR #25 do `ui24-agent`. As quatro mudanças
+novas funcionaram (checagem de branch pegou a divergência e trocou sozinha; a varredura
+apagou dois checklists do PR #7 parados na árvore desde 28/06; a união dos dois endpoints
+achou o Copilot que só aparecia em `/reviews`; o caso (b) registrou "não rodou" em vez de
+"aprovou"). Mas a rodada expôs quatro incoerências — três delas **introduzidas pela
+própria v1.17.0**:
+
+- **Fase 2 e Fase 6 se contradiziam em rodada de zero achados.** A 2 mandava criar o
+  arquivo mínimo "for audit completeness" e a 6 apagava segundos depois — o arquivo nunca
+  chegava a ser artefato de auditoria nenhum. Agora o arquivo só é escrito quando
+  `--keep-checklists` garante que ele sobrevive; no default a determinação (a)/(b) vai
+  para o **relatório final**, que é onde o usuário lê. A determinação em si continua
+  obrigatória: é a diferença entre "este PR passou pela revisão" e "ninguém olhou".
+- **O "Stop" do Error Handling colidia com o caminho de zero achados da Fase 2.** Ficou
+  explícito que parar vale só quando **nenhum bot postou nada** (nem em `/comments`, nem em
+  `/reviews`). Um reviewer que postou mas não achou nada — ou que reportou não ter
+  conseguido rodar — segue pela Fase 2 e **tem** de ser relatado; parar ali engoliria
+  justamente o achado mais importante da rodada.
+- **A Fase 4 não tinha ramo "nada mudou".** Ela compara um antes e um depois; sem edição
+  não há depois. Agora é pulada quando a Fase 3 não alterou arquivo nenhum, com o motivo
+  dito no relatório. Dois custos concretos evitados: minutos de suíte inútil num repo
+  grande, e uma falha pré-existente chegando com cara de ter sido causada pela rodada —
+  exatamente a confusão que o baseline da 4.0 existe para impedir.
+- **O `rm` da Fase 6 não era determinístico** — justo na fase cuja proposta era ser
+  determinística. Listava quatro nomes fixos mais um comentário não executável ("plus any
+  `{bot-login}-review.md`"). Agora casa pelo **cabeçalho que a própria skill escreve**, o
+  que cobre reviewer desconhecido sem lista fixa e **não toca** em doc de projeto que só
+  por acaso termina em `-review.md` (`security-review.md`, `architecture-review.md`) — que
+  é o que um `rm -f *-review.md` ingênuo apagaria. Mesmo guard já usado na varredura da 1.1.
+
+Editado: `skills/coderabbit_pr/SKILL.md` (Error Handling, Fase 2, Fase 4, Fase 6) e
+`skills/coderabbit_pr/references/checklist-template.md` (o arquivo mínimo agora é
+condicionado ao `--keep-checklists`). Sem mudança na superfície de triggering.
+
 ## [1.17.0] - 2026-07-25
 
 ### Changed (coderabbit_pr 3.4.0 → 3.5.0 — as fases mecânicas viram determinísticas e a skill passa a limpar o próprio lixo)

@@ -1,7 +1,7 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.5.0
+  version: 3.5.1
 description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code (with byte-exact inspection when reviewers cite invisible/control characters), applies fixes, runs regression tests, resolves GitHub conversations, then cleans up its own checklist files. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
 ---
 
@@ -70,7 +70,8 @@ Agent({ model: "sonnet", prompt: "..." })  // for parsing/fixing
 
 - **`gh` CLI not available or not authenticated**: Stop with: "The `gh` CLI is not installed or authenticated. Run `gh auth login` before using this skill."
 - **PR not found**: Stop with: "PR #{n} not found or insufficient permissions."
-- **No review comments from any bot**: Stop with: "No AI review comments found on PR #{n}."
+- **No known reviewer bot posted anything at all** (nothing in `/comments` *and* nothing in `/reviews`): Stop with: "No AI review comments found on PR #{n}."
+  This is **not** the same as a reviewer that posted but yielded zero actionable findings — an approval, a summary with no issues, or "unable to review". Those go through Phase 2's zero-findings path and must be reported, because case (b) there is a coverage gap the user needs to hear about. Stopping on them would swallow the most important thing the run learned.
 - **File no longer exists**: Mark as `[x] File removed — not applicable`.
 - **Line not locatable** (heavy modifications since review): Use context clues (function name, surrounding code) to locate. If truly unmappable: `[x] Not locatable in current code — requires manual review`.
 - **Test command not detected**: Ask the user which command to use. Never skip tests silently.
@@ -213,7 +214,12 @@ Output file names:
 - Codex → `codex-review.md`
 - Unknown → `{bot-login}-review.md`
 
-For reviewers with **zero findings**, first work out *why* there are none — the two causes look identical in the data and mean opposite things:
+For reviewers with **zero findings**, first work out *why* there are none — the two causes look identical in the data and mean opposite things. Then decide **where that belongs**:
+
+- **Without `--keep-checklists`** (the default): do **not** write a file. Phase 6 would delete it seconds later, so it never becomes the audit artifact the file is for — it is pure churn. Carry the (a)/(b) determination into the **final report** instead, which is where the user actually reads it.
+- **With `--keep-checklists`**: write the minimal file using the matching template below, since it will survive the run.
+
+Either way the *determination* is mandatory — it is the difference between "this PR passed review" and "nobody looked at this PR".
 
 **(a) It reviewed and found nothing** — a genuine pass:
 
@@ -324,6 +330,13 @@ After each item (or batch), update the corresponding reviewer's checklist file. 
 ### Phase 4: Regression Testing
 
 Skip if `--skip-tests` was passed.
+
+**Also skip if Phase 3 changed no files** — zero findings, or every item resolved as
+already-fixed / not-applicable. This phase compares a before and an after; with no edits
+there is no after, so a run proves nothing. Two concrete costs to running it anyway: on a
+large suite it is minutes of pointless work, and any failure it surfaces is pre-existing
+by construction yet arrives looking like this run caused it — the exact confusion the
+4.0 baseline exists to prevent. Say in the report that tests were skipped and why.
 
 #### 4.0 Capture Pre-Fix Baseline
 
@@ -454,12 +467,20 @@ behind, they rot: a checklist from PR #7 still sitting in the tree weeks later g
 by the next run's cross-reviewer check (Phase 3.1 step 4) as though it described the
 current PR, and it clutters `git status` for everyone else.
 
-Once 5.3 reports `unresolved: 0` and the report is written, delete them:
+Once 5.3 reports `unresolved: 0` and the report is written, delete them — matching on the
+header this skill writes, so an unknown reviewer's `{bot-login}-review.md` is covered
+without a hardcoded list, and an unrelated project doc that merely ends in `-review.md`
+(`security-review.md`, `architecture-review.md`) is left alone:
 
 ```bash
-rm -f coderabbit-review.md copilot-review.md gemini-review.md codex-review.md
-# plus any {bot-login}-review.md created for an unknown reviewer
+grep -l "Review — PR #${PR}\b" *-review.md 2>/dev/null | while read -r f; do
+  echo "removing: $f"; rm -- "$f"
+done
 ```
+
+A bare `rm -f *-review.md` is the tempting one-liner and the wrong answer: it deletes files
+this skill never created. Matching the header is both deterministic and scoped — the same
+guard Phase 1.1 uses to sweep leftovers.
 
 Skip this when `--keep-checklists` was passed, or in `--dry-run` (which never claims completion).
 

@@ -59,7 +59,11 @@ When severity is recalibrated from the reviewer's original, note it as `[NEW_SEV
 
 ### Minimal file for reviewers with zero findings:
 
-Zero findings has two causes that look the same in the data and mean opposite things — see SKILL.md Phase 2.
+Only written when `--keep-checklists` is passed. By default Phase 6 would delete it moments
+after Phase 2 created it, so the determination goes into the final report instead — see
+SKILL.md Phase 2. The templates below still apply whenever the file *is* written.
+
+Zero findings has two causes that look the same in the data and mean opposite things.
 
 **(a) Reviewed, found nothing** — a genuine pass:
 

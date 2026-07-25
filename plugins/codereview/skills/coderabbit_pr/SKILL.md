@@ -1,8 +1,8 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.4.0
-description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code (with byte-exact inspection when reviewers cite invisible/control characters), applies fixes, runs regression tests, resolves GitHub conversations. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
+  version: 3.5.0
+description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code (with byte-exact inspection when reviewers cite invisible/control characters), applies fixes, runs regression tests, resolves GitHub conversations, then cleans up its own checklist files. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
 ---
 
 ## User Input
@@ -18,6 +18,7 @@ Parse the user input before proceeding:
   - `--skip-tests` — skip Phase 4 (regression testing)
   - `--dry-run` — verify only, do not apply fixes
   - `--reviewer <name>` — process only a specific reviewer (e.g., `--reviewer coderabbit`). Default: all detected reviewers.
+  - `--keep-checklists` — keep the `{reviewer}-review.md` files after a successful run instead of deleting them (Phase 6). Use when you want the checklist as a durable audit artifact.
 
 If `$ARGUMENTS` is empty or does not contain a PR number, ask: "What is the PR number?"
 
@@ -35,30 +36,33 @@ This skill uses different model tiers to optimize token usage. The orchestrating
 
 | Phase | Task | Model | Why |
 |-------|------|-------|-----|
-| 1.1 | GitHub API calls, repo detection | **haiku** | Pure CLI commands, no reasoning needed |
-| 1.2 | Fetch raw comments from API | **haiku** | Data retrieval, returns raw JSON |
-| 1.3 | Parse & structure comments | **sonnet** | Needs pattern matching intelligence but not deep reasoning |
+| 1.1 | Repo/branch/PR context | **Run inline** | Fixed commands with a single correct answer |
+| 1.2 | Detect which reviewers commented | **Run inline** | An API projection, not a judgment call |
+| 1.3 | Fetch comments (extraction) | **Run inline** | Fixed `--jq` projection — see 1.3 |
+| 1.3 | Structure findings (interpretation) | **sonnet**, only if large | Pattern matching over prose; delegate only past the size threshold |
 | 2 | Create checklist file | Main model | Quick write from structured data |
 | 3 | Analyze each comment (verdict) | **Main model (opus)** | Critical judgment: is the issue real? Does the spec support it? |
 | 3 | Apply code fixes | **sonnet** | Mechanical code edits based on opus verdict |
 | 4 | Run tests | Main model | Simple command execution |
-| 5 | Resolve GitHub threads | **haiku** | Mechanical GraphQL mutations |
+| 5 | Resolve GitHub threads | **Run inline** | GraphQL mutations + a count that must reach zero |
+| 6 | Clean up checklist files | **Run inline** | Deleting known paths |
 
-**How to delegate**: Use the `Agent` tool with the `model` parameter:
+**How to delegate** (for the rows that still delegate): use the `Agent` tool with the `model` parameter:
 ```
-Agent({ model: "haiku", prompt: "..." })   // for data fetching
 Agent({ model: "sonnet", prompt: "..." })  // for parsing/fixing
 ```
 
-**When NOT to delegate**: If the PR has fewer than 5 total comments across all reviewers, skip model routing — process everything in the main model. The overhead of spawning agents isn't worth it for small reviews.
+**Why so much of this is inline now.** Fetching comments and resolving threads are mechanical: the commands have one correct answer, and a subagent in the middle can only add variance, latency, and silent omission. A run that skips a thread or drops a comment looks identical to a clean run — the failure is invisible. Determinism here isn't about saving tokens, it's about being able to trust the result. Delegation stays where a model genuinely adds something: reading prose findings (1.3, above the size threshold), judging correctness (3), and editing code (3.2).
+
+**When NOT to delegate anything**: if the PR has fewer than 5 total comments across all reviewers, process everything in the main model.
 
 ---
 
 ## Operating Constraints
 
-**MODIFIES CODE**: This skill reads review comments, verifies issues, and applies fixes. It creates one tracking file per reviewer in the project root.
+**MODIFIES CODE**: This skill reads review comments, verifies issues, and applies fixes. It creates one tracking file per reviewer in the project root — these are **ephemeral working state**, deleted in Phase 6, not deliverables.
 
-**Git awareness**: All fixes are made on the current branch. The skill does NOT create commits — the user decides when to commit.
+**Git awareness**: fixes must land on **the PR's head branch**, which is not necessarily the branch you happen to be on — see Phase 1.1. The skill does NOT create commits — the user decides when to commit.
 
 **Scope discipline**: Only fix issues raised by the reviewers. Do not introduce unrelated refactors, improvements, or style changes.
 
@@ -77,34 +81,57 @@ Agent({ model: "sonnet", prompt: "..." })  // for parsing/fixing
 
 ### Phase 1: Detect Reviewers & Extract Comments
 
-#### 1.1 Detect Repository Context
-
-Verify `gh` is available and authenticated:
+#### 1.1 Detect Repository, Branch, and Leftover State
 
 ```bash
-gh auth status
+gh auth status                                          # must be authenticated
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)   # owner/repo
+PR=<the PR number from the user input>
 ```
 
-Detect the repo:
+**Confirm you are on the PR's branch.** The branch you start on is frequently *not* the
+PR's branch — the user may have moved on to other work since opening it. Applying review
+fixes to whatever branch happens to be checked out puts them on unrelated work and they
+never reach the PR, with nothing failing loudly to reveal it:
 
 ```bash
-gh repo view --json nameWithOwner -q '.nameWithOwner'
+git branch --show-current
+gh pr view "$PR" --json headRefName -q .headRefName
 ```
 
-Capture the result as `REPO` (format: `owner/repo`).
+If they differ:
+- **Working tree clean** → `git checkout <headRefName>`, and tell the user you switched.
+- **Working tree dirty** → stop and report. Moving HEAD over uncommitted work is exactly
+  the surprise to avoid; let the user stash or commit first.
+
+When the run ends, state which branch the edits landed on — the user may have started elsewhere.
+
+**Sweep leftover checklists.** Files matching `*-review.md` in the project root are this
+skill's own scratch space from a previous run. If one exists whose header names a
+**different** PR, it is stale garbage: delete it rather than reading it as if it described
+the current PR (Phase 3's cross-reviewer check consults these files, so a stale one
+actively misleads the run).
+
+```bash
+grep -l "Review — PR #" *-review.md 2>/dev/null | while read -r f; do
+  head -5 "$f" | grep -q "PR #${PR}\b" || { echo "stale, removing: $f"; rm -- "$f"; }
+done
+```
 
 #### 1.2 Detect Which Reviewers Are Present
 
-**Spawn a haiku agent** to discover which AI review bots left comments:
+Run both directly — a login list is an API projection, and the `--jq` filter already
+produces the exact answer:
 
+```bash
+gh api "repos/$REPO/pulls/$PR/comments" --paginate --jq '[.[].user.login] | unique[]'
+gh api "repos/$REPO/pulls/$PR/reviews"  --paginate --jq '[.[].user.login] | unique[]'
 ```
-Agent(model: "haiku", prompt: "Run these two commands and return ONLY the unique bot
-logins that appear in both outputs, one per line:
 
-gh api 'repos/{REPO}/pulls/{PR}/comments' --paginate --jq '[.[].user.login] | unique[]'
-gh api 'repos/{REPO}/pulls/{PR}/reviews' --paginate --jq '[.[].user.login] | unique[]'
-")
-```
+Query **both** endpoints and union the results. They disagree in practice: a reviewer can
+post only a review body with no inline comments (Gemini's summary, or a bot reporting it
+could not run), and another can post inline comments without a review body. Reading one
+endpoint alone silently drops a reviewer.
 
 Match the returned logins against the reviewer registry in `references/reviewer-registry.md`. The known bots are:
 
@@ -123,21 +150,46 @@ Report to the user: "Found reviews from: {list of reviewers}. Processing {N} rev
 
 #### 1.3 Fetch & Parse Comments Per Reviewer
 
-For each detected reviewer, **spawn a sonnet agent** to fetch and parse all comments. Launch agents **in parallel** (one per reviewer) for efficiency.
+Separate **extraction** (mechanical, fixed) from **interpretation** (needs a model). Only the second half benefits from delegation.
 
-The agent prompt should include:
-1. The reviewer's GitHub login
-2. The parsing rules from `references/reviewer-registry.md` for that specific reviewer
-3. Instructions to return a **structured numbered list** (not raw JSON) with these fields per finding:
-   - Sequential number
-   - Severity (CRITICAL/HIGH/MEDIUM/LOW)
-   - File path and line number
-   - Title (bold text or first sentence)
-   - Summary (1-2 sentences)
-   - Whether a code suggestion is included (yes/no)
-   - Source (inline/review-body/nitpick)
+**Extraction — always run these directly:**
 
-**Important — Large Output Handling**: The GitHub API can return 30-50KB+ of raw data. The sonnet agent absorbs this within its own context, parses it, and returns only the structured summary. This prevents the main (opus) context from being polluted with raw API data.
+```bash
+# Inline comments (attached to diff lines)
+gh api "repos/$REPO/pulls/$PR/comments" --paginate --jq '.[] |
+  "=====\nID: \(.id)\nAUTHOR: \(.user.login)\nPATH: \(.path)\nLINE: \(.line // .original_line)\nBODY:\n\(.body)\n"'
+
+# Review bodies (where CodeRabbit and Gemini put most findings)
+gh api "repos/$REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.body != "") |
+  "=====\nID: \(.id)\nAUTHOR: \(.user.login)\nSTATE: \(.state)\nBODY:\n\(.body)\n"'
+```
+
+Two details that are easy to get wrong:
+
+- `\(.line // .original_line)` — `line` comes back **null** once the diff around a comment
+  goes stale (force-push, rebase, later commits). Without the fallback to `original_line`
+  those findings arrive with no anchor and get misfiled as "not locatable".
+- `select(.body != "")` — approvals and review stubs carry an empty body; keeping them
+  produces phantom findings.
+
+This projection is also what solves the context problem: the raw endpoints return 30-50KB
+of `diff_hunk`, URLs, reactions, and nested user objects. Projecting to the five fields
+that matter discards that **before** it reaches any context — better than absorbing it
+into a subagent and hoping the summary is faithful.
+
+**Interpretation — delegate only when the output is genuinely big.** If the projected text
+is large (roughly >1500 lines, or 3+ reviewers each with a long review body), hand *that
+text* to a sonnet agent per reviewer, in parallel. Otherwise structure it yourself; for the
+typical PR the projection is already short and a round trip buys nothing.
+
+Whoever does it, produce a **structured numbered list** with these fields per finding:
+- Sequential number
+- Severity (CRITICAL/HIGH/MEDIUM/LOW) — per `references/reviewer-registry.md`
+- File path and line number
+- Title (bold text or first sentence)
+- Summary (1-2 sentences)
+- Whether a code suggestion is included (yes/no)
+- Source (inline/review-body/nitpick)
 
 **Deduplication rules** the agent must apply:
 - Match by file path + line range + first 100 chars of title
@@ -161,7 +213,9 @@ Output file names:
 - Codex → `codex-review.md`
 - Unknown → `{bot-login}-review.md`
 
-For reviewers with **zero findings** (e.g., Gemini approved without issues), generate a minimal file:
+For reviewers with **zero findings**, first work out *why* there are none — the two causes look identical in the data and mean opposite things:
+
+**(a) It reviewed and found nothing** — a genuine pass:
 
 ```markdown
 # {Reviewer Name} Review — PR #{number}
@@ -172,6 +226,30 @@ For reviewers with **zero findings** (e.g., Gemini approved without issues), gen
 
 No actionable findings — reviewer approved without issues.
 ```
+
+**(b) It never actually ran** — quota exhausted, bot error, review still pending. Bots
+announce this in the review body (e.g. *"Copilot was unable to review this pull request
+because the user who requested the review has reached their quota limit"*), and a check
+that sits `PENDING` forever is the same story. Recording that as "approved without issues"
+is false and it buries a real coverage gap — nobody looked at this PR:
+
+```markdown
+# {Reviewer Name} Review — PR #{number}
+
+**Repository**: {owner/repo}
+**Reviewer**: {bot login}
+**Date**: {YYYY-MM-DD}
+
+**No review was performed** — this is not an approval. Reviewer reported:
+
+> {literal text the bot returned}
+
+Coverage gap: this PR has not been reviewed by {Reviewer Name}. Re-request the review
+once the underlying cause clears.
+```
+
+Do not count a reviewer in case (b) as coverage in the final summary, and say so in the
+closing report — the user is entitled to know which reviewers actually looked.
 
 For reviewers **with findings**:
 - Items ordered by severity: CRITICAL > HIGH > MEDIUM > LOW
@@ -307,57 +385,57 @@ Update the "Final Result" table in each `{reviewer}-review.md` with:
 
 After all items are processed and tests pass, resolve all review threads on the PR.
 
-#### 5.1 Fetch All Review Threads
+Run all three steps directly. This is pure mechanics, and the closing count is the point:
+a delegated batch that silently skips a thread reports success just as convincingly as one
+that didn't.
 
-**Spawn a haiku agent** to fetch all unresolved thread IDs:
+#### 5.1 List Unresolved Threads
 
-```
-Agent(model: "haiku", prompt: "Run this GraphQL query and return the results:
+`OWNER` and `REPO_NAME` are the two halves of `$REPO`.
 
+```bash
 gh api graphql -f query='{
-  repository(owner: \"{OWNER}\", name: \"{REPO_NAME}\") {
-    pullRequest(number: {PR_NUMBER}) {
+  repository(owner: "OWNER", name: "REPO_NAME") {
+    pullRequest(number: PR_NUMBER) {
       reviewThreads(first: 100) {
-        nodes {
-          id
-          isResolved
-          comments(first: 1) {
-            nodes {
-              author { login }
-              path
-            }
-          }
-        }
+        nodes { id isResolved comments(first: 1) { nodes { author { login } path } } }
       }
     }
   }
-}'
-
-Return ONLY the unresolved threads as: id, author login, path — one per line.
-")
+}' --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+         | select(.isResolved == false)
+         | "\(.id)\t\(.comments.nodes[0].author.login)\t\(.comments.nodes[0].path)"'
 ```
 
-#### 5.2 Resolve Each Unresolved Thread
+#### 5.2 Resolve Each Thread
 
-**Spawn a haiku agent** to resolve all unresolved threads in batch:
+Resolve threads from ALL reviewers (coderabbitai, copilot, gemini, codex, …) — not just the ones processed in Phase 3.
 
-```
-Agent(model: "haiku", prompt: "Resolve each of these GitHub review threads by running
-this GraphQL mutation for each thread ID:
-
-gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: \"{ID}\"}) { thread { isResolved } } }'
-
-Thread IDs: {list of IDs}
-
-Run them in parallel. Report how many succeeded.
-")
+```bash
+for id in <thread IDs from 5.1>; do
+  gh api graphql -f query="mutation { resolveReviewThread(input: {threadId: \"$id\"}) { thread { isResolved } } }" \
+    --jq '.data.resolveReviewThread.thread.isResolved' | sed "s|^|$id -> |"
+done
 ```
 
-Resolve threads from ALL reviewers (coderabbitai, copilot, gemini, codex, etc.) — not just the ones processed in Phase 3.
+Each line must print `true`. Anything else (an error, `false`) means that thread is still open — carry it into 5.3 rather than moving on.
 
-#### 5.3 Verify All Resolved
+#### 5.3 Verify Zero Remain
 
-Run the fetch query again to confirm zero unresolved threads remain. Update each checklist with:
+```bash
+gh api graphql -f query='{
+  repository(owner: "OWNER", name: "REPO_NAME") {
+    pullRequest(number: PR_NUMBER) { reviewThreads(first: 100) { nodes { id isResolved } } }
+  }
+}' --jq '"total: \(.data.repository.pullRequest.reviewThreads.nodes | length)  unresolved: \([.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length)"'
+```
+
+`unresolved: 0` is the success condition, and the gate for Phase 6. If it is not zero,
+report which threads remain and why — never describe the run as complete. Note that
+`reviewThreads(first: 100)` caps at 100; on a PR that busy, page through and say so
+instead of quietly covering the first hundred.
+
+Update each checklist with:
 
 ```markdown
 ### Conversations
@@ -366,6 +444,44 @@ Run the fetch query again to confirm zero unresolved threads remain. Update each
 - **Resolved in this run**: {n}
 - **Previously resolved**: {n}
 ```
+
+---
+
+### Phase 6: Clean Up the Checklist Files
+
+The `{reviewer}-review.md` files are scratch space for this run, not deliverables. Left
+behind, they rot: a checklist from PR #7 still sitting in the tree weeks later gets read
+by the next run's cross-reviewer check (Phase 3.1 step 4) as though it described the
+current PR, and it clutters `git status` for everyone else.
+
+Once 5.3 reports `unresolved: 0` and the report is written, delete them:
+
+```bash
+rm -f coderabbit-review.md copilot-review.md gemini-review.md codex-review.md
+# plus any {bot-login}-review.md created for an unknown reviewer
+```
+
+Skip this when `--keep-checklists` was passed, or in `--dry-run` (which never claims completion).
+
+Two rules that only work as a pair:
+
+- **Always name the file exactly `{reviewer}-review.md`** — never a per-PR variant like
+  `gemini-review-pr15.md`. Projects gitignore these with `*-review.md`, and a suffixed
+  name slips past that pattern and becomes a permanently untracked file.
+- **Always delete on success.** The fixed name is only safe *because* nothing survives to
+  collide with it. If a previous run's file is still there, that is a bug this phase
+  exists to prevent (and Phase 1.1 sweeps as a backstop) — not a reason to rename.
+
+This does not break the resumability promised under Operating Principles: cleanup runs
+only on the success path, so an interrupted run leaves its checklists exactly where a
+resume needs them.
+
+If the project has no `.gitignore` entry for these, suggest adding `*-review.md` as
+defence in depth — but the deletion above is the real fix, not the ignore rule.
+
+**Where the audit trail lives instead**: the resolved GitHub threads, the PR diff, and the
+commit message. The final report to the user should carry the findings table, since the
+file it came from is gone.
 
 ---
 
@@ -381,7 +497,7 @@ Run the fetch query again to confirm zero unresolved threads remain. Update each
 ### Progress
 
 - **Incremental saves**: Each checklist file is updated after each resolved item.
-- **Resumability**: If the skill is interrupted, re-running it will verify already-checked items without re-applying fixes.
+- **Resumability**: If the skill is interrupted, re-running it will verify already-checked items without re-applying fixes. This is why Phase 6 deletes the checklists only on the success path — a run that died halfway leaves them intact, and a checklist that survives is a signal the previous run did not finish.
 
 ### Discipline
 
@@ -391,10 +507,11 @@ Run the fetch query again to confirm zero unresolved threads remain. Update each
 - **Verify before trust**: reviewer claims about files, line numbers, runtime behavior, prior-session diagnoses, or external artifacts ("as documented in X", cached plans, old issues) are hypotheses to validate against the live PR diff and current code, not facts. Same anti-silencing principle from Phase 4.0 applied in another direction: don't propagate a reviewer's diagnosis without primary evidence that it still holds. Phase 3.1 step 1.5 enforces this per-item.
 - **No commits**: Leave committing to the user.
 
-### Token Efficiency
+### Determinism and Token Efficiency
 
-- **Delegate data fetching** to haiku agents — they handle API calls and return summaries
-- **Delegate parsing** to sonnet agents — they absorb large outputs and return structured lists
-- **Keep analysis in opus** — judgment calls about code correctness need the strongest model
-- **Delegate mechanical fixes** to sonnet agents when there are many (>5) fixes to apply
-- **Skip agent routing** for small PRs (<5 comments) — the overhead isn't worth it
+- **Run the mechanical phases inline** — reviewer detection (1.2), comment extraction (1.3), thread resolution (5), cleanup (6). Fixed commands with one correct answer; a subagent here only adds variance and the chance of an omission nobody notices.
+- **Project with `--jq` instead of absorbing raw JSON** — filtering to the fields you need beats handing 30-50KB to a subagent and trusting the summary, and it costs less.
+- **Delegate parsing** to sonnet agents only above the 1.3 size threshold — they absorb long review bodies and return structured lists.
+- **Keep analysis in opus** — judgment calls about code correctness need the strongest model.
+- **Delegate mechanical fixes** to sonnet agents when there are many (>5) fixes to apply.
+- **Skip agent routing entirely** for small PRs (<5 comments) — the overhead isn't worth it.

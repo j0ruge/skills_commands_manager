@@ -59,6 +59,10 @@ When severity is recalibrated from the reviewer's original, note it as `[NEW_SEV
 
 ### Minimal file for reviewers with zero findings:
 
+Zero findings has two causes that look the same in the data and mean opposite things — see SKILL.md Phase 2.
+
+**(a) Reviewed, found nothing** — a genuine pass:
+
 ```markdown
 # Gemini Review — PR #3
 
@@ -68,6 +72,31 @@ When severity is recalibrated from the reviewer's original, note it as `[NEW_SEV
 
 No actionable findings — reviewer approved without issues.
 ```
+
+**(b) Never ran** (quota, bot error, still pending) — not an approval, and not coverage:
+
+```markdown
+# Copilot Review — PR #15
+
+**Repository**: owner/repo
+**Reviewer**: copilot-pull-request-reviewer[bot]
+**Date**: 2026-07-25
+
+**No review was performed** — this is not an approval. Reviewer reported:
+
+> Copilot was unable to review this pull request because the user who requested the
+> review has reached their quota limit.
+
+Coverage gap: this PR has not been reviewed by Copilot. Re-request the review once the
+quota renews.
+```
+
+### File naming
+
+Always `{reviewer}-review.md` in the project root — never a per-PR variant such as
+`gemini-review-pr15.md`. Projects gitignore these with `*-review.md`, and a suffixed name
+slips past that pattern and survives as an untracked file forever. The fixed name is safe
+because SKILL.md Phase 6 deletes these files when the run succeeds.
 
 ---
 

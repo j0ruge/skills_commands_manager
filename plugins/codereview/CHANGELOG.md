@@ -2,6 +2,57 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.17.0] - 2026-07-25
+
+### Changed (coderabbit_pr 3.4.0 → 3.5.0 — as fases mecânicas viram determinísticas e a skill passa a limpar o próprio lixo)
+
+Motivação: numa sessão real (PR #15 do `ui24-agent`, 3 achados do Gemini) as fases
+mecânicas mostraram três problemas — dois de confiabilidade e um de sujeira acumulada.
+
+- **Listar comentários e fechar threads eram delegados a subagentes** (haiku/sonnet) com
+  prompts em prosa ("return ONLY the unique bot logins", "Run them in parallel. Report how
+  many succeeded"). São chamadas de API com UMA resposta certa: o agente no meio só
+  adiciona variação, latência e **omissão silenciosa** — uma rodada que pula uma thread é
+  indistinguível de uma rodada limpa. Agora rodam inline, com comandos fixos, e a fase 5
+  termina numa **asserção `unresolved: 0`** que é o gate da conclusão.
+- **A extração agora é uma projeção `--jq` fixa**, separada da *interpretação*. Isso
+  resolve melhor o próprio problema que a skill citava (30-50KB de JSON cru poluindo o
+  contexto): descarta `diff_hunk`/URLs/reações **antes** de qualquer contexto, em vez de
+  absorver tudo num subagente e confiar no resumo. Delegação a sonnet continua, mas com
+  gatilho objetivo (>1500 linhas ou 3+ reviewers com body longo). Dois detalhes não
+  óbvios ficaram codificados: `\(.line // .original_line)` (o `line` vem **null** quando o
+  diff do comentário fica defasado) e `select(.body != "")` (approvals têm body vazio e
+  viravam achado fantasma).
+- **Nova Fase 6 — limpeza.** No repositório real havia `gemini-review.md` e
+  `coderabbit-review.md` do **PR #7 (2026-06-28)** ainda na árvore em **2026-07-25**; o
+  `.gitignore` até os declarava efêmeros (`*-review.md`) e mesmo assim nada limpava. Pior:
+  para não sobrescrever o registro antigo, a rodada nova nomeou os arquivos
+  `gemini-review-pr15.md` — que **escapa do padrão `*-review.md`** e vira arquivo não
+  rastreado permanente. As duas regras agora se sustentam em par: **nome sempre fixo**
+  `{reviewer}-review.md` e **apagar ao concluir com sucesso** (só no caminho de sucesso,
+  preservando a resumibilidade). Flag `--keep-checklists` para quem quer o artefato.
+  Varredura de resto de execução anterior na Fase 1.1 como backstop — importante porque o
+  cross-reviewer check da 3.1 LÊ esses arquivos e um checklist velho engana a rodada.
+
+### Fixed (dois bugs de correção encontrados na mesma sessão)
+
+- **A skill dizia "All fixes are made on the current branch"** — falso sempre que se
+  resolve o PR estando em outro branch. Na sessão o usuário estava em
+  `fix/webapp-eco-corretivo` e o PR #15 vivia em `docs/pos-mvp-prd`; seguir a skill ao pé
+  da letra teria posto correções de PRD num branch alheio, **sem nunca chegar ao PR e sem
+  nada falhar alto**. A Fase 1.1 agora compara `git branch --show-current` com o
+  `headRefName` do PR: árvore limpa → checkout e avisa; árvore suja → para e reporta.
+- **"Não rodou" era registrado como "aprovou".** O template de zero achados escrevia
+  *"reviewer approved without issues"*; o Copilot respondeu **"unable to review — quota
+  limit"**, ou seja, a review nunca aconteceu. Agora os dois casos são distintos, o (b)
+  registra o texto literal do bot, é marcado como **lacuna de cobertura** e não conta como
+  cobertura no resumo final.
+
+Editado: `skills/coderabbit_pr/SKILL.md` (fases 1.1, 1.2, 1.3, 2, 5, nova 6, tabela de
+Model Routing e Operating Principles) e `skills/coderabbit_pr/references/checklist-template.md`
+(zero achados em dois casos + regra de nomeação). Descrição: acrescentado apenas
+"then cleans up its own checklist files" (396 → 436 chars, dentro do alvo).
+
 ## [1.16.0] - 2026-06-15
 
 ### Changed (pass 6.9 Dead Code — guardrail "over-export" agora distingue dois sub-casos com correções OPOSTAS)

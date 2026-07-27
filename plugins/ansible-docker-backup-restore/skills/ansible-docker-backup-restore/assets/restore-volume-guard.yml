@@ -1,0 +1,191 @@
+---
+# Guarda anti-sobrescrita de UM volume (loop_var: vol).
+#
+# Este é o código que decide se dado de produção sobrevive. A ORDEM das etapas é
+# load-bearing e foi corrigida depois de dois bugs reais — leia
+# references/restore-volumes-e-guarda.md §2 antes de alterar qualquer coisa.
+#
+#   1. guardas fail-closed → 2. snapshot → 3. validar snapshot em disco
+#   → 4. buscar e VALIDAR a substituta → 5. asserções de mountpoint
+#   → 6. checar container em uso → 7. limpar → 8. extrair
+#
+# O princípio: NADA é apagado antes de o substituto estar no disco e provado
+# íntegro. A versão anterior limpava primeiro e buscava depois — um rsync que
+# falhasse deixava o volume vazio e o serviço fora do ar.
+
+- name: "[volumes] Verificar se o volume {{ vol }} já existe"
+  ansible.builtin.command: "docker volume inspect {{ vol }}"
+  register: vol_check
+  changed_when: false
+  failed_when: false
+
+# check-then-create: `docker volume create` não avisa "already exists", então um
+# changed_when baseado na saída reportaria mudança toda vez.
+- name: "[volumes] Criar o volume {{ vol }} apenas se ausente"
+  ansible.builtin.command: "docker volume create {{ vol }}"
+  when: vol_check.rc != 0
+
+- name: "[volumes] Obter o mountpoint de {{ vol }}"
+  ansible.builtin.command: >
+    docker volume inspect {{ vol }} --format '{{ '{{' }}.Mountpoint{{ '}}' }}'
+  register: vol_mp
+  changed_when: false
+
+# --- Guardas fail-closed: "não consegui ler" NUNCA vira "está vazio" ---
+
+- name: "[volumes] Abortar se o mountpoint não foi resolvido"
+  ansible.builtin.fail:
+    msg: >
+      docker volume inspect não devolveu mountpoint para {{ vol }}.
+      Abortando sem tocar em nada: nunca é seguro tratar "não descobri o
+      mountpoint" como "o volume está vazio".
+  when: (vol_mp.stdout | trim | length) == 0
+
+- name: "[volumes] Conferir se o mountpoint existe e é diretório"
+  ansible.builtin.stat:
+    path: "{{ vol_mp.stdout | trim }}"
+  register: vol_mp_stat
+
+- name: "[volumes] Abortar se o mountpoint não existe ou não é diretório"
+  ansible.builtin.fail:
+    msg: >
+      Mountpoint de {{ vol }} inacessível. Pode ser disco não montado, falha de
+      permissão ou erro do Docker — nenhum deles significa "volume vazio".
+  when: not (vol_mp_stat.stat.exists and (vol_mp_stat.stat.isdir | default(false)))
+
+# hidden + any: sem os dois, volume com só um dotfile ou só um subdiretório
+# vazio é lido como vazio.
+- name: "[volumes] Listar o conteúdo atual de {{ vol }}"
+  ansible.builtin.find:
+    paths: "{{ vol_mp.stdout | trim }}"
+    file_type: any
+    hidden: true
+  register: vol_content
+
+# find NÃO falha em caminho ilegível: devolve files: [] com um warning.
+- name: "[volumes] Abortar se a listagem ficou incompleta"
+  ansible.builtin.fail:
+    msg: >
+      find pulou caminhos em {{ vol }}: {{ vol_content.skipped_paths }}.
+      Leitura parcial nunca deve ser tratada como volume vazio.
+  when: (vol_content.skipped_paths | default({}) | length) > 0
+
+- name: "[volumes] Decidir o que fazer com {{ vol }}"
+  ansible.builtin.set_fact:
+    vol_is_empty: "{{ vol_content.files | length == 0 }}"
+    vol_should_restore: "{{ (vol_content.files | length == 0) or (force_restore | bool) }}"
+    vol_should_clear: "{{ (vol_content.files | length > 0) and (force_restore | bool) }}"
+
+- name: "[volumes] Preservando dados existentes em {{ vol }}"
+  ansible.builtin.debug:
+    msg: "{{ vol }} já tem {{ vol_content.files | length }} itens. Para sobrescrever: -e force_restore=true"
+  when: not vol_should_restore
+
+# --- Snapshot antes de qualquer sobrescrita ---
+
+- name: "[volumes] Snapshot de {{ vol }} antes de sobrescrever"
+  ansible.builtin.command: >
+    tar -cf {{ snapshot_dir }}/{{ vol }}_{{ restore_stamp }}.tar
+    -C {{ vol_mp.stdout | trim }} .
+  when: vol_should_restore and not vol_is_empty
+
+# --- A substituta ANTES de apagar (ordem corrigida após incidente) ---
+
+- name: "[volumes] Verificar o tar de {{ vol }} no staging"
+  ansible.builtin.stat:
+    path: "{{ staging_root }}/volumes/{{ vol }}_{{ backup_date }}.tar"
+  register: tar_stat
+  when: vol_should_restore
+
+- name: "[volumes] Trazer o tar de {{ vol }} do host de backup"
+  ansible.builtin.command: >
+    rsync -a
+    root@{{ hostvars[backup_host].ansible_host }}:{{ backup_root }}/{{ backup_date }}/volumes/{{ vol }}_{{ backup_date }}.tar
+    {{ staging_root }}/volumes/
+  register: rsync_result
+  failed_when: false
+  when: vol_should_restore and not tar_stat.stat.exists
+
+- name: "[volumes] Validar que o tar está presente e íntegro"
+  ansible.builtin.command: "tar -tf {{ staging_root }}/volumes/{{ vol }}_{{ backup_date }}.tar"
+  register: vol_tar_check
+  changed_when: false
+  failed_when: false
+  when: vol_should_restore
+
+- name: "[volumes] Abortar se o tar está ausente ou corrompido"
+  ansible.builtin.fail:
+    msg: "tar -tf falhou para {{ vol }}. Nunca confie apenas no exit code do `tar -xf`."
+  when: vol_should_restore and (vol_tar_check.rc | default(1)) != 0
+
+# --- Limpeza: só com TODAS as travas confirmadas ---
+# Risco máximo do arquivo: apagar árvore de arquivos num caminho computado, em
+# produção. Confirme snapshot em disco, integridade do snapshot, asserções de
+# caminho e ausência de container vivo — ANTES do find -delete.
+
+- name: "[volumes] Confirmar o snapshot no disco"
+  ansible.builtin.stat:
+    path: "{{ snapshot_dir }}/{{ vol }}_{{ restore_stamp }}.tar"
+  register: vol_snapshot_stat
+  when: vol_should_clear
+
+- name: "[volumes] Abortar se o snapshot não existe"
+  ansible.builtin.fail:
+    msg: "Sem snapshot em disco para {{ vol }}. Nunca confie só no retorno da task de snapshot."
+  when: vol_should_clear and not (vol_snapshot_stat.stat.exists | default(false))
+
+- name: "[volumes] Asserções rígidas sobre o mountpoint antes de limpar"
+  ansible.builtin.assert:
+    that:
+      - (vol_mp.stdout | trim | length) > 0
+      - (vol_mp.stdout | trim) is match('^/var/lib/docker/volumes/')
+      - ((vol_mp.stdout | trim | basename) == vol) or ((vol_mp.stdout | trim | dirname | basename) == vol)
+    fail_msg: "Mountpoint resolvido não passou nas asserções de segurança. Abortando a limpeza."
+  when: vol_should_clear
+
+# find -delete NÃO recusa apagar arquivos abertos, ao contrário de `docker volume rm`.
+- name: "[volumes] Verificar se algum container em execução usa {{ vol }}"
+  ansible.builtin.command: >
+    docker ps --filter volume={{ vol }} --format '{{ '{{' }}.Names{{ '}}' }}'
+  register: vol_in_use
+  changed_when: false
+  when: vol_should_clear
+
+- name: "[volumes] Abortar se o volume está em uso"
+  ansible.builtin.fail:
+    msg: >
+      {{ vol }} está em uso por: {{ vol_in_use.stdout_lines | join(', ') }}.
+      Apagar arquivos abertos por um banco vivo corrompe o dado. Pare os
+      containers e repita.
+  when: vol_should_clear and (vol_in_use.stdout_lines | default([]) | length) > 0
+
+# Apaga o CONTEÚDO, não o diretório — o Docker precisa do mountpoint.
+- name: "[volumes] Limpar o conteúdo de {{ vol }} (substitui, não mescla)"
+  ansible.builtin.command: "find {{ vol_mp.stdout | trim }} -mindepth 1 -delete"
+  when: vol_should_clear
+
+- name: "[volumes] Confirmar que ficou vazio"
+  ansible.builtin.find:
+    paths: "{{ vol_mp.stdout | trim }}"
+    file_type: any
+    hidden: true
+  register: vol_after_clear
+  when: vol_should_clear
+
+- name: "[volumes] Abortar se a limpeza ficou parcial"
+  ansible.builtin.fail:
+    msg: "Volume parcialmente limpo é pior que abortar. Investigue à mão."
+  when: >
+    vol_should_clear and
+    ((vol_after_clear.files | default([]) | length) > 0 or
+     (vol_after_clear.skipped_paths | default({}) | length) > 0)
+
+# tar POSIX: sem -z, sem --strip-components. Confirme o formato do tar com
+# `file` antes — há produtores que geram gzip com extensão .tar, e outros que
+# enraízam tudo sob um diretório-prefixo (esses precisam ser re-enraizados
+# ANTES de chegar aqui). Ver restore-volumes-e-guarda.md §3.
+- name: "[volumes] Extrair {{ vol }}"
+  ansible.builtin.command: >
+    tar -xf {{ staging_root }}/volumes/{{ vol }}_{{ backup_date }}.tar
+    -C {{ vol_mp.stdout | trim }}
+  when: vol_should_restore

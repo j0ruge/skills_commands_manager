@@ -27,6 +27,13 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 CURSOR_SKILL_MAP: list[dict[str, Any]] = [
     {
+        "plugin": "ansible-docker-backup-restore",
+        "cursor_name": "ansible-docker-backup-restore",
+        "display": "Ansible Backup & Restore — Docker services on a Linux server, with proof the backup still runs",
+        "source_type": "skill",
+        "source_dir": "plugins/ansible-docker-backup-restore/skills/ansible-docker-backup-restore",
+    },
+    {
         "plugin": "cicd",
         "cursor_name": "cicd",
         "display": "CI/CD — troubleshooting GitHub Actions, Docker & GHCR pipelines",

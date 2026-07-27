@@ -1,0 +1,50 @@
+---
+# Contrato de variáveis da role de restore — ponto de partida, não código para
+# colar sem ler. Cada playbook fino sobrescreve o que precisar.
+#
+# Substitua tudo entre <> antes de usar.
+
+# --- Segurança ---
+force_restore: false          # true = sobrescreve volume COM dados (após snapshot).
+                              # Substitui, não mescla — ver restore-volumes-e-guarda.md §2.3
+snapshot_dir: /root/restore-snapshots
+
+# --- Origem do backup ---
+backup_host: <alias_do_host_de_backup>   # precisa responder a `ansible <alias> -m ping`
+backup_root: /opt/backups/<servidor>
+backup_date: "<AAAA-MM-DD>"              # a data REAL do dado, não a de hoje
+staging_root: /tmp/restore-<servidor>    # subdiretórios volumes/ e databases/
+
+# --- Docker ---
+docker_network: <rede_do_proxy>   # NUNCA recriada; só inspecionada/criada-se-ausente
+
+# --- Serviço (obrigatórios em cada playbook fino) ---
+# service_name: ""
+# compose_dir: ""
+compose_file: docker-compose.yml
+compose_project: ""           # SEMPRE preencher, derivado do PREFIXO DO VOLUME.
+                              # Vazio faz o Compose usar o basename do diretório —
+                              # é a armadilha nº 1, e ela é silenciosa.
+compose_build: false
+
+# --- Dados ---
+restore_volumes: []           # ex.: [<projeto>_<volume>]
+restore_dumps: []             # ex.: [{file: x.sql.gz, container: <db>, engine: postgres|mysql,
+                              #        db_user: ..., db_password: ..., db_name: ...,
+                              #        db_check_table: '<schema>.<tabela>'}]
+                              # db_check_table decide "tem dado?" CONTANDO LINHAS —
+                              # nunca por presença de schema. Ver restore-bancos.md
+
+# --- Verificação ---
+expected_containers: []
+verify_ports: []              # deixe VAZIO para serviço sem porta publicada:
+                              # apontar para a porta do proxy dá falso positivo
+verify_domain: ""             # vazio = pula a checagem HTTP
+verify_timeout: 90
+verify_http_timeout: 15
+# Códigos que significam "upstream inalcançável", não "aplicação respondeu mal".
+# A distinção é o que impede um 5xx de aplicação de parecer sucesso — e um 502
+# transitório de reload do proxy de parecer falha.
+verify_http_bad_codes: ["", "000", "502", "503", "504"]
+verify_http_retries: 5        # a janela de reload do gerador de config do proxy
+verify_http_retry_delay: 3    # é real; sem retentativa a checagem cai nela

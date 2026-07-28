@@ -84,6 +84,42 @@ O antídoto não é remover as duas — é **contar e asserir depois**:
 Note que a asserção usa só o **nome** do item, não a saída — então ela pode ser
 explícita sem violar o `no_log`.
 
+**Melhor ainda: um preflight que confere as DUAS direções, antes de dumpar.** A
+asserção acima pega o banco declarado que sumiu. Falta o reverso, que é o mais
+insidioso: um banco **em execução mas não declarado** no inventário. Ele não é
+dumpado por ninguém, e **nada dá erro** — não há item na lista para falhar. Fica
+anos sem backup sem um sintoma sequer. Compare `docker ps` com a lista declarada,
+nos dois sentidos:
+
+```yaml
+- name: Listar containers em execução
+  ansible.builtin.command: docker ps --format '{{"{{.Names}}"}}'
+  register: running
+  changed_when: false
+
+# Declarado mas ausente → FALHA (o erro acontece antes de dumpar, apontando aqui)
+- name: Falhar se um container de banco declarado não existe
+  vars:
+    declarados: "{{ (pg_containers|default([]) + mysql_containers|default([])) | map(attribute='name') | list }}"
+  ansible.builtin.assert:
+    that: declarados | difference(running.stdout_lines) | length == 0
+    fail_msg: "Declarados e ausentes: {{ declarados | difference(running.stdout_lines) | join(', ') }}"
+
+# Em execução com cara de banco mas NÃO declarado → AVISA (heurística, não falha)
+- name: Apontar bancos em execução que ninguém dumpa
+  vars:
+    declarados: "{{ (pg_containers|default([]) + mysql_containers|default([])) | map(attribute='name') | list }}"
+    suspeitos: "{{ running.stdout_lines | select('search','(?i)(postgres|mysql|mariadb|_db$|-db$)') | difference(declarados) | list }}"
+  ansible.builtin.debug:
+    msg: "{{ 'EM EXECUÇÃO e não declarados (não são dumpados): ' ~ (suspeitos|join(', ')) if suspeitos else 'nenhum banco fora do inventário' }}"
+```
+
+O aviso só avisa (a heurística por nome pode acusar um não-banco; falhar por
+heurística treina todo mundo a ignorar o alerta). Num caso real esse preflight
+achou dois bancos de produção — um Postgres e um MariaDB — **em execução e nunca
+dumpados por ninguém**, porque simplesmente nunca tinham sido adicionados ao
+inventário.
+
 ### 2.2 A mesma causa numa task SEM `ignore_errors` = parada total
 
 Na mesma role, uma task de limpeza (`rm` do dump temporário dentro de cada
@@ -151,6 +187,60 @@ de outro jeito.
 Toda referência a caminho fixo precisa de `stat` + `when`, e de uma mensagem que
 **registre a lacuna** em vez de fingir que o arquivo existe.
 
+### 2.5 O caminho de push nunca foi estabelecido — e ninguém verificou por host
+
+A etapa 5 (rsync para o host de backup) pressupõe que o cliente **alcança** o
+host de backup por SSH. Essa confiança é fácil de assumir e traiçoeira de
+verificar: num caso real, um servidor **nunca teve backup** em parte porque
+`root@<cliente>` não tinha a chave de host do destino no `known_hosts` nem chave
+autorizada lá. O rsync falhava com `Host key verification failed` e depois
+`Permission denied (publickey)` — o terceiro de três bloqueadores empilhados
+naquele host.
+
+O erro de raciocínio que o escondeu: **"o sentido cliente→backup funciona" tinha
+sido verificado em OUTRO servidor.** A topologia de SSH é por par de hosts;
+generalizar de um cliente para outro é como o caso passou meses sem backup.
+Verifique o push **de cada cliente**, não de um representante:
+
+```bash
+ansible <cliente> -m command -a \
+  'rsync -e "ssh -o BatchMode=yes" --dry-run /etc/hostname root@<backup_host>:<dest>/'
+```
+
+**E quando for conceder esse acesso, conceda o mínimo.** O rsync vai do cliente
+para o host de backup, então autorizar ali a chave root **ampla** do cliente dá,
+a quem comprometer esse cliente, root no host de backup — e com ele os backups de
+**todos** os servidores, não só os dele. O host de backup vira alvo de
+movimentação lateral. É a mesma postura da regra "nunca gravar credencial no
+repo", aplicada ao sentido do tráfego.
+
+Chave dedicada, confinada por `rrsync`, e **provada** sem poder de shell:
+
+```
+# authorized_keys no host de backup (uma linha):
+command="/usr/bin/rrsync -wo <dest_daquele_cliente>",restrict,from="<ip_do_cliente>" ssh-ed25519 AAAA… backup-<cliente>
+```
+
+- `rrsync -wo <dir>` → a chave só executa o rrsync, e só escreve (`-w`), e só
+  dentro de `<dir>`. Um cliente comprometido não lê nem toca o backup de outro.
+- `restrict` → sem PTY, sem port-forward, sem agent. **Sozinho não basta**: ele
+  desliga encaminhamentos, não execução de comando — sem o `command=`, a chave
+  ainda roda `ssh … 'rm -rf …'`.
+- `from="<ip>"` → a chave só vale daquele host.
+
+Prove as duas coisas depois de autorizar — que o push funciona **e** que a chave
+não abre shell:
+
+```bash
+rsync -e "ssh -i <chave> -o BatchMode=yes" --dry-run /etc/hostname root@<backup_host>:/<subdir>/   # deve passar
+ssh -i <chave> -o BatchMode=yes root@<backup_host> id                                              # deve FALHAR
+```
+
+Uma restrição que ninguém testou dá a sensação de segurança sem a segurança —
+pior que restrição nenhuma, porque ninguém volta a olhar. E cuidado com o destino:
+com `rrsync`, o caminho é **relativo** a `<dir>` — mandar `:/opt/backups/x/`
+absoluto vira `<dir>/opt/backups/x/`.
+
 ---
 
 ## §3. Anatomia do pipeline, e onde cada etapa falha
@@ -158,7 +248,7 @@ Toda referência a caminho fixo precisa de `stat` + `when`, e de uma mensagem qu
 | Etapa | O que faz | Como falha calado |
 |---|---|---|
 | 1. Dumps de banco | `exec` no container, dump para `/tmp` interno, `docker cp` para fora, `rm` dentro | §2.1 (dump) e §2.2 (limpeza) |
-| 2. Volumes | script que itera `docker volume ls` e tara cada um | §2.3 |
+| 2. Volumes | script que itera `docker volume ls` e tara cada um | §2.3, e §3.3 (bind mount não aparece no `volume ls`) |
 | 3. Diretórios de código | tar dos caminhos de uma lista de inventário | §2.4, e §3.1 abaixo |
 | 4. Configs do sistema | pacotes, `docker ps`, versão, rede, crontabs | raramente falha; é a fonte do inventário do próximo restore |
 | 5. Sincronização para o host de backup | `rsync` do diretório temporário | não roda se 1-4 abortaram |
@@ -180,6 +270,33 @@ mesma role:
 O segundo caso é benigno (a cobertura é maior que a lista) e o primeiro é grave,
 mas o erro de leitura é o mesmo: presumir que uma variável declarada está sendo
 consumida.
+
+### 3.3 `docker volume ls` não enxerga bind mount
+
+O item anterior conforta com "o script itera `docker volume ls` e pega tudo que
+existir no host". Isso vale para **volume nomeado**. Um container montado via
+**bind mount** (`-v /opt/algum/dir:/data`, ou `type: bind` no compose) guarda os
+dados num caminho do host que **não** aparece em `docker volume ls` — logo, o
+script de volumes passa por cima dele sem tarar nada, e sem reclamar.
+
+O engano é cruel porque a metade visível funciona: num caso real, os dumps de
+banco dos dois wikis estavam presentes no backup, o que dava toda a aparência de
+cobertura — mas os **26 GB de imagens/uploads** desses wikis moravam num bind
+mount (`/opt/containers/<app>/…`) e ficaram de fora. Banco sem as mídias devolve
+um wiki de texto com todas as figuras quebradas.
+
+É a mesma classe da postura "não existe em backup só dentro das origens que você
+enumerou": o dado estava num lugar que a ferramenta não olha. Para achar os bind
+mounts antes que o restore os procure:
+
+```bash
+docker ps -q | xargs -r docker inspect \
+  --format '{{"{{.Name}}"}} {{"{{range .Mounts}}{{if eq .Type \"bind\"}}{{.Source}}->{{.Destination}} {{end}}{{end}}"}}'
+```
+
+Cada `Source` de bind mount com dado insubstituível é um caminho que o backup de
+volumes **não** cobre — trate-o como diretório a incluir explicitamente (com a
+mesma checagem de existência do §2.4), não como algo que "o `volume ls` pega".
 
 ### 3.2 Renomear container é mudança de duas pontas
 

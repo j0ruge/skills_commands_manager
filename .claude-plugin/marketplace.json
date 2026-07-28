@@ -11,7 +11,7 @@
     {
       "name": "ansible-docker-backup-restore",
       "source": "./plugins/ansible-docker-backup-restore",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "description": "Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches silently dead backups: stale host_vars, ignore_errors+no_log. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention.",
       "category": "development",
       "keywords": ["ansible", "playbook", "backup", "restore", "disaster-recovery", "volume-snapshot", "pg_dump", "mysqldump", "retention", "backup-freshness", "silent-failure", "anti-overwrite-guard", "compose-project-name", "network-alias-collision", "reverse-proxy-tls"],

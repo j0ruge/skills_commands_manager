@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "category": "development",
   "keywords": [
     "ansible",
@@ -33,7 +33,9 @@
     "network-alias-collision",
     "acme-state",
     "vhost-orphan-directive",
-    "reverse-proxy-tls"
+    "reverse-proxy-tls",
+    "bind-mount-escapes-volume-ls",
+    "backup-push-least-privilege"
   ],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"

@@ -3,6 +3,33 @@
 Lições incorporadas à skill, datadas. Cada entrada diz **o que** mudou e **por
 quê** — o sintoma que ela teria evitado.
 
+## 2026-07-28 — pôr o segundo servidor em backup (1.1.0)
+
+Uma sessão sobre um servidor irmão que **nunca tinha tido backup**, com três
+bloqueadores empilhados. As lições são as bordas que a 1.0.0 não cobria — o
+overlap (container renomeado, `ignore_errors`+`no_log`, variável não consumida,
+aritmética da retenção) já estava na skill e não foi reescrito.
+
+- **O caminho de push é um pré-requisito que pode não existir — e a topologia SSH
+  é por par de hosts.** Sintoma que teria evitado: um servidor sem backup porque
+  `root@<cliente>` não alcançava o host de backup, enquanto "o push funciona"
+  havia sido verificado só em outro cliente. Junto: conceda esse acesso com menor
+  privilégio (`rrsync -wo` + `restrict` + `from=`), **provado sem abrir shell** —
+  senão o host de backup vira pivô para os backups de todos.
+  (`backup-pipeline-e-falha-silenciosa.md` §2.5)
+- **Preflight nos dois sentidos.** Sintoma: um banco em execução, nunca no
+  inventário, nunca dumpado — e nada dá erro. (§2.1 estendido)
+- **Bind mount não aparece no `docker volume ls`.** Sintoma: dumps presentes
+  passando a impressão de cobertura, com a mídia insubstituível de um bind mount
+  fora do backup. (§3.3)
+- **`delegate_to` num arquivo compartilhado, de hosts paralelos, corre.**
+  Sintoma: dois hosts editam o mesmo `authorized_keys`, um sobrescreve o outro,
+  ambos dizem `changed`, e o perdido falha depois longe da causa. `throttle: 1`.
+  (`ambiente-e-armadilhas-ansible.md` §6)
+- **Reescrever histórico não remove senha que colide com identificador público.**
+  Sintoma: `git filter-repo` do valor literal apagaria o nome do schema/container
+  em toda parte; só rotação conserta. (`SKILL.md` Encerramento #5)
+
 ## 2026-07-27 — versão inicial (1.0.0)
 
 Origem: três sessões de recuperação de um servidor Linux Dockerizado. A primeira

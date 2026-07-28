@@ -2,6 +2,41 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.1.0] — 2026-07-28
+
+### Adicionado
+
+Quarta sessão sobre o mesmo servidor e um segundo servidor irmão que **nunca
+tinha tido backup**. Os bloqueadores dele estavam empilhados — três, cada um
+escondendo o próximo — e três das lições abaixo saíram de desempilhá-los. Nada
+que a 1.0.0 já cobria foi reescrito; estas são as bordas novas.
+
+- **`backup-pipeline-e-falha-silenciosa.md` §2.5 — o caminho de push nunca foi
+  estabelecido.** A etapa de rsync pressupõe que o cliente alcança o host de
+  backup por SSH. Num host isso simplesmente não valia (`Host key verification
+  failed` → `Permission denied`), e o engano que escondeu foi generalizar de
+  *outro* cliente onde o push funcionava. A topologia de SSH é por par de hosts:
+  verifique o push de **cada** cliente. E conceda o acesso com menor privilégio —
+  chave dedicada confinada por `rrsync -wo`, **provada** sem poder de shell —
+  porque autorizar a chave root ampla do cliente faz do host de backup um alvo de
+  movimentação lateral para os backups de todos os servidores.
+- **`backup-pipeline-e-falha-silenciosa.md` §2.1 (estendido) — preflight nos dois
+  sentidos.** Além de "declarado e ausente falha", agora "em execução e **não
+  declarado** avisa": um banco que nunca entrou no inventário não é dumpado por
+  ninguém e nada dá erro. O preflight achou dois bancos de produção em execução e
+  nunca dumpados.
+- **`backup-pipeline-e-falha-silenciosa.md` §3.3 — bind mount escapa do
+  `docker volume ls`.** O script de volumes itera `docker volume ls` e por isso
+  **não** enxerga bind mount. Os dumps de banco presentes davam aparência de
+  cobertura, mas dezenas de GB de mídia num bind mount ficavam de fora.
+- **`ambiente-e-armadilhas-ansible.md` §6 — `delegate_to` num arquivo
+  compartilhado corre.** Vários hosts delegando edição do mesmo `authorized_keys`
+  se sobrescrevem; `throttle: 1` serializa.
+- **`SKILL.md` Encerramento #5 (estendido) — reescrita de histórico.** Uma senha
+  fraca igual a um identificador público (schema/container) não sai por
+  substituição literal; só rotação resolve. Discriminador: o valor aparece na
+  árvore do HEAD?
+
 ## [1.0.0] — 2026-07-27
 
 ### Adicionado

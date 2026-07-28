@@ -89,6 +89,7 @@ roles/restore/
 | **Defaults de role não atravessam plays** | Uma task de `pre_tasks` ou de outra play não enxerga os defaults | Redeclare em `vars:` da play com o mesmo valor, ou `include_vars` do `defaults/main.yml` |
 | **`default('x')` não pega string vazia** | O placeholder não aparece quando o valor é `""` | Forma de dois argumentos: `default('x', true)` |
 | **`docker volume create` não diz "already exists"** | `changed_when` baseado na saída reporta mudança sempre | Padrão check-then-create com `docker volume inspect` |
+| **`delegate_to` no mesmo arquivo, de hosts em paralelo** | Vários hosts com `delegate_to: <host_de_backup>` editando o **mesmo** `authorized_keys` correm: leitura-modificação-escrita simultânea, um sobrescreve a inserção do outro. Ambos reportam `changed`, só a última sobrevive — e o host perdido falha depois no rsync com `Permission denied`, longe da causa | `throttle: 1` na task delegada para serializar a escrita no arquivo compartilhado |
 | **`PLAY RECAP` com `failed=1` encadeado** | `ansible-playbook … ; echo $?` devolve 0 e parece sucesso | O `$?` é do último comando da cadeia. Leia o RECAP, não o `$?` |
 
 ## 7. Sobre copiar regras de harness

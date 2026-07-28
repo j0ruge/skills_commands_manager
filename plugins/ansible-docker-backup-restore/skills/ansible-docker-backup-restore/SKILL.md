@@ -144,7 +144,14 @@ Abra `references/backup-pipeline-e-falha-silenciosa.md` e siga.
 4. **Documente o que ficou quebrado** no cabeçalho do próprio playbook, não só
    num relatório. Serviço que sobe mas não serve precisa dizer por quê.
 5. **Migre segredos para `ansible-vault`** antes de qualquer `git remote add`.
-   Senha em texto claro no histórico não sai apagando a linha.
+   Senha em texto claro no histórico não sai apagando a linha — exige reescrever
+   com `git filter-repo`. E há uma armadilha: uma senha **fraca igual a um
+   identificador público** (nome de schema ou de container) **não** pode ser
+   removida por substituição literal — apagar o valor apagaria o identificador em
+   toda parte. Discriminador: o valor aparece na árvore do HEAD? Se sim, é
+   identificador, e o único conserto é **rotacionar** a senha, não reescrever.
+   Guarde um bundle da história antiga antes de reescrever; ele contém os
+   segredos, então apague-o depois de confirmar o remote.
 
 ---
 
@@ -165,6 +172,10 @@ RESTORE
 BACKUP — o restore não terminou sem isto
 [ ] inventário revisto no MESMO commit que renomeou qualquer container
 [ ] nenhuma task com `ignore_errors` e `no_log` juntos
+[ ] preflight confere `docker ps` vs inventário nos DOIS sentidos (declarado-ausente falha; em-execução-não-declarado avisa)
+[ ] bind mounts com dado insubstituível incluídos à mão — `docker volume ls` não os enxerga
+[ ] push cliente→host de backup verificado DESTE host (não generalizado de outro)
+[ ] acesso de push com menor privilégio: chave dedicada + `rrsync -wo`, provada sem abrir shell
 [ ] playbook de backup rodado ponta a ponta, PLAY RECAP com failed=0
 [ ] backup do dia no destino: um dump por banco esperado, volumes conferidos
 [ ] toda exclusão justificada por escrito no script

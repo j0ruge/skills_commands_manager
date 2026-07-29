@@ -1,8 +1,8 @@
 ---
 name: ansible-docker-backup-restore
 metadata:
-  version: 1.0.0
-description: Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches silently dead backups: stale host_vars, ignore_errors+no_log. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention.
+  version: 1.2.0
+description: Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention.
 ---
 
 # Backup e restore de serviços Docker via Ansible
@@ -61,10 +61,10 @@ Leia a linha que descreve o que você está prestes a fazer.
 | começar qualquer coisa | `references/levantamento-e-escopo.md` |
 | escrever ou rodar o primeiro playbook | `references/ambiente-e-armadilhas-ansible.md` |
 | escrever em qualquer volume, ou subir um compose | `references/restore-volumes-e-guarda.md` |
-| importar um dump SQL | `references/restore-bancos.md` |
+| importar um dump SQL, **ou subir um banco sobre datadir restaurado** | `references/restore-bancos.md` |
 | **declarar `VIRTUAL_HOST` ou mexer em TLS** | `references/proxy-reverso-e-tls.md` — **gate** |
 | **encerrar um restore, ou desconfiar de um backup** | `references/backup-pipeline-e-falha-silenciosa.md` — **gate** |
-| reportar resultado, ou despachar subagente | `references/provas-que-nao-mentem.md` |
+| reportar resultado, despachar subagente, **ou depurar erro que não fecha** | `references/provas-que-nao-mentem.md` |
 
 Em `assets/` há um contrato de variáveis, a guarda anti-sobrescrita comentada e
 um script de backup de volumes — pontos de partida, não código para colar sem

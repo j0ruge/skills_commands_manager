@@ -1,10 +1,10 @@
 {
   "name": "ansible-docker-backup-restore",
-  "description": "Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches silently dead backups: stale host_vars, ignore_errors+no_log. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention.",
+  "description": "Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.1.0",
+  "version": "1.2.0",
   "category": "development",
   "keywords": [
     "ansible",
@@ -35,7 +35,12 @@
     "vhost-orphan-directive",
     "reverse-proxy-tls",
     "bind-mount-escapes-volume-ls",
-    "backup-push-least-privilege"
+    "backup-push-least-privilege",
+    "caching-sha2-password",
+    "auth-plugin-drift",
+    "verify-body-contains",
+    "lineinfile-silent-append",
+    "secondary-error-masking"
   ],
   "platforms": ["claude-code", "cursor"],
   "skills": "./skills"

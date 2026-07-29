@@ -76,6 +76,63 @@ E teste por dentro, que isola o proxy do problema:
 docker exec <container> curl -s -o /dev/null -w '%{http_code}' http://localhost:<porta>/<caminho_real>
 ```
 
+### Escreva isso como contrato da role, não como conselho
+
+Vale contar como esta seção envelheceu, porque a lição é sobre o formato do
+conhecimento, não sobre HTTP.
+
+O parágrafo acima já existia — inclusive citando o domínio real que servia a
+página padrão do servidor web. Meses depois, esse mesmo domínio passou **quatro
+dias** servindo a mesma página errada, num restore cujo playbook terminou verde
+o tempo todo. A nota estava escrita, foi lida, e não impediu nada: quem roda o
+restore confia no que a role afirma, não no que um documento sugere conferir.
+
+Então promova a prova de conteúdo a **variável do contrato**, com default vazio
+para não mexer nos playbooks que já existem:
+
+```yaml
+verify_body_contains: ""   # vazio = só o código HTTP (comportamento anterior)
+```
+
+```yaml
+- name: "[verify] Baixar o corpo e conferir a marca da aplicação"
+  ansible.builtin.command: >
+    curl -sS -L --resolve {{ verify_domain }}:443:127.0.0.1
+    --max-time {{ verify_http_timeout }} --max-redirs 5 -k
+    https://{{ verify_domain }}/
+  register: body_check
+  changed_when: false
+  failed_when: false
+  when: verify_domain | length > 0 and verify_body_contains | length > 0
+
+- name: "[verify] Abortar se o corpo não contém a marca da aplicação"
+  ansible.builtin.fail:
+    msg: |
+      {{ verify_domain }} respondeu, mas o corpo não contém
+      "{{ verify_body_contains }}" — vhost apontando para o container errado, ou
+      para um container que subiu sem a config dele.
+      Recebido: {{ (body_check.stdout | default('(vazio)', true))[:300] }}
+  when:
+    - verify_domain | length > 0
+    - verify_body_contains | length > 0
+    - verify_body_contains not in (body_check.stdout | default('', true))
+```
+
+Aqui o `-L` é correto e no item 1 não era: a marca pode estar depois de um
+redirecionamento legítimo (uma raiz que manda para `/<app>/`). O `--resolve`
+continua fixando o IP, e redirecionamento relativo mantém o mesmo host.
+
+### Verifique todos os planos de entrada, não só o web
+
+Um serviço pode ter mais de uma porta de entrada — interface humana e endpoint
+de máquina, por exemplo — atendidas por processos diferentes, com configurações e
+até **credenciais** diferentes. Elas quebram de forma independente.
+
+No caso acima, a interface web respondia perfeitamente enquanto o endpoint que
+recebe os agentes estava fora havia mais de uma semana. Ninguém percebeu porque
+a verificação — e o olho humano — batiam na interface. Liste os planos de entrada
+do serviço e exercite **cada um**; o que estiver de pé mascara o que caiu.
+
 ## 5. Aguarde de verdade antes de asserir
 
 Sem espera, a asserção de containers dispara logo após o `compose up` e **passa
@@ -111,7 +168,40 @@ de propósito (item 2 acima) — o que significa que **ela nunca derruba a play*
 Toda prova que precisa bloquear tem que ser um `assert` explícito em
 `post_tasks`, não uma expectativa sobre o resultado da role.
 
-## 7. Se você delega a subagentes
+## 7. O erro que aparece no log pode ser o secundário
+
+Antes de formular hipótese a partir de uma mensagem de erro, verifique **de que
+ponto do código ela vem**. Se o rastro aponta para rotina de encerramento —
+`rollback`, `disconnect`, `finally`, destrutor, um `_end` qualquer — é forte
+indício de que você está lendo o *handler de erro estourando*, não a falha
+original. O handler pressupõe recursos que a falha real impediu de existir e
+quebra em cima, soterrando a causa.
+
+Caso real: um endpoint devolvia 500 com `Can't call method "rollback" on an
+undefined value`. A leitura natural — "problema de transação" — está errada: a
+rotina de encerramento chamava `rollback` num handle de banco que nunca fora
+aberto, *porque a conexão havia sido recusada*. A mensagem descrevia a segunda
+vítima.
+
+O agravante é que **o erro real costuma estar desligado por padrão**. Aplicações
+maduras trazem o log de diagnóstico em nível zero e a impressão de erro do driver
+desabilitada, para não vazar credencial em log de produção. Enquanto isso não é
+invertido, você está depurando sem a informação que decide o caso — e duas
+hipóteses erradas custaram, aqui, mais tempo que o diagnóstico inteiro.
+
+O procedimento que funciona:
+
+1. Ligue o log verboso da aplicação e a impressão de erro do driver **antes** de
+   teorizar. Guarde cópia do arquivo original.
+2. Reproduza a falha.
+3. Leia o erro primário, agora visível.
+4. **Reverta a verbosidade** — ela vaza dado sensível e não deve ficar ligada.
+
+Faça isso como um passo só, com a reversão no mesmo script da ativação: é o que
+garante que o servidor não fique verboso porque a sessão foi interrompida no
+meio.
+
+## 8. Se você delega a subagentes
 
 Regras aprendidas por incidente real:
 

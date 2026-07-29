@@ -2,6 +2,62 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.2.0] — 2026-07-29
+
+### Adicionado
+
+Quinta sessão. Um serviço que todos davam por restaurado havia quatro dias
+estava, na verdade, quebrado em dois lugares — e **as duas falhas passaram por
+um playbook verde**. As lições abaixo saem de descobrir por que a verificação
+não pegou nenhuma das duas.
+
+- **`restore-bancos.md` §5 — o datadir traz o PLUGIN de autenticação, não só a
+  senha.** O §4 já cobria a senha de um volume MySQL pré-populado. Faltava o
+  atributo que viaja junto: usuários vindos de um datadir restaurado num MySQL 8
+  chegam com `caching_sha2_password`, e clientes antigos (`DBD::mysql`, `mysqli`
+  velho, JDBC antigo) não fecham esse handshake sem TLS — a conexão é recusada
+  **com a senha inteiramente correta**. Duas armadilhas específicas: a flag
+  `--default-authentication-plugin` do compose *não* corrige (só vale para
+  usuários criados depois dela, e os do datadir já chegam prontos), e o sintoma
+  aparece em um cliente e não em outro — a interface web seguia no ar porque o
+  driver do PHP fala `caching_sha2`, enquanto o endpoint dos agentes, em Perl,
+  não conectava. Corrigir só o plugin, preservando a mesma senha, e confirmar
+  antes **de onde** a aplicação lê usuário e senha: num caso real o usuário
+  efetivo vinha de outro arquivo, carregado depois na ordem alfabética do
+  diretório de configs. Corrigir a credencial do usuário errado não produz erro
+  nenhum — só continua sem funcionar.
+
+- **`provas-que-nao-mentem.md` §4 — promova a prova de conteúdo a contrato da
+  role.** Esta seção já existia e já citava o domínio real que servia a página
+  padrão do servidor web. Ele passou mais quatro dias servindo exatamente isso,
+  num restore que terminou verde o tempo todo. A nota estava escrita, foi lida, e
+  não impediu nada — quem roda o restore confia no que a role afirma, não no que
+  um documento sugere conferir. Daí `verify_body_contains` (default vazio =
+  comportamento anterior, sem efeito nos playbooks existentes), agora também no
+  contrato em `assets/restore-defaults.yml`. Corolário na mesma seção: **verifique
+  todos os planos de entrada** — interface humana e endpoint de máquina quebram
+  de forma independente, e o que fica de pé mascara o que caiu.
+
+- **`provas-que-nao-mentem.md` §7 — o erro do log pode ser o secundário.** Rastro
+  apontando para rotina de encerramento (`rollback`, `finally`, destrutor) quase
+  sempre é o handler de erro estourando sobre recursos que a falha real impediu
+  de existir. Caso real: `Can't call method "rollback" on an undefined value`
+  descrevia a segunda vítima; a causa era conexão recusada. Agravante: o erro
+  primário costuma estar **desligado por padrão** (log de diagnóstico em nível
+  zero, impressão de erro do driver desabilitada). Ligar a verbosidade antes de
+  teorizar — e revertê-la no mesmo script, porque ela vaza dado sensível.
+
+- **`ambiente-e-armadilhas-ansible.md` §6 — `lineinfile` com `regexp` que não
+  casa.** Não é erro: o módulo acrescenta a linha no fim do arquivo e reporta
+  `changed`. Num arquivo com blocos, ela cai fora de todo contexto, fica inerte,
+  e a task fica verde. Provar que a diretiva existe (`grep -c` + `assert`) antes
+  de reescrevê-la.
+
+### Corrigido
+
+- `SKILL.md` declarava `metadata.version: 1.0.0` enquanto o `plugin.json` estava
+  em `1.1.0`. As duas passam a ser espelhadas.
+
 ## [1.1.0] — 2026-07-28
 
 ### Adicionado

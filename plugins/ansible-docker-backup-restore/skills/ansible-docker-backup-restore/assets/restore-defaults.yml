@@ -48,3 +48,9 @@ verify_http_timeout: 15
 verify_http_bad_codes: ["", "000", "502", "503", "504"]
 verify_http_retries: 5        # a janela de reload do gerador de config do proxy
 verify_http_retry_delay: 3    # é real; sem retentativa a checagem cai nela
+verify_body_contains: ""      # marca da aplicação que PRECISA aparecer no corpo.
+                              # Vazio = só o código HTTP (comportamento anterior).
+                              # Preencha para todo serviço com domínio: um container
+                              # de proxy sem config responde 200 com a página padrão
+                              # do servidor web e passa em tudo que está acima.
+                              # Ver provas-que-nao-mentem.md §4

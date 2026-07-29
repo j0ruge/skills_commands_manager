@@ -67,7 +67,56 @@ restaurado já traz a senha original gravada — o valor no compose precisa apen
 Se não coincidir, **não reinicialize o volume** para "consertar": reporte a
 divergência. Reinicializar apaga o banco.
 
-## 5. Sempre reconfira depois de importar
+## 5. O datadir também traz o PLUGIN de autenticação dos usuários
+
+O item acima trata da senha. Existe um segundo atributo que viaja junto e que
+quase ninguém confere: **o plugin de autenticação de cada usuário**.
+
+Num datadir restaurado num MySQL 8, os usuários costumam vir com
+`caching_sha2_password`. Clientes antigos — `DBD::mysql` do Perl, `mysqli`
+velho, drivers JDBC antigos — não fecham esse handshake sem TLS, e a conexão é
+recusada **com a senha inteiramente correta**:
+
+```
+Authentication plugin 'caching_sha2_password' reported error:
+Authentication requires secure connection.
+```
+
+Duas armadilhas específicas:
+
+**A flag do compose não corrige.** `--default-authentication-plugin=mysql_native_password`
+só decide o plugin de usuários criados **depois** dela. Quem veio dentro do
+datadir já chegou pronto, com o plugin gravado. A flag estar presente no compose
+faz parecer que o assunto está resolvido — e não está.
+
+**O sintoma aparece em um cliente e não no outro.** Caso real: a interface web
+de um serviço funcionava normalmente (o driver do PHP fala `caching_sha2`)
+enquanto o endpoint que recebe os agentes, em Perl, não conectava. Um serviço
+com dois planos de entrada pode ter só um quebrado — e o plano que ficou de pé
+esconde o outro. Como a UI abria, o banco parecia saudável e a investigação foi
+para o lugar errado.
+
+Confira o plugin, não só a senha:
+
+```sql
+select user, host, plugin from mysql.user;
+```
+
+Para corrigir, troque **apenas o plugin**, preservando a mesma senha — não
+invente uma nova, e não reinicialize nada:
+
+```
+ALTER USER '<usuario>'@'%' IDENTIFIED WITH mysql_native_password BY <a MESMA senha>
+```
+
+Passe o valor por *stdin* do cliente `mysql`, não em `argv`, para não expô-lo no
+`ps` do host. E antes de alterar qualquer coisa: **confirme de onde a aplicação
+lê o usuário e a senha**. Num caso real o usuário efetivo não era o declarado no
+arquivo principal de configuração — outro arquivo, carregado depois na ordem
+alfabética do diretório de configs, sobrescrevia a variável. Corrigir a
+credencial do usuário errado não produz erro nenhum: só continua sem funcionar.
+
+## 6. Sempre reconfira depois de importar
 
 Conte as linhas da tabela de checagem **de novo**, depois do import, e aborte se
 continuar zero. Um import que devolve `rc=0` e deixa a tabela vazia é

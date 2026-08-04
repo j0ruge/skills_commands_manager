@@ -142,6 +142,15 @@
       "category": "development",
       "keywords": ["whisper", "transcription", "transcricao", "speech-to-text", "ffmpeg", "audio-preprocessing", "silence-removal", "silenceremove", "loudnorm", "acompressor", "alimiter", "audio-enhancement", "opus", "offline", "multilingual", "segmentation", "hallucination", "picotamento", "choppy-audio", "pumping", "dynamic-agc", "two-pass-loudnorm-reverts-dynamic", "true-peak-headroom", "inter-sample-overshoot", "dysarthria", "low-volume-speaker", "afftdn-musical-noise"],
       "platforms": ["claude-code", "cursor"]
+    },
+    {
+      "name": "kaizen-software",
+      "source": "./plugins/kaizen-software",
+      "version": "1.0.0",
+      "description": "Metodologia Kaizen (melhoria contínua) para planejar, implementar e manter software — e para ensinar Kaizen ao time. Conduz as três fases pelo ciclo PDCA e mapeia os artefatos Kaizen nos que o projeto já tem (ADR, notas, TODO, CHANGELOG), respeitando as convenções do repositório. Gatilhos — Kaizen, PDCA, kaizen log, 5 porquês, desperdício, retrospectiva, dívida técnica, planejar feature.",
+      "category": "development",
+      "keywords": ["kaizen", "melhoria-continua", "continuous-improvement", "pdca", "sdca", "lean", "gemba", "muda", "jidoka", "5s", "5-porques", "root-cause", "kaizen-log", "retrospectiva", "technical-debt", "planning", "maintenance", "toyota"],
+      "platforms": ["claude-code", "cursor"]
     }
   ]
 }

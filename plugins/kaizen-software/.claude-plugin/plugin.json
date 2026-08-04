@@ -1,0 +1,12 @@
+{
+  "name": "kaizen-software",
+  "description": "Metodologia Kaizen (melhoria contínua) para planejar, implementar e manter software — e para ensinar Kaizen ao time. Conduz as três fases pelo ciclo PDCA e mapeia os artefatos Kaizen nos que o projeto já tem (ADR, notas, TODO, CHANGELOG), respeitando as convenções do repositório. Gatilhos — Kaizen, PDCA, kaizen log, 5 porquês, desperdício, retrospectiva, dívida técnica, planejar feature.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "1.0.0",
+  "category": "development",
+  "keywords": ["kaizen", "melhoria-continua", "continuous-improvement", "pdca", "sdca", "lean", "gemba", "muda", "jidoka", "5s", "5-porques", "root-cause", "kaizen-log", "retrospectiva", "technical-debt", "planning", "maintenance", "toyota"],
+  "platforms": ["claude-code", "cursor"],
+  "skills": "./skills"
+}

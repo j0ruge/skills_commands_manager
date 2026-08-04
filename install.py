@@ -167,6 +167,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_type": "skill",
         "source_dir": "plugins/wsl-windows-onboarding/skills/wsl-windows-onboarding",
     },
+    {
+        "plugin": "kaizen-software",
+        "cursor_name": "kaizen-software",
+        "display": "Kaizen — continuous improvement across planning, implementation and maintenance (PDCA, 5 whys, kaizen log)",
+        "source_type": "skill",
+        "source_dir": "plugins/kaizen-software/skills/kaizen-software",
+    },
 ]
 
 # Plugins not available for Cursor (Claude Code only).

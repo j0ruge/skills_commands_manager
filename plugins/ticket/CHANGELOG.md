@@ -1,5 +1,82 @@
 # Changelog — ticket
 
+## [1.1.0] — 2026-08-04
+
+### Added
+
+- **Issue nova nasce dentro da sprint, com score — sem depender do MCP.**
+  `acli jira workitem create --from-json` aceita `additionalAttributes` com
+  `customfield_*`, então sprint e story points podem ser gravados **na criação**.
+  Validado em 2026-08-04 no projeto SQ (issue descartável criada com sprint
+  `405` + 3 pontos, conferida e deletada). O `start` sub-fluxo B passa a usar
+  esse caminho. **Por quê:** o fluxo antigo criava a issue "pelada" e tentava
+  editar depois via MCP; quando o MCP não estava autenticado a edição falhava e
+  **o cartão ficava no backlog sem sprint nem pontos** — o sintoma relatado.
+- **Releitura obrigatória depois de escrever sprint/score** (novo step no
+  sub-fluxo A e no B), com verificação independente por
+  `acli jira sprint list-workitems --board $BOARD --sprint <ID>`. Uma escrita de
+  custom field pode "dar ok" e não aplicar; sem reler, a skill reportava sucesso
+  enquanto o cartão continuava no backlog.
+- **Como descobrir os IDs dos custom fields**, em vez de confiar nos números:
+  `acli jira workitem view <KEY> --fields "*all" --json` traz ~100 campos (o
+  `--json` sem `--fields` traz só 5 e **nenhum** custom field — motivo pelo qual
+  o `view` parecia "não ter" sprint/score). `10016`/`10020` são do site
+  jrcbrasil, não constantes do Jira.
+- **Fallbacks para "não acho a sprint ativa"** (`workflow.md §Quando não aparece
+  sprint ativa`): `$BOARD` errado é a causa mais comum (`board search` /
+  `board list-projects`); descoberta independente do board via JQL
+  `sprint in openSprints()`; e o caso legítimo de board sem sprint aberta ou
+  kanban — avisar o dev em vez de inventar uma sprint.
+- **Story points viraram pergunta de primeira classe** no sub-fluxo B: se o dev
+  não souber pontuar, a skill propõe uma estimativa justificada para ele
+  confirmar. Antes era um "(opcional)" que se perdia no meio do fluxo.
+
+### Changed
+
+- **Endpoint do MCP atlassian: HTTP+SSE → Streamable HTTP.**
+  `https://mcp.atlassian.com/v1/sse` foi descontinuado em **30/jun/2026**; a
+  config correta é `claude mcp add --transport http atlassian
+  https://mcp.atlassian.com/v1/mcp` (`{"type": "http", ...}` no JSON).
+  Documentado em `SKILL.md §Tratamento de Erros` e no `workflow.md` como a
+  **primeira** coisa a checar quando o servidor expõe só
+  `authenticate`/`complete_authentication` — antes esse sintoma era tratado
+  apenas como falta de login.
+  Registrada também a diferença medida entre os endpoints (2026-08-04): só
+  `https://mcp.atlassian.com/v1/mcp/authv2` responde com
+  `WWW-Authenticate: Bearer resource_metadata="…"`, o discovery OAuth (RFC 9728)
+  — é a variante a usar quando a autorização não completa no `/v1/mcp`.
+- `acli` de referência: v1.3.14 → **v1.3.22** (versão em que `--from-json` /
+  `--generate-json` foram validados).
+- Caminhos das referências passaram de absolutos
+  (`~/.claude/skills/ticket/references/…`) para **relativos** (`references/…`) —
+  o absoluto só resolvia na máquina que tem o symlink local, quebrando para quem
+  instala pelo marketplace.
+- `description` reduzida de ~1.400 para 465 chars (teto do repo é 500). A
+  descrição é a superfície de triggering; descrições longas são cortadas
+  silenciosamente da lista `/skills` e a skill perde o gatilho. O histórico
+  detalhado vive aqui no CHANGELOG, não na descrição.
+
+### Fixed
+
+- **Formato do valor de sprint estava errado na doc**: o exemplo mandava
+  `{"customfield_10020": {"id": 471}}`; o valor correto é o **id como número
+  puro** (`405`). Um objeto ali é rejeitado/ignorado — mais uma rota para o
+  cartão terminar no backlog.
+- **Corrigida a afirmação "o `acli` não escreve custom fields"**, que era verdade
+  só para o `edit`. A assimetria real, medida na v1.3.22: `create --from-json`
+  **aceita** `additionalAttributes`; `edit --from-json` rejeita com
+  `json: unknown field "additionalAttributes"`. Também não existe comando de
+  sprint que mova work items (`acli jira sprint` só faz
+  create/update/view/delete/list-workitems) — para issue **existente** não há
+  caminho sem MCP, e a skill agora diz isso ao dev em vez de fingir sucesso.
+
+### Origin
+
+Retrofit pedido após sessões em que a skill "jogava os cartões no backlog e não
+conseguia definir os pontos", somado ao aviso de depreciação emitido pelo próprio
+servidor MCP da Atlassian. As afirmações novas foram verificadas nesta sessão
+contra o Jira de produção (boards 51/SQ e 10/RS) e contra os endpoints MCP.
+
 ## [1.0.1] — 2026-05-29
 
 ### Fixed

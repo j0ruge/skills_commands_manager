@@ -1,26 +1,29 @@
 ---
 name: ticket
-description: "Gestão de tickets Jira para projetos JRC Brasil — criar issues, branches, sub-issues e fechar com resumo automático. Comandos: /ticket start, /ticket split, /ticket close, /ticket status"
+description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git — create issues/sub-issues and branches, close with an auto-generated summary. Per-repo config via `.jira-project`; discovers project-specific transitions instead of assuming names. Creates issues already in the active sprint with story points via `acli --from-json`, then verifies the card left the backlog. Triggers — ticket, /ticket, Jira, criar issue, fechar ticket, sprint, story points, acli."
 user_invocable: true
 argument_description: "Subcomando: start | split | close | status"
 metadata:
-  version: 1.0.1
+  version: 1.1.0
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
 
 Gerencia o ciclo de vida de tickets Jira integrado com Git, seguindo o fluxo padronizado da JRC Brasil.
 
-**CLI:** `/usr/bin/acli` (Jira CLI v1.3.14) + MCP `mcp__atlassian__*` quando disponível
+**CLI:** `/usr/bin/acli` (Jira CLI — validado na v1.3.22; `--from-json` em
+`workitem create` exige ≥ 1.3.2x, confirme com `acli --version`) + MCP
+`mcp__atlassian__*` quando disponível
 **Projeto Jira:** detectado dinamicamente — ver "Detecção de Projeto" abaixo
 **Branch naming:** `${BRANCH_PREFIX}-XXX_descricao_curta` (ex.: `RS-605_...`, `SQ-22_...`)
 
 ## Referências
 
-Antes de executar qualquer comando, leia os arquivos de referência:
+Antes de executar qualquer comando, leia os arquivos de referência (caminhos
+relativos a esta skill — funcionam tanto instalada pelo marketplace quanto local):
 
-- `~/.claude/skills/ticket/references/workflow.md` — Workflow de status, regras de transição, gotchas
-- `~/.claude/skills/ticket/references/templates.md` — Templates de descrição e fechamento
+- `references/workflow.md` — Workflow de status, transições, sprint/story points, gotchas do `acli`
+- `references/templates.md` — Templates de descrição e fechamento
 
 ## Detecção de Projeto
 
@@ -98,6 +101,11 @@ Antes de tudo, analisar o argumento passado após `start`:
    - `customfield_10016` = story points (número ou null)
    - `customfield_10020` = array de sprints (pegar a com `"state": "active"`)
    - Se o comando falhar (issue não encontrada), informar o dev e abortar
+   - ⚠️ Esses IDs são **do site jrcbrasil**, não uma constante do Jira. Se vierem
+     vazios num projeto novo, **descubra**: `acli jira workitem view <KEY> --fields "*all" --json`
+     lista os ~100 campos (o `--json` sem `--fields` traz só 5 e **nenhum**
+     custom field). A sprint é o array com `boardId`/`state`; story points é o
+     número solto. Ver `references/workflow.md §Descobrir os IDs`.
 
 2. **Mostrar resumo ao dev:**
 
@@ -120,24 +128,61 @@ Antes de tudo, analisar o argumento passado após `start`:
    - Se a issue **não está em nenhuma sprint** (campo sprint vazio/nulo):
      - Perguntar ao dev: "Essa issue não está em nenhuma sprint. Quer adicionar à sprint atual ou informar outra?"
      - Se sim:
-       1. Listar sprints ativas: `acli jira board list-sprints --id $BOARD --state active --json`
-       2. Extrair o ID da sprint ativa (ou pedir ao dev para escolher se houver mais de uma)
+       1. Descobrir a sprint ativa: `acli jira board list-sprints --id $BOARD --state active --json`
+          — a ativa é a de `"state": "active"`. **Não descarte uma sprint pelo
+          `endDate` no passado**: times deixam a sprint correr além da data
+          planejada e ela continua `active` (o board 51 tinha, em ago/2026, a
+          sprint 405 ativa com `endDate` de fev/2026). Se a lista vier vazia, ver
+          `references/workflow.md §Quando não aparece sprint ativa`.
+       2. Extrair o `id` (pedir ao dev para escolher se houver mais de uma)
        3. Atribuir via MCP: `mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10020": SPRINT_ID })`
+          — o valor é o **número puro** (`405`), não `{ "id": 405 }`.
+          ⚠️ Para issue **já existente** este é o único caminho automatizado: o
+          `acli` **não escreve custom fields no `edit`** (ver §Tratamento de
+          Erros). Se o MCP não estiver disponível, diga isso ao dev em vez de
+          seguir como se tivesse funcionado.
      - Se não: continuar sem sprint (registrar que o dev optou por pular)
    - Se já tem sprint: mostrar qual é e continuar
 
 5. **Verificar score (story points):**
    - Se story points está vazio/nulo/zero:
      - Perguntar ao dev: "Essa issue não tem score. Quer atribuir story points? (ex: 1, 2, 3, 5, 8, 13)"
+     - **Não devolva a pergunta em branco.** Você acabou de ler o summary e a
+       descrição da issue — proponha um número com uma justificativa de uma
+       linha (escopo, arquivos/serviços afetados, se há migração ou teste
+       novo) e deixe o dev confirmar ou corrigir. Ancorar a conversa numa
+       estimativa é o que destrava a pontuação; pedir um número do nada é o
+       que faz o campo ficar vazio.
      - Se sim: atribuir via MCP: `mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10016": N })`
+       (mesma ressalva do passo 4 — `acli edit` não grava este campo)
      - Se não: continuar sem score
    - Se já tem story points: mostrar e continuar
 
-6. **Verificar status e transicionar:**
+6. **Confirmar que gravou (releitura obrigatória):**
+
+   Uma escrita de custom field pode retornar "ok" e não aplicar — e o sintoma é
+   silencioso: o cartão fica no backlog, fora da sprint, e ninguém percebe até a
+   daily. Depois de mexer em sprint/score, **releia e compare**:
+
+   ```bash
+   acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+   ```
+
+   Verificação independente de que o cartão está mesmo no board da sprint:
+
+   ```bash
+   acli jira sprint list-workitems --board $BOARD --sprint <SPRINT_ID> --fields "key,summary,status"
+   ```
+
+   Se o valor não bateu com o que foi pedido, **avise o dev explicitamente**
+   ("a sprint não foi aplicada — o cartão continua no backlog") em vez de
+   reportar sucesso no resumo final.
+
+7. **Verificar status e transicionar:**
    - Se não está "Em andamento": `acli jira workitem transition --key "${PROJECT}-XXX" --status "Em andamento"`
    - Se já está "Em andamento": pular
 
-7. **Criar branch Git:**
+8. **Criar branch Git:**
 
    - Gerar nome: `${BRANCH_PREFIX}-XXX_descricao_curta` (snake_case, sem acentos, max ~50 chars, baseado no summary da issue)
    - Verificar que está em `${BASE_BRANCH}` e atualizado:
@@ -148,7 +193,7 @@ Antes de tudo, analisar o argumento passado após `start`:
      git checkout -b ${BRANCH_PREFIX}-XXX_descricao_curta
      ```
 
-8. **Output:** Mostrar resumo final:
+9. **Output:** Mostrar resumo final:
 
    ```text
    ✅ Issue: ${PROJECT}-XXX — {summary}
@@ -167,22 +212,69 @@ Antes de tudo, analisar o argumento passado após `start`:
    - Nome/summary da issue
    - Descrição (pode ser breve — será formatada no template)
    - Tipo: Tarefa, História, Bug (default: Tarefa)
-   - Story points (opcional)
+   - **Story points** — perguntar sempre, não tratar como detalhe opcional que
+     some no meio do fluxo: "Quantos pontos? (1, 2, 3, 5, 8, 13)". Se o dev não
+     souber, ofereça uma estimativa sua com a justificativa (escopo/arquivos
+     afetados) para ele confirmar ou corrigir — é mais fácil ajustar um número
+     proposto do que produzir um do zero. Só siga sem score se ele disser que
+     não quer pontuar.
    - Sprint: mostrar sprints ativas para escolha, ou usar sprint corrente. **Se o dev não informar sprint, perguntar explicitamente:** "Quer adicionar à sprint atual?" — não pular silenciosamente.
 
-2. **Criar issue no Jira:**
+2. **Descobrir a sprint ativa (antes de criar):**
 
    ```bash
-   acli jira workitem create --project "$PROJECT" --type "{tipo}" --summary "{nome}" --description "{descrição formatada}"
+   acli jira board list-sprints --id $BOARD --state active --json
    ```
 
-   - Capturar a key retornada (ex.: `RS-605` ou `SQ-32`)
-   - Se story points informados: `mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10016": N })`
-   - Se sprint informada:
-     1. Listar sprints ativas: `acli jira board list-sprints --id $BOARD --state active --json`
-     2. Atribuir via MCP: `mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10020": SPRINT_ID })`
+   Pegar o `id` da sprint com `"state": "active"` — **ignorando o `endDate`**,
+   que frequentemente já passou sem a sprint ter sido fechada. Se houver mais de
+   uma, perguntar ao dev; se vier vazio, ver `references/workflow.md
+   §Quando não aparece sprint ativa`.
 
-3. **Criar branch Git:**
+3. **Criar issue no Jira — já com sprint e story points:**
+
+   O caminho confiável é `--from-json` com `additionalAttributes`, que aceita
+   custom fields **na criação**. Isso é o que impede o cartão de nascer no
+   backlog: criar primeiro e tentar editar depois depende do MCP autenticado, e
+   quando ele não está o cartão fica órfão.
+
+   ```bash
+   cat > /tmp/${PROJECT}-new.json <<'JSON'
+   {
+     "projectKey": "SQ",
+     "type": "Tarefa",
+     "summary": "{nome}",
+     "description": { "version": 1, "type": "doc", "content": [
+       { "type": "paragraph", "content": [ { "type": "text", "text": "{descrição}" } ] }
+     ] },
+     "additionalAttributes": {
+       "customfield_10016": 3,
+       "customfield_10020": 405
+     }
+   }
+   JSON
+   acli jira workitem create --from-json /tmp/${PROJECT}-new.json
+   ```
+
+   - `customfield_10016` = story points (número); `customfield_10020` = **id da
+     sprint como número puro** (`405`, não `{"id": 405}`)
+   - Omitir uma chave de `additionalAttributes` quando o dev não informou o valor
+   - `description` aqui é **ADF**, não markdown (o `--from-json` não converte)
+   - Capturar a key retornada (ex.: `RS-605` ou `SQ-32`)
+   - Se a versão do `acli` não tiver `--from-json`, cair para o caminho antigo
+     (`create` simples + `mcp__atlassian__editJiraIssue`) e avisar o dev que
+     sprint/score dependem do MCP autenticado
+
+4. **Confirmar que a issue nasceu na sprint:**
+
+   ```bash
+   acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+   ```
+
+   Se sprint/score não vieram preenchidos, dizer isso ao dev — o cartão está no
+   backlog. Não reportar sucesso sem essa releitura.
+
+5. **Criar branch Git:**
 
    - Gerar nome: `${BRANCH_PREFIX}-XXX_descricao_curta` (snake_case, sem acentos, max ~50 chars)
    - Verificar que está em `${BASE_BRANCH}` e atualizado:
@@ -193,25 +285,32 @@ Antes de tudo, analisar o argumento passado após `start`:
      git checkout -b ${BRANCH_PREFIX}-XXX_descricao_curta
      ```
 
-4. **Transicionar issue:**
+6. **Transicionar issue:**
 
    ```bash
    acli jira workitem transition --key "${PROJECT}-XXX" --status "Em andamento"
    ```
 
-5. **Output:** Mostrar resumo:
+7. **Output:** Mostrar resumo:
 
    ```text
    ✅ Issue criada: ${PROJECT}-XXX — {nome}
    🌿 Branch: ${BRANCH_PREFIX}-XXX_descricao_curta
    📋 Status: Em andamento
    🔗 Sprint: {sprint}
+   🎯 Score: {story points ou "Nenhum"}
    ```
 
 ### Regras
 
 - SEMPRE perguntar antes de criar — nunca criar issue sem confirmação do dev
 - SEMPRE verificar sprint — tanto para issues existentes quanto novas. Nunca pular sprint silenciosamente.
+- **Issue nova nasce dentro da sprint** (`create --from-json` com
+  `additionalAttributes`), não criada-e-depois-editada. O caminho
+  criar→editar depende do MCP autenticado; quando ele falha, o cartão fica no
+  backlog e a falha passa despercebida.
+- **Releia depois de escrever** sprint/score e confirme antes de dizer que deu
+  certo (sub-fluxo A step 6 / sub-fluxo B step 4)
 - Branch DEVE partir de `${BASE_BRANCH}` (detectado/declarado na "Detecção de Projeto" — **não** assumir `develop`)
 - Se `git status` mostrar mudanças não commitadas, avisar o dev antes de trocar de branch
 - Usar template de descrição de `references/templates.md` (apenas sub-fluxo B)
@@ -466,6 +565,25 @@ branch atual. Qual é a key? (ex.: `${PROJECT}-605`)"
 ## Tratamento de Erros
 
 - **`acli` falha:** Mostrar o erro completo ao dev e sugerir verificar credenciais/conexão
+- **`json: unknown field "additionalAttributes"` no `edit`:** não é erro de
+  sintaxe — o `acli` aceita `additionalAttributes` **só no `create`**. Para
+  issue existente, custom fields (sprint/story points) só via MCP
+  `editJiraIssue`. Verificado na v1.3.22.
+- **MCP atlassian ausente ou só com `authenticate`/`complete_authentication`:**
+  antes de concluir que é falta de login, **confira o endpoint** — o transporte
+  HTTP+SSE (`https://mcp.atlassian.com/v1/sse`) foi descontinuado em
+  30/jun/2026. A config precisa ser Streamable HTTP:
+
+  ```bash
+  claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp
+  ```
+
+  Equivalente em `~/.claude.json` (por projeto) ou `.mcp.json`:
+  `{"type": "http", "url": "https://mcp.atlassian.com/v1/mcp"}` — o `"type":
+  "sse"` antigo é o sintoma. Se a autenticação não completar nesse endpoint,
+  tente `https://mcp.atlassian.com/v1/mcp/authv2`: só ele responde com
+  `WWW-Authenticate: ... resource_metadata=...`, o discovery OAuth (RFC 9728)
+  que o cliente usa para achar o servidor de autorização sozinho.
 - **Branch não está em `${BASE_BRANCH}`:** Avisar antes de criar branch
 - **Transição falha (`"No allowed transitions found"`):** não insistir no nome cravado —
   listar as transições reais com `mcp__atlassian__getTransitionsForJiraIssue` e

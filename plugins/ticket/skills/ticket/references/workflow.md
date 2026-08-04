@@ -68,8 +68,15 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Concluído"
 - `--type` deve usar o nome em PT-BR conforme configurado no projeto
 - Transições fora da ordem retornam: `"No allowed transitions found"`
 - O comando `view` não aceita `--key`, passar o ID direto: `acli jira workitem view ${PROJECT}-XXX`
-- **`view` padrão omite sprint e story points.** Usar `--fields "customfield_10016,customfield_10020" --json` para obter esses campos. `customfield_10016` = story points, `customfield_10020` = array de sprints (pegar a com `"state": "active"`)
-- **`edit` não suporta custom fields.** Story points (`customfield_10016`) e sprint (`customfield_10020`) não podem ser setados via `acli` — usar MCP `mcp__atlassian__editJiraIssue` como alternativa (ver seção "Sprint e Story Points via MCP" abaixo)
+- **`view` padrão omite sprint e story points.** Usar `--fields "customfield_10016,customfield_10020" --json` para obter esses campos. `customfield_10016` = story points, `customfield_10020` = array de sprints (pegar a com `"state": "active"`). Para descobrir IDs num site novo: `--fields "*all" --json`
+- **`create` escreve custom fields, `edit` não.** `create --from-json` aceita
+  `additionalAttributes` (sprint/story points na criação, sem MCP);
+  `edit --from-json` rejeita a mesma chave com
+  `json: unknown field "additionalAttributes"`. Issue existente → MCP
+  `editJiraIssue`. Ver §Sprint e Story Points.
+- `--generate-json` (em `create` e `edit`) imprime o template aceito por
+  `--from-json` — é a forma de checar quais chaves a sua versão suporta, em vez
+  de deduzir
 - **Não existe `workitem update`.** Usar `workitem edit` para editar campos (summary, assignee, labels, etc.)
 - Para atribuir responsável: `acli jira workitem edit --key "${PROJECT}-XXX" --assignee "email@example.com"`
 - `acli jira workitem create` retorna a key criada no output (ex.: `RS-605`, `SQ-32`)
@@ -89,58 +96,132 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Concluído"
 - Issue pai só fecha quando **todas** as sub-issues estiverem "Finished"
 - Listar sub-issues: `acli jira workitem search --jql "parent = ${PROJECT}-XXX"`
 
-## Sprint e Story Points via MCP
+## Sprint e Story Points
 
-O `acli` não suporta escrita em custom fields. Para atribuir **sprint** e **story points**, usar a tool MCP `mcp__atlassian__editJiraIssue`.
+Estes dois campos são a origem do sintoma mais comum da skill: **o cartão vai
+parar no backlog e sem pontuação**. A causa raiz é que a escrita depende de qual
+caminho está disponível, e o caminho mais óbvio (criar a issue e editar depois)
+é justamente o que falha calado. A ordem de preferência abaixo é por
+confiabilidade, não por elegância.
 
-> **MCP não-autenticado?** Numa sessão nova o servidor atlassian pode expor só
-> `authenticate`/`complete_authentication` (as tools de escrita não aparecem no
-> ToolSearch). Nesse caso, chame `mcp__atlassian__authenticate`, repasse a URL
-> ao dev para autorizar no browser e prossiga após o retorno. Enquanto não
-> autenticar, **story points e sprint não podem ser setados** (o `acli` não
-> escreve custom fields) — já transição (`--status "<status-destino>"`) e
-> comentário (ADF via `--body-file`) seguem funcionando pelo `acli`.
+| Situação | Caminho | Precisa de MCP? |
+|---|---|---|
+| Issue **nova** | `acli jira workitem create --from-json` com `additionalAttributes` | ❌ não |
+| Issue **existente** | `mcp__atlassian__editJiraIssue` | ✅ sim |
+| Conferir o que gravou | `acli ... view --fields` / `acli jira sprint list-workitems` | ❌ não |
 
-### Listar sprints ativas
+### Descobrir os IDs dos campos (não confie nos números)
+
+`customfield_10016` (story points) e `customfield_10020` (sprint) são do site
+**jrcbrasil** — não são constantes do Jira. Num site/projeto novo, descubra:
+
+```bash
+acli jira workitem view <KEY-que-já-tem-os-campos> --fields "*all" --json
+```
+
+`*all` traz ~100 campos; sem ele o `--json` devolve só 5 e **nenhum** custom
+field (é por isso que o `view` "não mostra" sprint/score). Identifique pelo
+formato: sprint é o array cujos objetos têm `boardId`/`state`; story points é o
+número solto. O `acli` não tem comando para listar definições de campo
+(`acli jira field` só cria/atualiza/apaga).
+
+### Descobrir a sprint ativa
 
 ```bash
 acli jira board list-sprints --id $BOARD --state active --json
 ```
 
-Retorna um JSON com as sprints ativas do board do projeto detectado (ex.: board
-`10` para RS, board `51` para SQ). Extrair o `id` da sprint desejada.
+Retorna as sprints ativas do board do projeto detectado (ex.: board `10` para
+RS, `51` para SQ). Extrair o `id`.
 
-### Atribuir sprint
+> ⚠️ **A sprint ativa é a de `"state": "active"` — ponto.** Não a descarte
+> porque o `endDate` já passou: times deixam a sprint correr além da data
+> planejada sem fechá-la. Em ago/2026 o board 51 tinha a sprint `405`
+> (`endDate` de fev/2026) ainda `active`, e tratá-la como "vencida" é
+> exatamente o que faz o cartão cair no backlog.
 
-Usar `mcp__atlassian__editJiraIssue` com o campo `customfield_10020`:
+#### Quando não aparece sprint ativa
 
-```text
-mcp__atlassian__editJiraIssue(
-  issueIdOrKey: "${PROJECT}-XXX",
-  fields: { "customfield_10020": SPRINT_ID }
-)
+1. **`$BOARD` errado ou de outro projeto** — a causa mais frequente. Conferir:
+   `acli jira board search --name "<projeto>"` e `acli jira board list-projects --id $BOARD`.
+2. **Descobrir pela issue, sem depender do board** — JQL resolve:
+   `acli jira workitem search --jql "project = $PROJECT AND sprint in openSprints()" --fields "customfield_10020" --json`
+   → o array de sprint das issues já traz `id` + `boardId` da sprint corrente.
+3. **Board scrum sem sprint aberta** (todas `closed`/`future`): não invente uma —
+   avise o dev e pergunte se deve criar (`acli jira sprint create`) ou deixar no
+   backlog conscientemente. Board **kanban** não tem sprint: nesse caso o campo
+   simplesmente não se aplica.
+
+### Issue nova — `create --from-json` (não precisa de MCP)
+
+O template oficial (`acli jira workitem create --generate-json`) inclui
+`additionalAttributes`, que aceita `customfield_*` **na criação**. Validado em
+2026-08-04 no projeto SQ: a issue nasceu com sprint `405` e 3 story points sem
+nenhuma chamada MCP.
+
+```json
+{
+  "projectKey": "SQ",
+  "type": "Tarefa",
+  "summary": "Título da issue",
+  "description": { "version": 1, "type": "doc", "content": [
+    { "type": "paragraph", "content": [ { "type": "text", "text": "Descrição em ADF." } ] }
+  ] },
+  "additionalAttributes": {
+    "customfield_10016": 3,
+    "customfield_10020": 405
+  }
+}
 ```
 
-### Atribuir story points
-
-Usar `mcp__atlassian__editJiraIssue` com o campo `customfield_10016`:
-
-```text
-mcp__atlassian__editJiraIssue(
-  issueIdOrKey: "${PROJECT}-XXX",
-  fields: { "customfield_10016": N }
-)
+```bash
+acli jira workitem create --from-json /tmp/nova-issue.json
+# ✓ Work item SQ-66 created: https://jrcbrasil.atlassian.net/browse/SQ-66
 ```
 
-### Exemplo completo (sprint + story points)
+- Sprint é o **id como número puro** (`405`). `{"id": 405}` não é o formato aqui.
+- `description` é **ADF**, não markdown — o `--from-json` não converte.
+- Omitir a chave quando o dev não informou o valor (não mandar `null`).
+
+### Issue existente — MCP `editJiraIssue`
 
 ```text
-# 1. Listar sprints ativas para obter o ID
-acli jira board list-sprints --id $BOARD --state active --json
-
-# 2. Atribuir sprint (ex.: ID 471)
-mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10020": { "id": 471 } })
-
-# 3. Atribuir story points (ex.: 8 pontos)
+mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10020": 405 })
 mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10016": 8 })
 ```
+
+> ⚠️ **`acli edit --from-json` NÃO aceita `additionalAttributes`** — falha com
+> `json: unknown field "additionalAttributes"` (v1.3.22). A assimetria é real:
+> `create` aceita custom fields, `edit` não. Também não existe comando de sprint
+> que mova work items (`acli jira sprint` só faz create/update/view/delete/
+> list-workitems). Portanto, para issue já criada **não há caminho sem MCP** —
+> se ele não estiver disponível, diga isso ao dev (ele pode arrastar no board)
+> em vez de seguir como se tivesse dado certo.
+
+> **MCP não-autenticado ou sem as tools de escrita?** Numa sessão nova o servidor
+> atlassian pode expor só `authenticate`/`complete_authentication`. Antes de
+> tratar como problema de login, **confira o endpoint**: o transporte HTTP+SSE
+> (`https://mcp.atlassian.com/v1/sse`) foi descontinuado em **30/jun/2026** e
+> precisa virar Streamable HTTP —
+> `claude mcp add --transport http atlassian https://mcp.atlassian.com/v1/mcp`
+> (em JSON: `{"type": "http", "url": "https://mcp.atlassian.com/v1/mcp"}`).
+> Se a autorização não completar, use `https://mcp.atlassian.com/v1/mcp/authv2`:
+> sondando os dois (2026-08-04), só o `authv2` devolve
+> `WWW-Authenticate: Bearer resource_metadata="…"` — o discovery OAuth
+> (RFC 9728) que permite ao cliente achar o servidor de autorização sozinho.
+> Depois de corrigir, chame `mcp__atlassian__authenticate` e repasse a URL ao dev.
+> Enquanto isso, transição (`--status "<status-destino>"`) e comentário (ADF via
+> `--body-file`) seguem funcionando pelo `acli`.
+
+### Conferir que gravou (o passo que evita o backlog silencioso)
+
+```bash
+# O que a issue tem agora
+acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+
+# Confirmação independente: a issue aparece no conteúdo da sprint?
+acli jira sprint list-workitems --board $BOARD --sprint <SPRINT_ID> --fields "key,summary,status"
+```
+
+Se o valor não bater com o pedido, reportar a falha explicitamente. Um "issue
+criada ✅" sem essa releitura é como o cartão some no backlog sem ninguém notar.

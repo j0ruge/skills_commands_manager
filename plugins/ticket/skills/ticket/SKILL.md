@@ -32,11 +32,11 @@ A skill **não tem projeto Jira hardcoded** — cada repo declara o seu via arqu
 Antes de qualquer comando, ler e carregar 3 variáveis em escopo:
 
 ```ini
-# ~/repos/sales_quote/.jira-project (exemplo)
+# ~/repos/sales_quote/.jira-project (exemplo real)
 PROJECT=SQ
 BOARD=51
 BRANCH_PREFIX=SQ
-BASE_BRANCH=main   # opcional — base de branches/PR; default detectado (ver tabela)
+BASE_BRANCH=develop   # opcional — base de branches/PR; se ausente, detectar (ver tabela)
 ```
 
 | Variável | Uso |
@@ -44,7 +44,7 @@ BASE_BRANCH=main   # opcional — base de branches/PR; default detectado (ver ta
 | `$PROJECT` | `--project "$PROJECT"` no `acli workitem create`; regex `${PROJECT}-\d+` na detecção da branch; `--jql "parent = ${PROJECT}-XXX"` no `split`/`close` |
 | `$BOARD` | `--id $BOARD` em `acli jira board list-sprints` |
 | `$BRANCH_PREFIX` | Prefixo do nome da branch (`${BRANCH_PREFIX}-XXX_descricao`). Geralmente igual a `$PROJECT`, mas pode divergir se o time usar convenção própria. |
-| `$BASE_BRANCH` | Base para criar branches e abrir PRs (`git checkout`/`gh pr --base`). **Opcional.** Se ausente, **detectar o branch default do repo** — `git symbolic-ref --short refs/remotes/origin/HEAD` (ex.: `origin/main` → `main`) ou `git remote show origin \| sed -n 's/.*HEAD branch: //p'`. ⚠️ **Não assumir `develop`** — `sales_quote`/SQ usa `main`. |
+| `$BASE_BRANCH` | Base para criar branches e abrir PRs (`git checkout`/`gh pr --base`). **Opcional.** Se ausente, **detectar** — nunca chutar: `git symbolic-ref --short refs/remotes/origin/HEAD` (ex.: `origin/develop` → `develop`) ou `git remote show origin \| sed -n 's/.*HEAD branch: //p'`. ⚠️ Não assumir **nem** `main` **nem** `develop` — ver `references/workflow.md §Branch base`. |
 
 ### Bootstrap se `.jira-project` não existir
 

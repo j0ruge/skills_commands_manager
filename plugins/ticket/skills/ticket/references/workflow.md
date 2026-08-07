@@ -58,6 +58,43 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Concluído"
    transição não é permitida a partir do status **atual** — por isso a Regra 1
    (descobrir/caminhar passo a passo) continua valendo.
 
+## Branch base (`$BASE_BRANCH`)
+
+> ⚠️ **Detecte. Não cheque, e não confie na memória de outro projeto.** Cravar
+> uma base errada faz a branch nascer do lugar errado e a PR ir para o alvo
+> errado — e o sintoma só aparece no merge, quando já custa.
+
+```bash
+git symbolic-ref --short refs/remotes/origin/HEAD   # → origin/develop
+# se falhar (HEAD remoto não resolvido localmente):
+git remote show origin | sed -n 's/.*HEAD branch: //p'
+```
+
+Se `refs/remotes/origin/HEAD` não existir na cópia local, criar com
+`git remote set-head origin -a` antes de continuar.
+
+### Estado conhecido (confirmar antes de usar — repos mudam)
+
+| Repo | Projeto | `$BASE_BRANCH` | Fluxo |
+|---|---|---|---|
+| `sales_quote` | SQ | **`develop`** | `develop → staging → main`; PRs vão para `develop` desde a feature 017 |
+
+> **Correção de 2026-08-07:** esta skill afirmava que "`sales_quote`/SQ usa
+> `main`". **Errado** — o default do repo é `develop`
+> (`origin/HEAD → origin/develop`), e é para lá que as PRs vão. A afirmação
+> vivia só no `SKILL.md`, sem nada aqui que a contradissesse; daí esta seção. Se
+> um repo novo entrar na tabela, entre com a **saída do comando**, não com o que
+> parece razoável.
+
+### Declarar em vez de redetectar
+
+Quando o repo já é conhecido, escreva `BASE_BRANCH` no `.jira-project` — é
+versionado, explícito, e vale para quem clonar:
+
+```ini
+BASE_BRANCH=develop
+```
+
 ## Tipos de Issue (em PT-BR)
 
 - História, Tarefa, Bug, Epic, Subtarefa, Entrevista, Análise, DevOps, Divida Técnica, Idea

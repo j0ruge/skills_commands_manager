@@ -1,5 +1,34 @@
 # Changelog — ticket
 
+## [1.1.1] — 2026-08-07
+
+### Fixed
+
+- **A skill afirmava a branch base errada para o `sales_quote`/SQ.** O `SKILL.md`
+  dizia, em dois pontos (exemplo do `.jira-project` e nota da tabela de
+  variáveis), que o projeto usa `main`. Usa **`develop`** —
+  `origin/HEAD → origin/develop` desde a feature 017, e o fluxo é
+  `develop → staging → main`. **Consequência real:** branch nova nasceria da base
+  errada e a PR iria para o alvo errado, e o sintoma só aparece no merge, quando
+  já custa caro. Detectado na sessão de fechamento da SQ-73, quando a base teve
+  de ser corrigida à mão.
+- **A nota agora manda detectar, não trocar um chute por outro.** O texto antigo
+  avisava "não assuma `develop`" e em seguida cravava `main` — o mesmo erro de
+  forma. Passa a ser "não assuma **nem** `main` **nem** `develop`", com o comando
+  de detecção como caminho único.
+
+### Added
+
+- **`references/workflow.md § Branch base`** — a seção não existia, e é por isso
+  que a afirmação errada sobreviveu: não havia onde ela pudesse ser contradita.
+  Traz o comando de detecção (`git symbolic-ref --short refs/remotes/origin/HEAD`),
+  o fallback para quando o `origin/HEAD` não está resolvido localmente
+  (`git remote set-head origin -a`), tabela de estado conhecido por repo, e a
+  instrução de registrar a **saída do comando**, não o que parece razoável.
+- **Recomendação de declarar `BASE_BRANCH` no `.jira-project`** em vez de
+  redetectar a cada uso. É a única das três camadas que não depende de alguém
+  ler a documentação.
+
 ## [1.1.0] — 2026-08-04
 
 ### Added

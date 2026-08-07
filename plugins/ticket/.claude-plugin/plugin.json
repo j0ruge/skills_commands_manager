@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.1.0",
+  "version": "1.1.1",
   "category": "development",
   "keywords": ["jira", "ticket", "issue-tracking", "acli", "atlassian-mcp", "git-workflow", "branch", "sub-issue", "story-points", "sprint", "active-sprint", "backlog", "from-json", "custom-fields", "workflow-transitions", "jrc-brasil", "pull-request", "conventional-commits", "mcp-streamable-http"],
   "platforms": ["claude-code"]

@@ -128,7 +128,7 @@
     {
       "name": "ticket",
       "source": "./plugins/ticket",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "Jira ticket lifecycle for JRC Brasil projects, integrated with Git — create issues/sub-issues and branches, close with an auto-generated summary. Per-repo config via `.jira-project`; discovers project-specific transitions instead of assuming names. Creates issues already in the active sprint with story points via `acli --from-json`, then verifies the card left the backlog. Triggers — ticket, /ticket, Jira, criar issue, fechar ticket, sprint, story points, acli.",
       "category": "development",
       "keywords": ["jira", "ticket", "issue-tracking", "acli", "atlassian-mcp", "git-workflow", "branch", "sub-issue", "story-points", "sprint", "active-sprint", "backlog", "from-json", "custom-fields", "workflow-transitions", "jrc-brasil", "pull-request", "conventional-commits", "mcp-streamable-http"],

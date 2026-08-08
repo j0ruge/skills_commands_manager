@@ -194,13 +194,50 @@ gh secret set NGINX_NETWORK_NAME --env staging --body "correct_network_name"
 
 ---
 
-## 3. `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`
+## 3. Default/self-signed certificate served — `ERR_SSL_VERSION_OR_CIPHER_MISMATCH` or `curl: (60) SSL certificate problem: self-signed certificate`
 
-**Symptom:** The browser returns `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`. `curl -svk` shows `sslv3 alert handshake failure`.
+**Symptom:** The browser returns `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`, or a CD smoke step
+dies with `curl: (60) SSL certificate problem: self-signed certificate`. `curl -svk` shows
+`sslv3 alert handshake failure` or a self-signed subject.
 
-**Cause:** nginx-proxy responds on port 443, but **does not have a valid certificate** for the domain — it serves the default (self-signed) certificate. Let's Encrypt **did not issue** the certificate because the DNS does not point to the server IP.
+**Cause:** nginx-proxy answers on 443 but serves its **default (self-signed) certificate**
+for that vhost. Two very different situations produce the identical symptom, and they
+have opposite fixes:
 
-**Diagnosis:**
+- **3a — the certificate does not exist.** Let's Encrypt never issued it (DNS not pointing
+  at the server, port 80 blocked, acme-companion down). Permanent until you fix the cause.
+- **3b — the certificate exists but the vhost was momentarily unknown.** `docker compose up -d`
+  recreates containers; docker-gen reacts to the container events and regenerates
+  nginx-proxy's config. In that reload window a vhost can fall back to the default cert.
+  **Transient — it heals on its own in seconds.**
+
+### Tell them apart FIRST — read the certificate, don't guess
+
+The discriminator is the certificate the server is actually presenting. Ask it directly
+instead of inferring from the failure:
+
+```bash
+echo | openssl s_client -connect <domain>:443 -servername <domain> 2>/dev/null \
+  | openssl x509 -noout -issuer -subject -dates
+```
+
+- `issuer=... O = Let's Encrypt ...` **and** a `notBefore` earlier than your deploy →
+  **the certificate exists (3b)**. Do not touch DNS, do not restart acme-companion — both
+  are already correct, and you will burn 30 minutes proving it.
+- Self-signed issuer, or no cert at all → **3a**, continue with the DNS/ACME checks below.
+
+**Why this matters in CD:** the smoke step is the most exposed step in the whole pipeline —
+it runs seconds after `up -d`, at the peak of docker-gen's reconfiguration. A first
+production deploy that dies on `curl: (60)` looks exactly like "Let's Encrypt hasn't
+issued yet", which is the hypothesis everyone reaches for on a brand-new vhost. Read the
+cert before believing it.
+
+**Fix for 3b (transient):** re-run the failed job after ~2 minutes —
+`gh run rerun --failed <run-id>`. If it passes unchanged, the diagnosis is confirmed.
+Structural hardening: give the smoke step its own retry/backoff instead of a single shot,
+so a reload window doesn't fail an otherwise healthy deploy.
+
+**Diagnosis for 3a:**
 
 ```bash
 # 1. Check DNS
@@ -212,9 +249,12 @@ curl -svk https://domain 2>&1 | grep -E "SSL|alert|subject"
 
 # 3. Test port 80 (HTTP-01 challenge)
 curl -sv http://domain 2>&1 | head -10
+
+# 4. What does the ACME companion say about THIS vhost?
+docker logs --tail 30 nginx-proxy-acme
 ```
 
-**Fix:**
+**Fix for 3a:**
 
 1. **DNS not pointing:** Configure A/CNAME record to the server IP
 2. **acme-companion not running:** Check if the `nginx-proxy-acme` container is running

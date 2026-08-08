@@ -1,6 +1,6 @@
 # CD Pipeline Pitfalls — Build-time vs Runtime, Operator Clones, `--profile` Side-effects
 
-Three classes of failure that bite hardest in mid-flight cutovers, when the CD pipeline is already in motion and the operator is improvising fixes on the live host. Each costs 15-60 minutes the first time, and the cause is in a different layer than the visible symptom.
+Failures that bite hardest in mid-flight cutovers, when the CD pipeline is already in motion and the operator is improvising fixes on the live host. Each costs 15-60 minutes the first time, and the cause is in a different layer than the visible symptom.
 
 ---
 
@@ -84,6 +84,104 @@ Two non-obvious points that make this safe:
 So: **build-args for the non-secret, environment-specific config (URLs, client_id);
 runtime env + envsubst for anything secret.** Mixing these up either leaks a secret
 into the JS or bakes an env-specific value that can't be rotated without a rebuild.
+
+### §1c. A build-time-baked image needs an environment suffix in its tag
+
+**Symptom**: you promote staging → production, the production deploy is green — and
+**staging silently starts serving production**. Nobody touched staging. Its containers
+weren't recreated; on the next pull or restart it simply comes up pointing at the
+production IdP and the production API.
+
+**Cause**: the tag collided in the registry. If both pipelines derive their tag from the
+commit (`sha-<short>`, the right instinct — immutable, traceable), then a **fast-forward
+merge** `staging → main` produces the *same* `GITHUB_SHA` on both branches. The
+production build pushes `sha-abc1234` and overwrites the staging image that already lived
+at that exact tag — with a bundle whose `VITE_*` point at production hosts.
+
+The build-time/runtime split from §1 is what makes this specifically a frontend problem:
+
+- **Frontend**: env is inlined at `vite build`, so the *same commit* legitimately yields
+  **two different images**. One tag cannot represent both.
+- **Backend**: no build-time env, so the same commit yields a byte-identical image. The
+  push is idempotent, the collision is harmless, and no suffix is needed.
+
+**Fix**: suffix the tag of any image that bakes environment config:
+
+```yaml
+tags: |
+  ghcr.io/<owner>/<app>-frontend:${{ steps.meta.outputs.image_tag }}-prod
+  ghcr.io/<owner>/<app>-frontend:latest-prod
+```
+
+Keep the suffix out of the `IMAGE_TAG` your compose consumes and append it in the compose
+file instead (`image: …/<app>-frontend:${IMAGE_TAG}-prod`) — that way a single
+`IMAGE_TAG` still drives both services, and the rollback logic in
+`cd-verification-and-rollback.md` §1 stays simple. Assert the premise in the deploy job:
+if the frontend and backend tags ever diverge, fail before touching the stack.
+
+**Why it hides**: nothing fails. Both builds are green, both deploys are green, and the
+staging containers keep running the correct old image until something restarts them. The
+damage surfaces days later as "staging is behaving like production", with no deploy in
+the history to blame.
+
+### §1d. `20-envsubst-on-templates.sh` renders the whole templates directory
+
+**Symptom**: you parameterize an nginx snippet (CSP origins, an upstream host), put the
+`.template` in `/etc/nginx/templates/`, and the container either fails to start with
+`"add_header" directive is not allowed here`, or starts fine and applies your headers
+**globally** while the `location` blocks that `include` the snippet break with a missing
+file.
+
+**Cause**: the official nginx image's entrypoint runs `/docker-entrypoint.d/*.sh` in
+lexical order. `20-envsubst-on-templates.sh` renders **every** file under
+`/etc/nginx/templates/` into `/etc/nginx/conf.d/` — it is a directory sweep, not a
+per-file opt-in. A snippet meant to be `include`d inside `server`/`location` lands in
+`conf.d/`, where it is parsed at `http` level, and the
+`include /etc/nginx/snippets/security-headers.conf` your vhost still references now points
+at a file nobody created.
+
+**Fix**: keep the snippet out of `templates/` and render it with your own drop-in,
+numbered **after 20** (templates) and **before 30** (worker tuning):
+
+```dockerfile
+COPY nginx/security-headers.conf.template /etc/nginx/snippet-templates/
+COPY nginx/25-envsubst-on-snippets.sh     /docker-entrypoint.d/
+```
+
+```sh
+#!/bin/sh
+set -eu
+SRC=/etc/nginx/snippet-templates/security-headers.conf.template
+DST=/etc/nginx/snippets/security-headers.conf
+[ -n "${CSP_IDP_ORIGIN:-}" ] || { echo "CSP_IDP_ORIGIN unset" >&2; exit 1; }
+mkdir -p "$(dirname "$DST")"
+envsubst '${CSP_IDP_ORIGIN}' < "$SRC" > "$DST"
+```
+
+Pass an explicit variable list to `envsubst`. With no arguments it substitutes **every**
+`${...}` in the file, which will eventually eat an nginx variable someone adds later.
+
+**The fail-fast half — not every missing variable announces itself.** Two cases that look
+alike and behave nothing alike:
+
+| Missing var used in | nginx does | You find out |
+| --- | --- | --- |
+| `proxy_pass https://${UPSTREAM_HOST};` | refuses to start (`unknown "upstream_host" variable`) | immediately, container exits |
+| `add_header Content-Security-Policy "... ${CSP_ORIGIN}";` | starts happily with an **empty origin** | in the user's browser, days later |
+
+The second is why the guard above is not defensive noise. A CSP with a blank origin is
+syntactically valid, passes `nginx -t`, keeps the container `healthy`, sails through a
+smoke test that only checks status codes — and blocks the app's own API and IdP in the
+browser, with a symptom (login that never completes, empty lists) that never mentions
+CSP. The entrypoint runs under `set -e`, so a bare `exit 1` in your drop-in is enough to
+turn a silent browser-only breakage into a container that refuses to lie.
+
+**Verify the rendered output, not the template:**
+
+```bash
+docker exec <frontend> cat /etc/nginx/snippets/security-headers.conf   # no ${...} left
+curl -sI https://app.example.com/ | grep -i content-security-policy    # origins are real
+```
 
 ---
 

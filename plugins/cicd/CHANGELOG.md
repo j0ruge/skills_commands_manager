@@ -2,6 +2,64 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.20.0] - 2026-08-08
+
+### Corrigido
+
+- **`troubleshooting-shared.md` §3 ensinava a hipótese errada.** A seção afirmava
+  categoricamente que certificado self-signed = "Let's Encrypt não emitiu porque o DNS
+  não aponta". **O quê**: a seção passa a ter duas causas (3a cert inexistente / 3b cert
+  existe e o docker-gen estava a meio reload após `up -d`) e um **discriminador** que vem
+  antes das duas — ler o certificado com `openssl s_client … | openssl x509 -noout
+  -issuer -dates`. **Por quê**: num primeiro deploy de produção real, o smoke morreu com
+  `curl: (60) SSL certificate problem: self-signed certificate` e os certs Let's Encrypt
+  dos dois vhosts **já existiam havia uma hora**. Seguir a skill teria levado a investigar
+  DNS e acme-companion, ambos corretos. O smoke é o step mais exposto do pipeline: roda
+  segundos após o `up -d`, no pico da reconfiguração. Fix é `gh run rerun --failed`.
+- **Os blocos de rollback do `SKILL.md` prescreviam o anti-padrão.** Terminavam em
+  `up -d --force-recreate`, sem captura de tag e sem verificação. **O quê**: passam a
+  capturar a tag servida, aceitar só `sha-*` e **re-smokar**. **Por quê**: `up -d` saindo
+  0 significa que o Docker aceitou o pedido — um rollback que restaura o serviço e um que
+  não restaura são indistinguíveis ali, e o operador descobre pelo usuário.
+
+### Adicionado
+
+- **`references/cd-verification-and-rollback.md`** (novo, 7 seções). **O quê**: a casa do
+  tema "o sensor disse sim enquanto a coisa que ele representa era falsa" — tag imutável
+  para rollback (§1), re-smoke (§2), ordem deliberada dos gates (§3), prova do backup pelo
+  artefato (§4), o fan-out CSV do `prodrigestivill/postgres-backup-local` (§5), provar o
+  sensor antes de confiar no silêncio (§6), `vars` em repo vs environment (§7).
+  **Por quê**: nenhum desses tinha lar na skill, e §4 vem de um caso real — um
+  `postgres-backup` ficou **3 meses `healthy` sem gerar um único dump**, porque o
+  healthcheck observa a porta HTTP de status da imagem e não o artefato. O banco
+  desprotegido era o do IdP que autenticava todos os outros serviços do host.
+- **`cd-pipeline-pitfalls.md` §1c — colisão de tag entre ambientes** (lesson 64).
+  **O quê**: imagem que embute env em build-time precisa de sufixo de ambiente na tag.
+  **Por quê**: um merge **fast-forward** staging→main produz o MESMO `GITHUB_SHA`, então
+  o build de produção sobrescreve no registry a imagem de staging — e staging passa a
+  servir produção sem ninguém tocar nele, dias depois, sem deploy no histórico para
+  culpar. Só morde o frontend; backend sem env de build é byte-idêntico e idempotente.
+- **`cd-pipeline-pitfalls.md` §1d — `20-envsubst-on-templates.sh` varre o diretório
+  inteiro** (lesson 65). **O quê**: snippet de `add_header` posto em
+  `/etc/nginx/templates/` vira config de nível `http` e deixa órfão o `include` dos
+  `location`; a solução é drop-in próprio numerado entre 20 e 30. Junto, o contraste de
+  fail-fast: var ausente em `proxy_pass` faz o nginx recusar o parse, mas var ausente num
+  `add_header` gera CSP com origem **vazia** — válida, `nginx -t` passa, container
+  `healthy`, smoke verde, e o browser bloqueia API e IdP com sintoma que nunca menciona
+  CSP. **Por quê**: é a classe de falha que atravessa todos os gates automáticos.
+- **Lições 59–67** e 10 linhas novas na Quick Troubleshooting, cobrindo os itens acima
+  mais: `if: success()` é gate de bom tempo e não roda no deploy que falhou (61);
+  `${{ vars.X }}` resolve org → repo → environment, então environment vazio não prova
+  ausência (66); e ausência de sinal não é prova — dispare uma sonda deliberada antes de
+  concluir que a captura de log vazia significa "sem erros" (67).
+
+### Alterado
+
+- **`description` reescrita, não ampliada** — estava em 688 chars (no teto prático) e o
+  retrofit somou 11 tópicos. Encurtada para ~600, trocando detalhe de runner que já vive
+  no corpo da skill pelo eixo novo de *prova de deploy*, que não tinha superfície de
+  triggering nenhuma.
+
 ## [2.19.1] - 2026-07-17
 
 ### Adicionado

@@ -105,10 +105,24 @@ so this never happens.
 - End with a single trigger list of ≤ 8 keywords, prefixed `Triggers — `.
 - Pick **one language** per description (English preferred for cross-team
   reach). Body of the skill can stay bilingual.
-- Mirror the exact same description in `SKILL.md` frontmatter and the matching
-  entry in `.claude-plugin/marketplace.json` — single source of truth.
-- Run `/doctor` after adding or editing skills. If it reports any descriptions
-  dropped, trim before merging.
+- Mirror the exact same description in `SKILL.md` frontmatter, `plugin.json` and
+  the matching entry in `.claude-plugin/marketplace.json` — the canonical source
+  is `SKILL.md` (that's the copy Claude Code reads to decide about the skill);
+  for commands-only plugins, `plugin.json`.
+- **Quote the description value** in the SKILL.md frontmatter. An unquoted YAML
+  scalar containing `: ` (e.g. `...by stack: Node`) opens a nested mapping and
+  makes the whole frontmatter invalid YAML. Lenient parsers swallow it, so the
+  skill keeps working and the defect stays latent until a strict consumer shows up.
+- Run `python scripts/validate-versions.py` before merging — check 6 enforces
+  the mirroring above and warns when a description is over the 500 cap. Run it
+  with `--fix` to mirror the canonical copy into the diverging files. Also run
+  `/doctor`: it reports descriptions dropped at runtime, which the script can't see.
+
+> These two rules were written here long before anything measured them, and by
+> 2026-08-08 five of the ten skill-bearing plugins had three different texts —
+> one of them 2541 chars in `plugin.json` against 813 in `SKILL.md`, i.e. the
+> description had become a changelog. That is why check 6 exists: a convention
+> nothing verifies is a convention the repo will drift away from.
 
 ### DON'T
 - Don't enumerate every quirk, capability, file, or use-case in the description

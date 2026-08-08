@@ -1,6 +1,6 @@
 ---
 name: zitadel-idp
-description: Self-hosted Zitadel v4 OIDC field guide — 47 documented quirks + working docker-compose and idempotent TypeScript bootstrap. High-friction traps: FirstInstance env placement, JWT/JWKS over self-signed HTTPS, TLS-terminating reverse proxy (`--tlsMode external`) and the admin-console `Failed to fetch` mixed-content trap, v2.66→v4 upgrade, API v1→v2 mapping, silent-renew, 401-storm defenses. Also credential-free pre-cutover checks (authorize probe, SPA bundle grep), prod+staging instances, user migration. Triggers — zitadel, oidc self-hosted, silent-renew, JWKS, masterkey, v2.66→v4, api v1→v2, tlsMode external, client_id mismatch, pre-cutover check, user migration.
+description: "Self-hosted Zitadel v4 OIDC field guide — 47 documented quirks + working docker-compose and idempotent TypeScript bootstrap. High-friction traps: FirstInstance env placement, JWT/JWKS over self-signed HTTPS, TLS-terminating reverse proxy (`--tlsMode external`) and the admin-console `Failed to fetch` mixed-content trap, v2.66→v4 upgrade, API v1→v2 mapping, silent-renew, 401-storm defenses. Also credential-free pre-cutover checks (authorize probe, SPA bundle grep), prod+staging instances, user migration. Triggers — zitadel, oidc self-hosted, silent-renew, JWKS, masterkey, v2.66→v4, api v1→v2, tlsMode external, client_id mismatch, pre-cutover check, user migration."
 ---
 
 # Zitadel IdP — Field Guide

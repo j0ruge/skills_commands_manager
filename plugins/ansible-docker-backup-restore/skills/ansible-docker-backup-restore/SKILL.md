@@ -2,7 +2,7 @@
 name: ansible-docker-backup-restore
 metadata:
   version: 1.3.0
-description: Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Proves a dump by its contents (gzip -t, COPY blocks, a known record) instead of its size, and distrusts a backup container's healthcheck. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention, dump integrity, backup healthcheck lies.
+description: "Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Proves a dump by its contents (gzip -t, COPY blocks, a known record) instead of its size, and distrusts a backup container's healthcheck. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention, dump integrity, backup healthcheck lies."
 ---
 
 # Backup e restore de serviços Docker via Ansible

@@ -144,6 +144,69 @@ Document this in the boot summary so it's not a surprise to anyone who reads the
 
 **Fix in the dev script**: chain three port-clear methods (`fuser` → `lsof` → `ss`) so something works on every distro. After clearing, **verify** the port is free before spawning the dev server. See `bash-patterns.md §"Port reclaim with a fallback chain"`.
 
+### P9a — `pkill -f <pattern>` can match the command line of the shell running it
+
+P9 warns that `pkill -f vite` kills *too few* processes. The mirror failure is that it can
+kill **too many — starting with you.**
+
+**Symptom**: a script or an agent-issued command that contains a `pkill -f "<something>"`
+dies with **exit 144** (or 143, or no output at all), leaving the remaining commands in the
+same invocation unexecuted. Nothing in the output explains it.
+
+**Cause**: `pkill -f` matches against the **full command line of every process**, and the
+shell that is executing your `pkill` has that pattern *in its own command line* — because
+your script text is the argument to `sh -c` / `zsh -c`, or the pattern appears in a
+heredoc, a wrapper, or an `eval`. `pkill` happily matches the shell, signals it, and the
+script commits suicide mid-run. Exit 144 is `128 + 16` (SIGSTOP-family on some shells);
+the exact code varies, which is why it reads as a mystery rather than as a signal.
+
+This is far likelier under an automation harness than in an interactive terminal, since
+harnesses wrap commands in `<shell> -c '<your entire script>'`.
+
+**Fix**: never let the pattern be the only filter. Resolve to PIDs first and exclude your
+own process and its parent:
+
+```bash
+# Instead of:  pkill -f "vite"
+for p in $(pgrep -f "vite"); do
+  [ "$p" = "$$" ] && continue          # not me
+  [ "$p" = "$PPID" ] && continue       # not my parent shell
+  kill "$p" 2>/dev/null
+done
+```
+
+Two cheap habits that also help: match on the **executable** with `pkill -x vite` (no
+`-f`, so the shell's command line can't match), and when you must use `-f`, verify with
+`pgrep -af <pattern>` first — reading the list before signalling it shows you immediately
+whether your own wrapper is in it.
+
+**Corollary — counting matches lies too.** `pgrep -c -f <pattern>` from inside that same
+shell counts the shell itself, so a "1 remaining" reading after a successful cleanup is
+usually your own process. Filter the wrapper out (`pgrep -af <pattern> | grep -v ' -c '`)
+before believing the count.
+
+### P9b — a background wrapper reporting "finished" says nothing about a `nohup`'d child
+
+**Symptom**: you launch a long-running capture in the background
+(`nohup <cmd> | grep … >> file &`), the harness or shell reports the command **completed
+with exit 0** seconds later, and you conclude the capture died.
+
+**Cause**: what completed was the **wrapper** — the script that *started* the background
+job and then ran its last foreground statement (an `echo`, a short `sleep`). The `nohup`'d
+child was deliberately detached and is still running. Exit 0 describes the launcher, not
+the launched.
+
+**Fix**: don't infer either way — ask. And note that the naive check is itself subject to
+P9a:
+
+```bash
+pgrep -af "<distinctive part of the child's command>" | grep -v "$$"
+```
+
+If the child *is* alive and its output file is empty, that is a separate claim needing its
+own proof — see the "prove the sensor" reasoning: fire a deliberate positive and confirm it
+lands before reading an empty capture as "nothing happened".
+
 ## P10 — Background processes orphaned after Ctrl+C
 
 **Symptom**: User hits Ctrl+C; the script prints "Stopped." but `ps -ef | grep tsx` shows the backend still running. Re-running the script then fails on EADDRINUSE.

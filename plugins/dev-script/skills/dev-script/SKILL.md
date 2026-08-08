@@ -1,7 +1,7 @@
 ---
 name: dev-script
 metadata:
-  version: 0.5.0
+  version: 0.5.1
 description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free port discovery for foreign-owned ports / kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards (CRLF .env reads, cross-platform node_modules). Triggers — dev script, single-command dev, local stack, mkcert, kill port, find available port, port discovery, runtime drift, script hangs, strictPort, CRLF .env, Failed to load native binding, yarn cmdtest collision.
 ---
 
@@ -128,7 +128,7 @@ Spinlock with a timeout (max 30–60s, then fail with the exact URL/command that
 
 `trap cleanup EXIT SIGINT SIGTERM` (bash) / `Register-EngineEvent PowerShell.Exiting` + try/finally (PS). Cleanup kills the dev servers (process group: `kill -- "-$pgid"` in bash) and **only optionally** the containers (gated behind `--down` because most users want containers persisted across re-runs).
 
-The corollary: **never leave orphans**. If the script started 3 child processes, all 3 must die when the user hits Ctrl+C. Pid-array tracking + group-kill handles this — the alternative (`pkill -f vite`) is fragile.
+The corollary: **never leave orphans**. If the script started 3 child processes, all 3 must die when the user hits Ctrl+C. Pid-array tracking + group-kill handles this — the alternative (`pkill -f vite`) is fragile in both directions: it kills too few (`pitfalls.md §P9`) and it can kill **too many, starting with the shell running it**, because `-f` matches your own wrapper's command line (`§P9a`).
 
 ### 6. Two port strategies, picked by ownership
 

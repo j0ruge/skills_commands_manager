@@ -1,5 +1,36 @@
 # Changelog — `dev-script`
 
+## [0.5.1] — 2026-08-08
+
+Duas armadilhas de `pkill`/background observadas numa sessão de deploy de produção
+(fora do escopo desta skill, mas o mecanismo é exatamente o que ela ensina a evitar).
+
+### Added
+
+- **`pitfalls.md` §P9a — `pkill -f <padrão>` pode casar a linha de comando do shell que
+  o executa.** **O quê**: resolver para PIDs antes de sinalizar, excluindo `$$` e
+  `$PPID`; ou casar o executável com `pkill -x` (sem `-f`); ou conferir com
+  `pgrep -af` antes. **Por quê**: o §P9 já avisava que `pkill -f vite` mata **de menos**;
+  a falha espelhada é matar **de mais, começando por você**. Sob um harness de
+  automação o script inteiro é argumento de `<shell> -c '<texto>'`, então o padrão está
+  na command line do próprio shell — o `pkill` casa, sinaliza, e o script se suicida no
+  meio, saindo com **144** e deixando os comandos seguintes sem executar, sem nada na
+  saída que explique. **Corolário**: `pgrep -c -f <padrão>` de dentro do mesmo shell
+  conta o próprio shell, então um "sobrou 1" depois de uma limpeza bem-sucedida
+  normalmente é você mesmo.
+- **`pitfalls.md` §P9b — wrapper de background reportando "finished" não diz nada sobre
+  o filho `nohup`ado.** **O quê**: confirmar com `pgrep -af` (que é ele próprio sujeito
+  ao §P9a). **Por quê**: o que terminou foi o **lançador** — o script que iniciou o job
+  e rodou seu último comando em foreground (um `echo`, um `sleep` curto). O exit 0
+  descreve o lançador, não o lançado, e concluir "a captura morreu" a partir dele é
+  inversão de sujeito. E se o filho está vivo com arquivo de saída vazio, isso é uma
+  afirmação **separada**, que precisa da própria prova.
+
+### Changed
+
+- `SKILL.md`: a nota de "nunca deixe órfãos" passa a dizer que `pkill -f` é frágil nas
+  **duas** direções, com ponteiro para §P9 e §P9a.
+
 ## [0.5.0] — 2026-06-10
 
 Lessons from another session against the LouvorFlow monorepo (the same project that drove v0.4.0), this time on a **Windows→WSL checkout** where `./dev.sh` failed three different ways in sequence — each masquerading as a project/Prisma bug rather than the environment-drift trap it actually was. None of the three were mentioned by the v0.4.0 skill.

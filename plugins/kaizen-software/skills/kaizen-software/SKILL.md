@@ -1,8 +1,8 @@
 ---
 name: kaizen-software
 metadata:
-  version: 1.0.0
-description: Metodologia Kaizen (melhoria contínua) para planejar, implementar e manter software — e para ensinar Kaizen ao time. Conduz as três fases pelo ciclo PDCA e mapeia os artefatos Kaizen nos que o projeto já tem (ADR, notas, TODO, CHANGELOG), respeitando as convenções do repositório. Gatilhos — Kaizen, PDCA, kaizen log, 5 porquês, desperdício, retrospectiva, dívida técnica, planejar feature.
+  version: 1.1.0
+description: Metodologia Kaizen (melhoria contínua) para planejar, implementar e manter software — e para ensinar Kaizen ao time. Conduz as três fases pelo ciclo PDCA, verifica pelo artefato e não pelo rótulo da ferramenta, e mapeia os artefatos Kaizen nos que o projeto já tem (ADR, notas, TODO, CHANGELOG), respeitando as convenções do repo. Gatilhos — Kaizen, PDCA, kaizen log, 5 porquês, desperdício, retrospectiva, dívida técnica, planejar feature, confirmar antes de apagar/limpar.
 ---
 
 # Kaizen para Software
@@ -18,7 +18,7 @@ Esta skill guia as três fases da vida de um software — planejamento, implemen
 3. **Vá ao Gemba.** Gemba é "o lugar real onde as coisas acontecem". Em software: leia o código de verdade, rode o sistema, olhe os logs e os dados reais antes de opinar. Nunca planeje ou diagnostique por suposição.
 4. **Elimine desperdício (Muda).** Antes de adicionar, pergunte o que pode ser removido. Os 7 desperdícios do software estão em `references/desperdicios.md` — consulte ao planejar e ao revisar.
 5. **Pare a linha (Jidoka).** Se um teste quebra ou um defeito aparece durante a implementação, conserte ANTES de continuar. Defeito não anda para frente.
-6. **Padronize o que funciona (SDCA).** Melhoria sem padronização evapora. Quando algo dá certo, registre no padrão do projeto (convenções, docs, CLAUDE.md) para que a melhoria vire o novo piso, não um pico isolado.
+6. **Padronize o que funciona (SDCA).** Melhoria sem padronização evapora. Quando algo dá certo, registre no padrão do projeto (convenções, docs, CLAUDE.md) para que a melhoria vire o novo piso, não um pico isolado. **Depois de escrever onde padronizou, abra o arquivo e confirme que a mudança está lá** — "Padronizado em: X" é uma afirmação sobre o mundo fora do log, e escrever o caminho dá a sensação de ter feito. Se ainda não foi feito, escreva "pendente".
 7. **Causa raiz, não sintoma.** Use os 5 Porquês: pergunte "por quê" repetidamente até chegar na causa de processo, não na culpa individual. Bug corrigido sem causa raiz identificada é bug que volta.
 8. **Registre a melhoria.** Todo ciclo concluído gera uma entrada no `KAIZEN_LOG.md` do projeto. O log é a memória institucional do time — sem ele, o mesmo problema é redescoberto a cada seis meses.
 9. **Rejeite o perfeccionismo.** Feito e verificado hoje vale mais que perfeito nunca. Itere.
@@ -45,7 +45,7 @@ Ao implementar:
 3. **Jidoka.** Rode os testes após cada incremento. Teste quebrou → pare, conserte, só então avance.
 4. **Regra do escoteiro.** Deixe o código que você tocou um pouco melhor do que encontrou (nome mais claro, código morto removido) — mas melhorias grandes fora do escopo viram entrada de "oportunidade" no kaizen log, não desvio da tarefa.
 5. **Commits pequenos que explicam o porquê.** Um incremento = um commit (ou poucos). A mensagem diz por que a mudança existe, não só o que mudou.
-6. **Check explícito.** Ao final de cada incremento, confronte o resultado com o critério de verificação do plano e diga isso ao usuário: o que era esperado, o que foi observado, passou ou não.
+6. **Check explícito.** Ao final de cada incremento, confronte o resultado com o critério de verificação do plano e diga isso ao usuário: o que era esperado, o que foi observado, passou ou não. Verifique pelo **artefato**, não pelo rótulo que fala dele — "testes verdes", "deploy succeeded" e "healthy" descrevem o processo, e o processo pode ir bem enquanto a coisa que deveria existir não existe (ver *Rótulo ≠ artefato* em `references/kaizen-conceitos.md`).
 
 ## Fase 3 — MANUTENÇÃO (Check + Act contínuos)
 
@@ -64,6 +64,13 @@ A manutenção é onde o Kaizen mora de verdade — o sistema em produção é o
 - **Seiso (limpar):** lint, formatação, warnings zerados.
 - **Seiketsu (padronizar):** as três acima viram convenção escrita e automatizada (linter, CI, template).
 - **Shitsuke (disciplina):** automatize a verificação para que o padrão se sustente sem heroísmo.
+
+**Para ações irreversíveis** (apagar branch/arquivo/volume, migration destrutiva, revogar acesso, publicar): a regra "incrementos pequenos e reversíveis" perde o segundo adjetivo justamente onde ele mais valia, então a ordem passa a fazer o trabalho que a reversibilidade fazia.
+
+1. **Gemba por artefato, nunca por rótulo.** O que autoriza apagar não é o rótulo da ferramenta ("PR MERGED", "backup healthy", "já está em produção") — é ter olhado e visto que nada se perde. Prove por conteúdo (hash, diff, existência do arquivo), não por nome nem por assunto de commit: dois artefatos com o mesmo título podem ser coisas diferentes, e o inverso também acontece.
+2. **Fatie de modo que o passo reversível venha primeiro.** Apagar a cópia local antes da remota, arquivar antes de excluir, marcar antes de remover. A divergência que você não previu aparece no primeiro passo, quando ainda custa uma verificação em vez de uma perda.
+3. **Jidoka vale mais aqui do que em qualquer outro lugar.** Qualquer surpresa no passo reversível interrompe a sequência inteira até ser explicada — mesmo que pareça ruído, e principalmente se a explicação for "deve ser normal".
+4. **Anote os identificadores antes de destruir** (SHAs, caminhos, IDs) na saída da sessão. É a rede de segurança mais barata que existe, e só serve se for escrita antes.
 
 **Retrospectivas:** ao fechar um ciclo de trabalho (sprint, entrega, sessão longa), conduza uma retrospectiva curta com o template em `references/templates.md` e converta os aprendizados em entradas do kaizen log com dono e próximo passo.
 

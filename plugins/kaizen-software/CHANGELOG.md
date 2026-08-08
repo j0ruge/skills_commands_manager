@@ -2,6 +2,63 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.1.0] — 2026-08-07
+
+Uso real da skill numa sessão de revisão + limpeza de repositório expôs quatro lacunas.
+Três delas são a mesma ideia aparecendo em lugares diferentes, e ela agora tem nome.
+
+### `Rótulo ≠ artefato` entra no vocabulário
+
+Duas vezes na mesma sessão, em domínios sem relação, uma ferramenta disse que estava tudo
+bem enquanto a coisa que deveria existir não existia:
+
+- um `postgres-backup` respondia `healthy` **antes de qualquer ciclo** — o endpoint de
+  status nasce com `Exit_status: 0`, que é valor inicial, não resultado de dump. Um deploy
+  com senha errada passaria pelo gate de saúde e só falharia às 06:00 do dia seguinte;
+- `PR MERGED` no GitHub descreve o que a PR **consumiu**, não o que a branch contém agora.
+  Duas branches "seguras para apagar" tinham commits que nenhum `refs/pull` protegia.
+
+A skill já mandava "ir ao Gemba", mas Gemba genérico não distingue *olhar o sistema* de
+*olhar a coisa certa do sistema*. O verbete novo em `kaizen-conceitos.md` nomeia a
+distinção e diz o que perguntar: qual artefato deveria existir, e ele está lá? A Fase 2
+(Check explícito) passa a apontar para ele — "testes verdes" e "deploy succeeded" são
+rótulos sobre o processo.
+
+### O campo `Padronizado em` do kaizen log precisa de sensor
+
+Numa entrada escrita nessa mesma sessão, o campo dizia `este log + .claude/napkin.md` e o
+napkin não tinha uma linha a respeito. O log afirmava uma convenção inexistente, e ninguém
+teria notado.
+
+É o defeito acima aplicado ao próprio registro da melhoria: aquele campo é a **única** linha
+do log que afirma algo sobre o mundo fora do log, e escrever o caminho dá a sensação de ter
+padronizado. O template e o princípio 6 (SDCA) passam a mandar abrir o arquivo citado e
+confirmar — ou escrever `pendente`, que é informação honesta e acionável.
+
+### Poka-yoke: a sonda caseira que alarma à toa
+
+Uma sonda escrita na hora (`git merge-tree` contra a branch principal) acusou 4 de 6 casos.
+Ela media um **proxy** — a idade da branch — quando a pergunta era se havia trabalho a
+perder. Sonda que erra em 4 de 6 ensina o operador a ignorá-la, e aí ele também não vê o
+alarme verdadeiro. O verbete de poka-yoke ganha esse modo de falha e a contramedida:
+sabotar de propósito para ver a sonda vermelha, e rodá-la num caso bom para vê-la verde.
+Sonda conferida num estado só não é sonda.
+
+### Fase 3 ganha "Ações irreversíveis"
+
+A skill prega incrementos "pequenos e reversíveis"; apagar branch, rodar migration
+destrutiva, revogar acesso ou publicar perdem o segundo adjetivo — e é justamente aí que
+faltava orientação. Quatro regras curtas, sendo a central: **fatie de modo que o passo
+reversível venha primeiro**. Na sessão, apagar as cópias locais antes das remotas fez uma
+divergência inesperada aparecer quando ainda custava uma verificação; num laço único sobre
+tudo, teria custado um commit órfão.
+
+### Descrição
+
+Enxugada, não só somada (390 → 474 chars). Entra o diferencial novo (verificar pelo
+artefato) e o gatilho que a sessão provou faltar: a skill foi invocada para **confirmar uma
+remoção destrutiva**, uso que nenhuma palavra da descrição anterior cobria.
+
 ## [1.0.0] — 2026-08-03
 
 Empacotamento inicial da skill local `kaizen-software` no marketplace. A skill guia as três

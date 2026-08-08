@@ -59,6 +59,16 @@ Registro de melhorias contínuas. Toda entrada tem: o que melhorou, o que aprend
 - <a pegadinha técnica que custou tempo e que a próxima pessoa redescobriria>
 ```
 
+**Antes de fechar a entrada, abra o arquivo citado em "Padronizado em" e confirme que a
+mudança está lá.** Esse campo é a única linha do log que afirma algo sobre o mundo **fora**
+do log — todas as outras descrevem o que já aconteceu, e essa promete que algo mudou em
+outro lugar. Escrever o caminho é rápido e dá a sensação de ter padronizado; ninguém
+verifica depois, e a entrada passa a documentar uma convenção que não existe. Se a mudança
+ainda não foi feita, escreva `pendente` — é informação honesta e acionável. É o mesmo
+defeito que o Kaizen ensina a caçar em produção (ver *Rótulo ≠ artefato* em
+`kaizen-conceitos.md`), aplicado ao próprio registro da melhoria: o campo é o rótulo, o
+arquivo alterado é o artefato.
+
 As duas últimas subseções são **opcionais** — inclua quando houver conteúdo real, não para
 preencher formulário. Elas existem porque sem elas o log registra só *o que* mudou: o
 **porquê do corte** vira "esqueceram de fazer" seis meses depois (e alguém reabre o escopo

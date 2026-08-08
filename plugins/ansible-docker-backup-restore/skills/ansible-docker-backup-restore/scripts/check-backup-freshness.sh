@@ -58,6 +58,33 @@ echo "== Dumps suspeitos de tamanho (< 1 KB)"
 SMALL=$(ssh "$BACKUP_HOST" "find '${BACKUP_PATH}/${LATEST}/databases' -type f -size -1k 2>/dev/null")
 [ -z "$SMALL" ] && good "nenhum dump minúsculo" || { echo "$SMALL" | sed 's/^/    /'; bad "dump(s) pequenos demais — provável erro gravado no lugar do dado"; }
 
+# Tamanho não basta: um dump truncado pode ser grande, e um dump só com DDL é grande
+# E bem formado. Duas perguntas mais fortes, ainda somente-leitura. Ver
+# references/backup-pipeline-e-falha-silenciosa.md §1.1.
+echo "== Integridade e conteúdo dos dumps .gz"
+GZ_LIST=$(ssh "$BACKUP_HOST" "find '${BACKUP_PATH}/${LATEST}/databases' -type f -name '*.gz' 2>/dev/null")
+if [ -z "$GZ_LIST" ]; then
+  note "nenhum .gz em databases/ — se o formato aqui é custom (pg_dump -Fc), use 'pg_restore -l <dump> | wc -l'"
+else
+  # `gzip -t` falha em arquivo truncado/corrompido sem descomprimir para disco.
+  BROKEN=$(ssh "$BACKUP_HOST" "for f in \$(find '${BACKUP_PATH}/${LATEST}/databases' -type f -name '*.gz'); do gzip -t \"\$f\" 2>/dev/null || echo \"\$f\"; done")
+  [ -z "$BROKEN" ] && good "todos os .gz passam no gzip -t" || { echo "$BROKEN" | sed 's/^/    /'; bad "gzip corrompido/truncado acima — o arquivo existe e NÃO restaura"; }
+
+  # Cada `COPY` é um bloco de linhas de dados. Zero COPY = dump só de schema:
+  # grande, válido, e inútil para restaurar. É o caso que o teste de tamanho não pega.
+  echo "== Dumps sem dados (schema-only)"
+  NODATA=$(ssh "$BACKUP_HOST" "for f in \$(find '${BACKUP_PATH}/${LATEST}/databases' -type f -name '*.gz'); do
+      n=\$(gzip -dc \"\$f\" 2>/dev/null | grep -c '^COPY ' || true)
+      [ \"\${n:-0}\" -eq 0 ] && echo \"\$f\"
+    done")
+  [ -z "$NODATA" ] && good "todos os dumps contêm blocos COPY (há dados)" \
+                   || { echo "$NODATA" | sed 's/^/    /'; bad "dump(s) sem uma única linha de dado — schema-only não restaura o negócio"; }
+fi
+
+# A terceira pergunta (um registro conhecido está lá dentro?) não é automatizável sem
+# conhecer o domínio — é a única que distingue "dump válido" de "dump DESTE banco".
+note "prova final, manual: gzip -dc <dump>.gz | grep -c '<valor que você SABE que existe>'"
+
 if [ -n "$SOURCE_HOST" ]; then
   echo "== Cobertura de volumes"
   SRC=$(ssh "$SOURCE_HOST" "sudo docker volume ls -q 2>/dev/null | wc -l")

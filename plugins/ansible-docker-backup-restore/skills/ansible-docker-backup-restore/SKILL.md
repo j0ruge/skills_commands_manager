@@ -1,8 +1,8 @@
 ---
 name: ansible-docker-backup-restore
 metadata:
-  version: 1.2.0
-description: Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention.
+  version: 1.3.0
+description: Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Proves a dump by its contents (gzip -t, COPY blocks, a known record) instead of its size, and distrusts a backup container's healthcheck. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention, dump integrity, backup healthcheck lies.
 ---
 
 # Backup e restore de serviços Docker via Ansible
@@ -123,9 +123,19 @@ quando:
    `failed=0`;
 2. o backup do dia existe no destino, com dump de **cada** banco esperado e
    contagem de volumes compatível — `scripts/check-backup-freshness.sh`;
-3. a aritmética da retenção fecha: `dias × tamanho_diário` cabe no espaço livre
+3. cada dump **abre e contém dados**: `gzip -t` passa e há blocos `COPY`. Existir
+   não é o mesmo que servir — um dump só com o schema é grande, bem formado e
+   inútil para restaurar, e passa por todos os testes de tamanho. Fecha com a
+   pergunta que só você pode fazer: **um registro que você sabe que existe está
+   lá dentro?** Se não está, o arquivo é válido e não é o backup deste banco;
+4. a aritmética da retenção fecha: `dias × tamanho_diário` cabe no espaço livre
    do destino. Se não cabe, a retenção configurada é ficção e alguém vai
    descobrir isso quando o disco encher.
+
+> Se o backup for um **container dedicado** em vez de uma play, o `healthy` do Docker
+> não é evidência: o healthcheck dessas imagens observa a porta de status que elas
+> expõem, não o artefato. Visto em produção: três meses `healthy`, zero dumps. Ver
+> `references/backup-pipeline-e-falha-silenciosa.md` §1.2.
 
 Abra `references/backup-pipeline-e-falha-silenciosa.md` e siga.
 
@@ -178,6 +188,9 @@ BACKUP — o restore não terminou sem isto
 [ ] acesso de push com menor privilégio: chave dedicada + `rrsync -wo`, provada sem abrir shell
 [ ] playbook de backup rodado ponta a ponta, PLAY RECAP com failed=0
 [ ] backup do dia no destino: um dump por banco esperado, volumes conferidos
+[ ] cada dump abre (`gzip -t`) E tem dados (blocos `COPY`) — tamanho não prova
+[ ] um registro conhecido localizado DENTRO do dump (a única prova de que é este banco)
+[ ] se o backup é container dedicado: artefato conferido, NÃO o `healthy` do healthcheck
 [ ] toda exclusão justificada por escrito no script
 [ ] aritmética da retenção conferida contra o espaço livre real
 ```

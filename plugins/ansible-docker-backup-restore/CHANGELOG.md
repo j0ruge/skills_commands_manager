@@ -2,6 +2,58 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.3.0] — 2026-08-08
+
+Sexta sessão, e o achado veio de fora: durante um deploy de produção **de outro
+produto** no mesmo host, o container de backup do ERP e do IdP estava `unhealthy`
+desde 06/05/2026 e **nunca havia gerado um único dump** — três meses.
+
+### Adicionado
+
+- **`backup-pipeline-e-falha-silenciosa.md` §1.1 — tamanho é proxy fraco.**
+  **O quê**: três perguntas em ordem de custo — `gzip -t` (integridade), contar
+  `^COPY public` (há dados?) e procurar **um registro conhecido** (é este banco?).
+  **Por quê**: a skill parava na heurística de tamanho (`-size -1k`, "um dump que é só
+  a mensagem de erro tem poucos bytes"), que pega o caso grosseiro e deixa passar o
+  inverso — **um dump só com o schema é grande, bem formado e inútil para restaurar**.
+  `CREATE TABLE` de cem tabelas dá dezenas de KB sem uma linha de dado. A terceira
+  pergunta é a única que distingue "dump válido" de "dump **deste** banco": aponte o
+  `pg_dump` para o cluster errado, ou para um homônimo vazio, e as duas primeiras
+  passam. Fica no §1 e não no §2 de propósito — as quatro formas de morrer calado do
+  §2 são falhas *do pipeline*; aqui a play saiu `failed=0`, o arquivo está no lugar e
+  no horário certo, e não serve.
+- **`backup-pipeline-e-falha-silenciosa.md` §1.2 — o healthcheck de um container de
+  backup mede a coisa errada.** **O quê**: quando o backup é container dedicado
+  (`prodrigestivill/postgres-backup-local` e parentes) em vez de play Ansible, forçar
+  um ciclo e olhar o artefato; mais as duas armadilhas de configuração (lista CSV só
+  faz fan-out em `POSTGRES_DB`; tag da imagem ≥ versão do servidor). **Por quê**: o
+  healthcheck dessas imagens observa a **porta HTTP de status que elas expõem**, não o
+  arquivo. O container fica genuinamente `healthy` — o servidorzinho dentro dele está
+  no ar — enquanto o `pg_dump` falha todas as noites. No caso real a lista CSV estava
+  em `POSTGRES_HOST`/`POSTGRES_USER`, onde o valor é literal, então o `pg_dump`
+  autenticava com o usuário `erp,zitadel`. O banco desprotegido era o do IdP que
+  autenticava todos os outros serviços do host.
+- **`provas-que-nao-mentem.md` §4b — a ausência de sinal também não prova nada.**
+  **O quê**: vazio é produzido por dois mundos indistinguíveis (nada aconteceu / o
+  instrumento nunca esteve vivo), e a cura é provocar um positivo que você mesmo
+  causou. **Por quê**: o arquivo cobria só o gêmeo oposto — sinal positivo enganoso
+  (§1 "um 301 não prova nada", §4 "um 200 também pode mentir"). Falta que aplica às
+  próprias verificações desta skill: `find … -size -1k` sem resultado prova que não há
+  dump pequeno **ou** que o caminho está errado e não há dump nenhum. Pergunta única
+  que resolve: *"isto teria me mostrado um positivo?"*
+
+### Alterado
+
+- **`scripts/check-backup-freshness.sh`** ganha `gzip -t` por dump e detecção de
+  dumps **schema-only** (zero blocos `COPY`), ambos somente-leitura, mais uma nota
+  sobre `pg_restore -l` para dumps em formato custom. A terceira prova (registro
+  conhecido) fica como `note` deliberadamente: não é automatizável sem conhecer o
+  domínio, e automatizá-la com um valor genérico daria falsa confiança.
+- **Gate 2 ganha um passo** (o antigo 3 vira 4): "cada dump abre e contém dados",
+  com o corolário do registro conhecido, e uma nota de que `healthy` de container de
+  backup não é evidência. Quatro linhas novas na checklist rápida.
+- `description`: acrescenta a prova por conteúdo e a desconfiança do healthcheck.
+
 ## [1.2.0] — 2026-07-29
 
 ### Adicionado

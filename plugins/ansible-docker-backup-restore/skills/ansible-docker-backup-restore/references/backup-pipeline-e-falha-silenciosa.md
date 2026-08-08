@@ -41,6 +41,69 @@ Três leituras da listagem, em ordem de gravidade:
 | A pasta existe, mas falta o dump de um banco | Falha silenciosa por item — §2.2 |
 | Tudo existe, mas um dump tem poucos bytes | O comando rodou e falhou dentro do container; o arquivo é a mensagem de erro |
 
+### §1.1 Tamanho é proxy fraco — prove integridade e prove que há DADOS
+
+A última linha da tabela acima ("poucos bytes") pega o caso grosseiro, e é onde
+`check-backup-freshness.sh` para. Mas o inverso passa: **um dump só com o schema é
+grande, bem formado e inútil para restaurar.** `CREATE TABLE` de cem tabelas dá dezenas
+de KB sem uma única linha de dado. Três perguntas, em ordem de custo:
+
+```bash
+# 1. É um gzip válido? (pega truncamento por disco cheio / conexão cortada)
+ssh root@<backup_host> 'gzip -t <dump>.sql.gz && echo "gzip OK"'
+
+# 2. Tem DADOS, não só DDL? Cada COPY é um bloco de linhas.
+ssh root@<backup_host> 'gzip -dc <dump>.sql.gz | grep -c "^COPY public"'
+
+# 3. Um registro que você SABE que existe está lá dentro?
+ssh root@<backup_host> 'gzip -dc <dump>.sql.gz | grep -c "<valor conhecido>"'
+```
+
+A pergunta 3 é a única que fecha o círculo, e é barata: escolha algo estável e único do
+domínio (a razão social da empresa, o código da filial padrão, um e-mail de sistema). Se
+ela não aparece, você tem um arquivo que passa nas perguntas 1 e 2 e ainda assim não é o
+backup daquele banco — dump apontado para o cluster errado, para um banco homônimo vazio,
+ou de antes da carga inicial.
+
+Para dumps em formato custom (`pg_dump -Fc`), troque as perguntas 1 e 2 por
+`pg_restore -l <dump> | wc -l`, que lista o índice do arquivo sem restaurar nada e falha
+se o arquivo estiver corrompido.
+
+> Isto pertence ao §1 e não ao §2 de propósito: as quatro formas de morrer calado do §2
+> são falhas **do pipeline**. Aqui o pipeline funcionou, a play saiu `failed=0`, o arquivo
+> está no lugar e no horário certo — e não serve. Nenhum sinal do §2 acusa isso.
+
+### §1.2 O healthcheck de um container de backup normalmente mede a coisa errada
+
+Quando o backup é um container dedicado (`prodrigestivill/postgres-backup-local` e
+parentes) em vez de uma play Ansible, o instinto é confiar no `healthy` do Docker. Não
+confie: o healthcheck dessas imagens observa **a porta HTTP de status que a própria imagem
+expõe**, não o arquivo que o job deveria produzir. O container fica genuinamente `healthy`
+— o servidorzinho dentro dele está no ar — enquanto o `pg_dump` falha todas as noites.
+
+Caso real: **três meses `healthy`, zero dumps.** A causa foi configuração —
+a imagem faz fan-out de lista CSV **só** em `POSTGRES_DB`, contra **um** host/usuário/senha;
+uma lista em `POSTGRES_HOST`/`POSTGRES_USER`/`POSTGRES_PASSWORD` é usada literalmente, então
+o `pg_dump` tentava autenticar com o usuário `erp,zitadel` e morria. O banco que ficou
+desprotegido era o do IdP que autenticava todos os outros serviços do host.
+
+```bash
+# Não pergunte ao healthcheck. Force um ciclo e olhe o artefato.
+docker exec <backup-ctr> /backup.sh
+docker exec <backup-ctr> ls -lh /backups/last/
+docker exec <backup-ctr> sh -c 'gzip -t /backups/last/*.sql.gz && echo "íntegro"'
+```
+
+Duas armadilhas de configuração que valem conferir de saída:
+
+| Sintoma | Causa |
+|---|---|
+| `pg_dump` autenticando com usuário do tipo `a,b` | lista CSV no campo errado — um service por cluster/credencial |
+| `pg_dump: server version mismatch` | tag da imagem mais antiga que o servidor (cluster 17 exige `:17-alpine`, não `16-alpine`) |
+
+O segundo falha alto — mas falha de madrugada e sem plateia, o que na prática dá no mesmo
+que falhar calado.
+
 ---
 
 ## §2. Os quatro padrões de falha silenciosa

@@ -133,6 +133,40 @@ recebe os agentes estava fora havia mais de uma semana. Ninguém percebeu porque
 a verificação — e o olho humano — batiam na interface. Liste os planos de entrada
 do serviço e exercite **cada um**; o que estiver de pé mascara o que caiu.
 
+## 4b. A ausência de sinal também não prova nada — prove o sensor
+
+As seções 1 e 4 tratam do **sinal positivo enganoso**: o 301 que não prova, o 200 do
+impostor. O gêmeo é mais fácil de engolir e menos comentado: **um resultado vazio.**
+
+Vazio é produzido por dois mundos que se parecem exatamente:
+
+- nada de ruim aconteceu;
+- o instrumento nunca esteve vivo.
+
+Um `grep` num log que não casa nada, um `find` que não devolve arquivo, uma captura de log
+sem uma linha, um `docker logs --since` que resolveu para a janela errada, um pipe que
+morreu quando o SSH caiu. Todos entregam a mesma saída silenciosa, e a leitura natural
+("está limpo") é a errada em metade dos casos.
+
+**A regra**: antes de concluir qualquer coisa a partir da ausência de saída, provoque um
+positivo que você mesmo causou e confirme que ele aparece.
+
+```bash
+# Você acha que está capturando erros 4xx/5xx do serviço.
+curl -s -o /dev/null "https://<host>/zz-sonda-$$"   # um 404 causado por você
+sleep 5
+grep -c "zz-sonda-$$" "$ARQUIVO_DE_CAPTURA"
+# 0 → o sensor está morto, não o serviço limpo. Conserte o sensor primeiro.
+```
+
+O mesmo raciocínio vale para as verificações deste próprio arquivo. `find … -size -1k` que
+não devolve nada prova que não há dump pequeno **ou** que o caminho está errado e não há
+dump nenhum. `docker ps | grep -c unhealthy` retornando 0 prova saúde **ou** que o nome do
+filtro mudou. Nos dois casos, uma sonda deliberada distingue em segundos.
+
+Pergunta única que resolve: **"isto teria me mostrado um positivo?"** Se você não sabe
+responder, o resultado negativo não é evidência.
+
 ## 5. Aguarde de verdade antes de asserir
 
 Sem espera, a asserção de containers dispara logo após o `compose up` e **passa

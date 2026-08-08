@@ -357,8 +357,42 @@ Why `warn` and not `error`: `JOSEError` also fires for **malformed tokens from c
 
 The `code` field (`ERR_JWS_SIGNATURE_VERIFICATION_FAILED`, `ERR_JWKS_NO_MATCHING_KEY`, `ERR_JOSE_GENERIC`, etc.) is greppable and stable across `jose` minor versions — it's the fast path to triage between "network reached the JWKS but the key is wrong" vs "network never reached the JWKS at all".
 
+### Confirming the 401-storm did NOT happen — the positive check
+
+Everything above is failure diagnosis: you run it once the storm has started. On a fresh
+deploy you want the opposite — a check that says "this backend will still be validating
+tokens in an hour", **before** the JWKS cache expires and takes the app down in front of
+users.
+
+The storm is late by construction (the JWKS TTL is ~600s, so a broken reachability path
+stays invisible for the first ~10 minutes of uptime). That delay is exactly what makes a
+green smoke test at T+30s meaningless for this failure mode. Two signals, checked *after*
+the window has passed:
+
+```bash
+# 1. Readiness that actually exercises the JWKS path (not just process liveness)
+curl -fsS https://<api-host>/health/ready
+# → {"status":"ok","postgres":"ok","jwks":"ok","dispatcher":"ok"}
+
+# 2. Zero rejected tokens since boot, with the container past the TTL
+docker ps --filter name=<backend> --format '{{.Status}}'          # want > 10 minutes
+docker logs <backend> 2>&1 | grep -c '"statusCode":401'           # want 0
+docker logs <backend> 2>&1 | grep -ci 'jose\|jwks'                # want 0
+```
+
+For the first check to mean anything, your readiness endpoint has to **fetch or verify
+against the JWKS**, not merely report that the process is alive. A `/health/ready` that
+returns `jwks: ok` from a cached value it never revalidates will report `ok` right through
+the storm — which is the same class of lie as a backup container's healthcheck watching
+its own status port. If your readiness probe can't distinguish those, treat signal 2 as
+the authoritative one.
+
+Fold this into the deploy runbook rather than the smoke step: the smoke runs too early to
+see it, so it belongs to a "10 minutes later, before you walk away" checklist.
+
 ## Going further
 
 - API endpoint reference: `references/api-cheatsheet.md`
+- Two instances side by side, or moving users between them: `references/multi-instance-and-user-migration.md`
 - Tenant→orgId mapping for the AuthContext: `references/tenant-org-mapping.md`
 - Errors during validation: `references/troubleshooting.md`

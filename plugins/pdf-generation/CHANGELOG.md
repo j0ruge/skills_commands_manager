@@ -1,5 +1,25 @@
 # Changelog — pdf-generation
 
+## [1.6.0] — 2026-08-11
+
+### Added
+
+- **SKILL.md § Phase 4 "Units in the Header, Not the Cell"**: em tabela de dados, declarar a unidade (`R$`, `%`, `kg`) **uma vez** — no rótulo da coluna ou numa legenda acima da tabela — e deixar as células cruas. O prefixo repetido em toda linha não informa nada e custa largura real (~9pt por célula a 8pt). O ponto que torna isto padrão, e não remédio: **a troca é assimétrica** — cabeçalho que envolve custa uma linha por página, célula que envolve desalinha toda linha. Daí a ordem de preferência: encurtar o rótulo antes de estreitar a coluna; e se nem o rótulo curto couber, mover a unidade para uma legenda. Documenta o **limite** da legenda (renderiza uma vez, enquanto `headerRows` repete — na página 2 os rótulos ficam sem unidade) e o **escopo** (não vale para texto corrido nem bloco de totais, onde cada linha é frase rotulada sem cabeçalho que carregue a unidade).
+- **SKILL.md § Phase 4 "Measure Text Before Calibrating Column Widths"**: medir os glifos com `fontkit` em vez de chutar largura e re-renderizar. Não exige dependência nova — `fontkit` já vem transitivamente (`pdfmake → pdfkit → fontkit`). Inclui as duas pegadinhas de execução (import de **namespace**, não default; rodar de onde o `node_modules` do projeto resolve) e a prática de **escrever o pior caso verificado ao lado de cada width**, já que esse comentário é a única coisa que informa o próximo autor de que a coluna tem teto.
+- **references/pdfmake-patterns.md § "Coluna `\"*\"` cresce além da página com token sem espaço"**: pitfall novo, irmão traiçoeiro do de padding e facilmente confundido com ele — ali a soma das larguras estourava; aqui a soma está correta, o padding está correto, e a tabela sai do papel assim mesmo, porque o pdfmake só quebra em **espaço** e **expande a coluna `"*"`** quando não tem onde quebrar. Sintoma diferenciador: falha em **algumas linhas de dados** e não em outras. Inclui diagnóstico por PyMuPDF (bordas reais das colunas em pt, via retângulos de fundo do cabeçalho) e os fixes em ordem de preferência.
+- **references/pdfmake-patterns.md § padding**: sensor que fecha o pitfall — teste que soma as larguras fixas mais o padding por coluna e exige piso para a coluna flexível, rodado em **todas** as variantes de coluna condicional (a variante com mais colunas estoura primeiro e costuma ser a menos testada).
+
+### Changed
+
+- **SKILL.md § Phase 6 item 1**: o caso de stress passa a exigir explicitamente um **token sem espaço**. A redação anterior pedia "long descriptions", e isso **não reproduz** o defeito acima — medido: 84 caracteres com espaços renderizam certo, 48 caracteres sem espaço estouram em 110pt. Correção de instrução, não adição.
+- **`description` enxugada de 813 → 533 chars**. Vinha crescendo por acréscimo a cada versão (detalhe de logo SVG ocupava metade dela) e já passava do teto de ~700, o que dilui o sinal de triggering e arrisca corte silencioso na lista de skills. O detalhe por versão vive aqui e no README; a descrição volta a ser uma frase do que a skill faz + diferenciais + `Triggers` compacto.
+
+### Why / Origin
+
+Sessão SQ-85 no `sales_quote`: uma cotação com valor unitário de `R$103.927,00` quebrou o PDF — o valor saía em duas linhas (`R$103.927,0` + `0`) e o código de item de 12 dígitos junto. A causa não era caso extremo: o comentário do próprio código declarava o teto (`48, // Unit (suporta "R$ 99.999,99")`) — cinco dígitos inteiros — e ninguém tinha lido. Nenhum teste asseverava `widths`, então a calibração, feita de cabeça na implementação original, envelheceu calada.
+
+Duas lições genéricas saíram daí (unidade no cabeçalho; medir antes de calibrar) e uma terceira apareceu no caso de stress: a coluna `"*"` estourando com token sem espaço — que **já reproduzia em produção** num PDF oficial já emitido, e que o caso de stress descrito pela própria skill não teria pego.
+
 ## [1.5.0] — 2026-06-11
 
 ### Added

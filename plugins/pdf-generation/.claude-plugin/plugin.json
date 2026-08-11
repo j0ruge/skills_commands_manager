@@ -1,10 +1,10 @@
 {
   "name": "pdf-generation",
-  "description": "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Includes vector-logo (SVG) handling: pdfmake renders SVG natively (no svg-to-pdfkit dependency), SVGs with `<style>`/class fills render without color unless inlined, and small vectors ship as `.ts` constants to survive `tsc`/`dist` builds and gitignored asset dirs. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF, pdfmake SVG logo, vector logo PDF, SVG logo blank/black, SVG fills not rendering.",
+  "description": "PDF generation design toolkit — analyze a reference template, pick the library (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf), and design modular sections with conditional columns, revision control, and visual verification. Carries hard-won pdfmake pitfalls: column widths that silently push the table off the page, colorless SVG logos, glyph-eating ligatures. Triggers — PDF generation, PDF template, pdfmake, invoice/proposal/report PDF, column overflow, SVG logo in PDF.",
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.5.0",
+  "version": "1.6.0",
   "category": "development",
   "keywords": ["pdf", "pdf-generation", "pdfmake", "pdf-lib", "pdfkit", "puppeteer", "react-pdf", "template-analysis", "layout-design", "conditional-columns", "invoice", "proposal", "report", "revision-control", "bold-parser", "svg-logo", "vector-logo"],
   "platforms": ["claude-code", "cursor"],

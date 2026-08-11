@@ -1,8 +1,8 @@
 ---
 name: pdf-generation
 metadata:
-  version: 1.5.0
-description: "PDF generation design toolkit — analyzes reference templates (PDF/Excel), maps dynamic vs fixed fields with browser preview, recommends libraries (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf) with trade-offs, designs modular section architecture with conditional columns, auto-generated observations, bold markup, and revision control. Includes vector-logo (SVG) handling: pdfmake renders SVG natively (no svg-to-pdfkit dependency), SVGs with `<style>`/class fills render without color unless inlined, and small vectors ship as `.ts` constants to survive `tsc`/`dist` builds and gitignored asset dirs. Triggers — PDF generation, generate PDF, PDF template, PDF layout, pdfmake, commercial proposal PDF, invoice PDF, report PDF, pdfmake SVG logo, vector logo PDF, SVG logo blank/black, SVG fills not rendering."
+  version: 1.6.0
+description: "PDF generation design toolkit — analyze a reference template, pick the library (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf), and design modular sections with conditional columns, revision control, and visual verification. Carries hard-won pdfmake pitfalls: column widths that silently push the table off the page, colorless SVG logos, glyph-eating ligatures. Triggers — PDF generation, PDF template, pdfmake, invoice/proposal/report PDF, column overflow, SVG logo in PDF."
 ---
 
 ## User Input
@@ -97,6 +97,63 @@ const hasIpi = items.some(i => i.ipiPercent > 0);
 // Build column definitions dynamically
 ```
 
+#### Units in the Header, Not the Cell
+
+In a data table, declare the unit (`R$`, `$`, `%`, `kg`) **once** — in the column
+label, or in a small caption above the table — and leave the cells bare. A
+currency prefix repeated in every row buys nothing and costs real width: at 8pt,
+`R$` is ~9pt per cell, and across three monetary columns that is the difference
+between a value fitting on one line and wrapping.
+
+The trade is asymmetric, which is why this is worth doing by default rather than
+as a rescue: **a header that wraps costs one extra line per page; a cell that
+wraps breaks the alignment of every row.** So when a label doesn't fit, prefer
+shortening the label over narrowing the column — and if even the short label is
+too wide, move the unit to a caption (`Valores em R$` / `All amounts in USD`) and
+keep all labels short.
+
+```typescript
+// Header carries the unit; cells are bare.
+headerCell("Unit (R$)");        dataCell(formatCurrencyCell(v));  // "103.927,00"
+// If "Unit w/ tax (R$)" is too wide for its column, drop the suffix from all
+// monetary labels and add one caption above the table instead.
+```
+
+Scope the rule to tables. In running prose ("Deposit of **R$5,000.00** on
+signing") and in a totals block, each line is a labelled sentence with no column
+header to carry the unit — the prefix belongs in the string there.
+
+Known limit worth stating when you use a caption: it renders **once**, while the
+table's `headerRows` repeats on every page. On a multi-page table, page 2 shows
+bare labels. That is usually fine when a totals block later in the document
+prints the currency, but decide it deliberately rather than discovering it.
+
+#### Measure Text Before Calibrating Column Widths
+
+Guessing a column width and re-rendering to check is a slow loop, and it fails
+in the direction that looks safe — a label that "should fit" wraps, and you only
+find out by eye. Measure the glyphs instead. With pdfmake you already have
+`fontkit` transitively (`pdfmake → pdfkit → fontkit`), so this needs no new
+dependency:
+
+```javascript
+import { createRequire } from "node:module";
+import path from "node:path";
+import * as fontkit from "fontkit"; // namespace import — there is no default export
+const require = createRequire(import.meta.url);
+const root = path.dirname(require.resolve("pdfmake/package.json"));
+const font = fontkit.openSync(path.join(root, "fonts", "Roboto", "Roboto-Medium.ttf"));
+const widthPt = (s, size) => (font.layout(s).advanceWidth / font.unitsPerEm) * size;
+```
+
+Run it from a directory that resolves the project's `node_modules` — a script in
+`/tmp` will not. Measure the **header in the bold face** and the **worst-case
+cell in the regular face**, then compare both against the declared width. Doing
+this before implementing turns column calibration into arithmetic and documents
+the ceiling: write the worst case you verified next to each width
+(`50, // Unit — fits "9,999,999.99" = 46.3pt`), because that comment is the only
+thing that will tell the next person the column has a limit at all.
+
 #### Auto-Generated Observations
 
 Business rules as pure functions: `(data) => string | null`. Compose output by concatenating all non-null results + free text.
@@ -164,7 +221,7 @@ Produce a complete specification covering:
 
 Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues, conditional column logic, and pagination behavior **only show up in the rendered PDF**. Make this an explicit phase, not optional:
 
-1. **Test with real data** — use a quote/invoice with the most rows the system supports (or a realistic stress case: 10–50 line items, long descriptions, large monetary values 6+ digits)
+1. **Test with real data** — use a quote/invoice with the most rows the system supports (or a realistic stress case: 10–50 line items, long descriptions, large monetary values 6+ digits, and at least one field containing an **unbreakable token** — a long string with no spaces, like `SN:AAA111,BBB222,CCC333`). That last one is not the same test as "long description": length alone wraps fine, while a token with no break opportunity makes the flexible column grow past the page (see `references/pdfmake-patterns.md`). Real data supplies these — serial-number lists, URLs, part codes — so pull a genuinely awkward row rather than typing a tidy one.
 2. **Test with edge cases** — single row, max rows, all conditional columns hidden, all visible, multi-page pagination
 3. **Render and open EVERY page, not just page 1** — convert each page to an image (`pdftoppm -png -r 150 out.pdf page`) and inspect them. Page 1 looking right tells you nothing about whether the header/footer survive onto page 2 (a frequent bug — see the `content[]` trap below). Always exercise a 2+ page case.
 4. **Bust the cache before re-rendering** — if the pipeline caches by input-hash (Revision Control), a layout/code change won't regenerate. Delete the persisted revision + cached file first, or you'll inspect the stale PDF and wrongly conclude your edit had no effect.
@@ -173,7 +230,7 @@ Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues,
    - All values fully visible (no `R$49.12` when value is `R$49.126,35`)
    - Header/footer present on page 2+ — **inspect page 2 itself**; a header placed in `content[]` instead of the `header`/`footer` slots renders once and silently vanishes on later pages
    - Footer page numbers correct
-   - Long descriptions wrap, don't overflow
+   - Long descriptions wrap, don't overflow — and a description containing an unbreakable token doesn't push the table off the right edge
    - Font glyphs render correctly (no "fiscal"→"fscal" from broken ligatures)
    - Conditional columns omit/appear correctly based on data
    - **Conditional/optional fields: absence ≠ bug.** An optional field that's simply empty looks identical to one that's broken. To confirm a conditional field actually renders, populate it in the test data (or inject it temporarily) — don't conclude it's broken from a case where the data happens to be absent.

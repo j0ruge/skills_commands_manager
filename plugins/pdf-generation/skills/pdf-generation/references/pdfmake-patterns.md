@@ -404,6 +404,38 @@ const tableLayoutCompact = {
 
 **Regra prática**: ao dimensionar widths fixos, considerar que cada coluna consome `width + 2 × paddingHorizontal`. Para 8 colunas em A4 com padding 2pt, descontar `8 × 4 = 32pt` da largura útil ao planejar.
 
+**Sensor que fecha este pitfall de vez**: nenhum teste costuma asseverar `widths` — a calibração é feita à mão e envelhece calada. Um teste que soma as larguras fixas mais o padding por coluna, e exige um piso para a coluna flexível, trava a conta permanentemente e falha no momento em que alguém alarga uma coluna:
+
+```typescript
+const fixas = widths.filter((w): w is number => typeof w === "number");
+const sobra = larguraUtilPt - fixas.reduce((a, w) => a + w, 0) - widths.length * paddingPorColuna;
+expect(sobra).toBeGreaterThanOrEqual(PISO_DA_COLUNA_FLEXIVEL);
+```
+
+Rode-o para **todas** as variantes de coluna condicional, não só a mais comum: é a variante com mais colunas que estoura primeiro, e ela costuma ser a menos testada.
+
+### Coluna `"*"` cresce além da página com token sem espaço
+
+**Irmão traiçoeiro do pitfall anterior, e frequentemente confundido com ele.** Ali a soma das larguras estourava a página; aqui a soma está **correta**, o padding está **correto**, e a tabela sai do papel assim mesmo.
+
+Causa: o pdfmake só quebra linha em **espaço**. Uma célula da coluna `"*"` cujo conteúdo tenha um token contínuo mais largo que o espaço disponível — lista de números de série colada por vírgula (`SN:JDBDE-133,JDB00000480,JDB00000481`), URL longa, código de peça — não tem onde quebrar, e o pdfmake **expande a coluna** em vez de truncar ou quebrar por caractere. As colunas seguintes são empurradas para a direita e podem sair inteiras da página.
+
+**Sintoma**: idêntico ao pitfall de padding — a última coluna some — mas só em **algumas linhas de dados**, e `widths` está certo. Se a mesma tabela renderiza bem com um registro e mal com outro, é este, não aquele.
+
+**O gatilho não é o comprimento da descrição.** Medido numa tabela real de 10 colunas com ~99pt de coluna flexível: 84 caracteres **com espaços** renderizam corretamente; 48 caracteres **sem espaço** medem 209pt e estouram em 110pt. Um caso de stress descrito como "descrição longa" **não reproduz** o defeito — o caso precisa dizer *string sem espaços mais larga que a coluna*.
+
+**Diagnóstico**: meça a borda real de cada coluna em vez de julgar por pixel. Os retângulos de fundo do cabeçalho dão as bordas em pontos:
+
+```python
+import fitz  # PyMuPDF
+page = fitz.open("out.pdf")[0]
+fundos = [d["rect"] for d in page.get_drawings()
+          if d.get("fill") and d["rect"].height < 20]
+print(max(r.x1 for r in fundos), page.rect.width)  # x1 > width-margem ⇒ estourou
+```
+
+**Fixes**, em ordem de preferência: inserir oportunidade de quebra no *mapper* que monta a célula (zero-width space após `,`/`-`/`/`, preservando o texto exibido); ou impor teto de largura à coluna aceitando o corte; ou, se o campo tem forma conhecida, formatá-lo com espaços na origem. Não mexa nas larguras fixas — elas não são a causa, e estreitá-las só adia o problema.
+
 ### Fonte Roboto bundled: ligaduras "fi"/"fl"/"ffi" somem do PDF
 
 Palavras com "fi"/"fl"/"ffi" perdem a letra "f" no PDF renderizado:

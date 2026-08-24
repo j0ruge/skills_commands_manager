@@ -102,6 +102,10 @@ BASE_BRANCH=develop
 
 ## Gotchas do `acli`
 
+- **`acli` imprime `✗ Failure` e sai com exit 0.** Verificado três vezes
+  (2026-08-07 ×2, 2026-08-24). Consequência: cadeia `&&`, `set -e` e checagem de
+  `$?` são **decorativas** — quem automatiza em cima do exit code reporta sucesso
+  sobre falha silenciosa. O único sensor confiável é reler o campo.
 - `--type` deve usar o nome em PT-BR conforme configurado no projeto
 - Transições fora da ordem retornam: `"No allowed transitions found"`
 - O comando `view` não aceita `--key`, passar o ID direto: `acli jira workitem view ${PROJECT}-XXX`
@@ -115,7 +119,15 @@ BASE_BRANCH=develop
   `--from-json` — é a forma de checar quais chaves a sua versão suporta, em vez
   de deduzir
 - **Não existe `workitem update`.** Usar `workitem edit` para editar campos (summary, assignee, labels, etc.)
-- Para atribuir responsável: `acli jira workitem edit --key "${PROJECT}-XXX" --assignee "email@example.com"`
+- **Para atribuir responsável, use `@me` — não o e-mail.**
+  `acli jira workitem edit --key "${PROJECT}-XXX" --assignee "@me"` funciona; com
+  e-mail o comando responde `✗ Failure: … can't be edited: unexpected error,
+  trace id: …`, que não nomeia campo nem causa. A razão é identidade: o
+  `userEmail` da sessão não é necessariamente a conta Jira (no SQ, sessão
+  `it@jrcbrasil.com`, conta `jorge.ferrari@…`). Para **outra pessoa**, accountId
+  via REST (`GET /rest/api/3/myself` ou `lookupJiraAccountId`) + `PUT
+  /rest/api/3/issue/<KEY>` com `{"fields":{"assignee":{"accountId":"…"}}}` → 204.
+  ⚠️ `lookupJiraAccountId` devolve **lista vazia** para e-mail errado, não erro.
 - `acli jira workitem create` retorna a key criada no output (ex.: `RS-605`, `SQ-32`)
 - Comentários: usar `comment create` (subcomando), não `comment` direto — `--body-file` para multiline
 - `--body-file` aceita ADF JSON nativamente — para comentários formatados via
@@ -250,15 +262,65 @@ mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customf
 > Enquanto isso, transição (`--status "<status-destino>"`) e comentário (ADF via
 > `--body-file`) seguem funcionando pelo `acli`.
 
+## fixVersion (rótulo de release)
+
+**Este é o campo com os piores sensores das ferramentas locais** — `acli` não
+escreve **nem lê**, e o MCP não confirma. Medido no SQ-83 (2026-08-10) e
+reconfirmado no SQ-107 (2026-08-24). Tudo aqui é REST.
+
+| Operação | Caminho | `acli`/MCP servem? |
+|---|---|---|
+| Listar versões do projeto | `GET /rest/api/3/project/<KEY>/versions` | `acli jira project view --json` lê, mas o REST é a fonte |
+| Criar versão | `POST /rest/api/3/version` com `{"name","projectId"}` | ❌ não existe |
+| Marcar lançada | `PUT /rest/api/3/version/<ID>` com `{"released":true,"releaseDate":"AAAA-MM-DD"}` | ❌ |
+| Pôr no cartão | `POST /rest/api/3/issue` (criação) ou `PUT /rest/api/3/issue/<KEY>` | ❌ `acli edit` não tem a flag (e **sai 0**) |
+| **Ler** | `GET /rest/api/3/issue/<KEY>?fields=fixVersions` | ❌ `acli view --json` devolve `[]` **mesmo com o campo gravado** |
+
+```bash
+set -a; . ~/.hermes/.env; set +a     # JIRA_EMAIL / JIRA_API_TOKEN
+J=https://jrcbrasil.atlassian.net/rest/api/3
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "$J/project/SQ/versions"          # listar
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -X POST -H 'Content-Type: application/json' \
+  -d '{"name":"0.8.0","projectId":10050}' "$J/version"                     # criar (devolve o id)
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+  "$J/issue/SQ-107?fields=fixVersions"                                     # ÚNICO sensor de leitura
+```
+
+⚠️ **`updated` não é sensor**: o Jira não bumpa `fields.updated` numa mudança de
+`fixVersions`. Concluir "não gravou" pelo timestamp é errado.
+
+### A flag `released` do Jira não diz se a versão foi lançada
+
+No SQ-107 o Jira listava `0.7.1` como `unreleased` — e a versão estava em
+produção desde 20/ago (`origin/main` continha o bump, e o `package.json` de lá
+dizia `0.7.1`). O campo é metadado que alguém precisa marcar à mão, então ele
+atrasa em relação ao mundo.
+
+**Antes de afirmar ao dev que uma versão não foi lançada, confira o artefato:**
+
+```bash
+git branch -r --contains <sha-do-bump>          # origin/main aparece?
+git show origin/main:package.json | grep version
+```
+
+Se o repo diz que foi, corrija o Jira (`PUT /version/<ID>` com `released` e
+`releaseDate`) em vez de repassar o metadado defasado.
+
 ### Conferir que gravou (o passo que evita o backlog silencioso)
 
 ```bash
 # O que a issue tem agora
 acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
 
-# Confirmação independente: a issue aparece no conteúdo da sprint?
-acli jira sprint list-workitems --board $BOARD --sprint <SPRINT_ID> --fields "key,summary,status"
+# Confirmação independente — JQL, determinístico e sem paginação:
+acli jira workitem search --jql "key = ${PROJECT}-XXX AND sprint in openSprints()" --fields "key,status"
 ```
+
+⚠️ **`sprint list-workitems` é falso-negativo por paginação.** Ele lista ~30
+itens; cartão recém-criado cai fora da primeira página e "some". Medido no SQ-74
+(2026-08-07) e repetido no SQ-107 (2026-08-24) — nas duas vezes o cartão
+**estava** na sprint. Usar esse comando como sensor produz exatamente o alarme
+falso que a conferência existe para evitar.
 
 Se o valor não bater com o pedido, reportar a falha explicitamente. Um "issue
 criada ✅" sem essa releitura é como o cartão some no backlog sem ninguém notar.

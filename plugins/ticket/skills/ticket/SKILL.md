@@ -1,10 +1,10 @@
 ---
 name: ticket
-description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git — create issues/sub-issues and branches, close with an auto-generated summary. Per-repo config via `.jira-project`; discovers project-specific transitions instead of assuming names. Creates issues already in the active sprint with story points via `acli --from-json`, then verifies the card left the backlog. Triggers — ticket, /ticket, Jira, criar issue, fechar ticket, sprint, story points, acli."
+description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git — create issues/sub-issues and branches, close with an auto-generated summary. Per-repo config via `.jira-project`; discovers project-specific transitions instead of assuming. Creates issues already in the active sprint, with story points and fixVersion, then reads each field back with the sensor that can actually see it. Triggers — ticket, /ticket, open, Jira, criar issue, fechar ticket, sprint, story points, fixVersion, acli."
 user_invocable: true
-argument_description: "Subcomando: start | split | close | status"
+argument_description: "Subcomando: start (open) | split | close | status"
 metadata:
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
@@ -62,7 +62,7 @@ BASE_BRANCH=develop   # opcional — base de branches/PR; se ausente, detectar (
 
 Analise o argumento passado pelo usuário e execute o comando correspondente:
 
-- `start` → Seção "Comando: start"
+- `start` (ou `open`, `abrir`) → Seção "Comando: start"
 - `split` → Seção "Comando: split"
 - `close` → Seção "Comando: close"
 - `status` → Seção "Comando: status"
@@ -120,7 +120,23 @@ Antes de tudo, analisar o argumento passado após `start`:
 3. **Verificar responsável:**
    - Se assignee está vazio/nulo:
      - Perguntar ao dev: "Essa issue não tem responsável. Quer se atribuir como responsável?"
-     - Se sim: `acli jira workitem edit --key "${PROJECT}-XXX" --assignee "{username}"`
+     - Se sim: `acli jira workitem edit --key "${PROJECT}-XXX" --assignee "@me"`
+       ⚠️ **Use `@me`, não o e-mail.** O e-mail da sessão (`userEmail`) não é
+       necessariamente a identidade da conta Jira — e quando não é, o `acli`
+       responde `✗ Failure: ... can't be edited: unexpected error, trace id: …`,
+       que não nomeia o campo nem a causa. Medido duas vezes (2026-08-07 e
+       2026-08-24, projeto SQ), com `it@jrcbrasil.com` recusado e a conta real
+       sendo outra.
+       Para atribuir a **outra pessoa**, o caminho é o accountId via REST:
+       ```bash
+       set -a; . ~/.hermes/.env; set +a
+       AID=$(curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+         "https://jrcbrasil.atlassian.net/rest/api/3/myself" | python3 -c 'import json,sys;print(json.load(sys.stdin)["accountId"])')
+       curl -s -o /dev/null -w '%{http_code}\n' -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+         -X PUT -H "Content-Type: application/json" \
+         -d "{\"fields\":{\"assignee\":{\"accountId\":\"$AID\"}}}" \
+         "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX"   # espera 204
+       ```
      - Se não: continuar sem responsável
    - Se já tem assignee: mostrar e continuar
 
@@ -168,11 +184,22 @@ Antes de tudo, analisar o argumento passado após `start`:
    acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
    ```
 
-   Verificação independente de que o cartão está mesmo no board da sprint:
+   Verificação independente de que o cartão está mesmo na sprint — **por JQL,
+   que é determinístico**:
 
    ```bash
-   acli jira sprint list-workitems --board $BOARD --sprint <SPRINT_ID> --fields "key,summary,status"
+   acli jira workitem search --jql "key = ${PROJECT}-XXX AND sprint in openSprints()" --fields "key,status"
    ```
+
+   ⚠️ **Não use `sprint list-workitems` como sensor.** Ele pagina (~30 itens) e o
+   cartão recém-criado costuma cair fora da primeira página — seguir a skill ao pé
+   da letra produz exatamente o alarme falso que este passo existe para evitar
+   (*"a sprint não foi aplicada"* sobre um cartão que **está** na sprint). Medido
+   no SQ-74 (2026-08-07) e de novo no SQ-107 (2026-08-24).
+
+   ⚠️ **O exit code do `acli` não é sensor de nada.** Ele imprime `✗ Failure: …`
+   e **sai 0** — cadeia `&&` e checagem de `$?` são decorativas aqui. O que diz a
+   verdade é a releitura do campo.
 
    Se o valor não bateu com o que foi pedido, **avise o dev explicitamente**
    ("a sprint não foi aplicada — o cartão continua no backlog") em vez de
@@ -191,7 +218,16 @@ Antes de tudo, analisar o argumento passado após `start`:
      git checkout ${BASE_BRANCH}
      git pull origin ${BASE_BRANCH}
      git checkout -b ${BRANCH_PREFIX}-XXX_descricao_curta
+     # poka-yoke: a branch nasceu MESMO da base atual?
+     git fetch origin -q
+     git rev-list --left-right --count HEAD...origin/${BASE_BRANCH}   # espera `0	0`
      ```
+
+   ⚠️ **Não canalize o `pull` para `tail` dentro de uma cadeia `&&`**: o exit
+   status de um pipeline é o do **último** comando, então um pull que falhou
+   (mudança não commitada + rebase configurado é o caso comum) deixa a cadeia
+   seguir e a branch nasce de base não verificada, sem nada avisar. Por isso a
+   verificação acima mede a base em vez de confiar no pull.
 
 9. **Output:** Mostrar resumo final:
 
@@ -219,6 +255,13 @@ Antes de tudo, analisar o argumento passado após `start`:
      proposto do que produzir um do zero. Só siga sem score se ele disser que
      não quer pontuar.
    - Sprint: mostrar sprints ativas para escolha, ou usar sprint corrente. **Se o dev não informar sprint, perguntar explicitamente:** "Quer adicionar à sprint atual?" — não pular silenciosamente.
+   - **fixVersion** (rótulo de release, ex.: `0.8.0`): perguntar sempre que o
+     projeto versione releases. Liste o que existe e proponha o próximo número,
+     em vez de pedir do nada — ver §fixVersion em `references/workflow.md`, que
+     traz o detalhe que morde: **`acli` e MCP são cegos nesse campo**, e a flag
+     `released` no Jira **não é sensor de release** (no SQ, a `0.7.1` seguia
+     marcada `unreleased` estando em produção desde 20/ago). Quem sabe se
+     lançou é o repo: `origin/main` + a versão no `package.json`.
 
 2. **Descobrir a sprint ativa (antes de criar):**
 
@@ -265,14 +308,38 @@ Antes de tudo, analisar o argumento passado após `start`:
      (`create` simples + `mcp__atlassian__editJiraIssue`) e avisar o dev que
      sprint/score dependem do MCP autenticado
 
-4. **Confirmar que a issue nasceu na sprint:**
+   **Quando houver fixVersion, prefira o REST — ele faz tudo numa chamada.** O
+   `--from-json` do `acli` não escreve `fixVersions`, então o caminho dele exige
+   um segundo passo que só existe via REST de qualquer forma. `POST
+   /rest/api/3/issue` aceita `fixVersions`, `customfield_10016` (pontos) e
+   `customfield_10020` (sprint, **número puro**) juntos, com `description` em
+   ADF — uma chamada, um ponto de falha (medido no SQ-107, 2026-08-24):
 
    ```bash
-   acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+   set -a; . ~/.hermes/.env; set +a
+   curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -X POST -H "Content-Type: application/json" \
+     --data-binary @/tmp/nova-issue.json \
+     "https://jrcbrasil.atlassian.net/rest/api/3/issue"
+   # fields: { project:{id}, issuetype:{name}, summary, description(ADF),
+   #           fixVersions:[{id}], customfield_10016: N, customfield_10020: SPRINT_ID }
    ```
 
-   Se sprint/score não vieram preenchidos, dizer isso ao dev — o cartão está no
-   backlog. Não reportar sucesso sem essa releitura.
+   Monte o ADF com um script (heredoc Python) em vez de escrever JSON à mão: um
+   `description` malformado é recusado **sem dizer qual nó** está errado.
+
+4. **Confirmar que a issue nasceu completa** — cada campo pelo sensor que o
+   enxerga (é literalmente diferente por campo):
+
+   ```bash
+   # sprint + score: o acli lê bem
+   acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+   # fixVersion: SÓ o REST GET lê — o acli devolve [] mesmo com o campo gravado
+   curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+     "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX?fields=fixVersions,customfield_10016,customfield_10020,status,assignee"
+   ```
+
+   Se algum campo não veio como pedido, dizer isso ao dev — o cartão está no
+   backlog ou sem rótulo de release. Não reportar sucesso sem essa releitura.
 
 5. **Criar branch Git:**
 

@@ -1,5 +1,61 @@
 # Changelog — ticket
 
+## [1.2.0] — 2026-08-24
+
+Rodada motivada por uma constatação desconfortável: das quatro armadilhas
+medidas em 2026-08-07 (SQ-74) e registradas como pendência, **duas voltaram a
+cobrar pedágio no SQ-107**, 17 dias depois, do mesmo jeito. Uma lição que não
+entra na skill é uma lição que se paga de novo.
+
+### Added
+
+- **fixVersion ganha seção própria em `references/workflow.md`.** O campo não
+  existia em lugar nenhum da skill, embora seja parte do que se decide ao abrir
+  um cartão. É o campo com os piores sensores locais: `acli` não escreve **nem
+  lê** (devolve `[]` sobre valor gravado), o MCP não confirma, e `updated` não
+  bumpa. Tudo por REST, com tabela de operação → endpoint.
+- **A flag `released` do Jira não é sensor de release.** No SQ-107 a `0.7.1`
+  aparecia `unreleased` estando em produção desde 20/ago. Antes de repassar esse
+  metadado ao dev, confira o artefato (`git branch -r --contains <sha>` e a
+  versão no `package.json` de `origin/main`) e corrija o Jira.
+- **`open`/`abrir` como alias de `start`** no roteamento. O comando não existia e
+  é o que o dev digita — duas vezes na mesma sessão.
+- **Criação por `POST /rest/api/3/issue` numa chamada** quando há fixVersion:
+  `fixVersions` + sprint + pontos + `description` em ADF juntos. O
+  `create --from-json` do `acli` não escreve `fixVersions`, então o caminho dele
+  sempre exigiria um segundo passo que só existe via REST.
+
+### Fixed
+
+- **`--assignee` com e-mail falha; o certo é `@me`.** O `SKILL.md` mandava
+  `--assignee "{username}"` e o `workflow.md` exemplificava com e-mail. O
+  `userEmail` da sessão não é necessariamente a conta Jira, e o erro
+  (`✗ Failure: … unexpected error, trace id: …`) não nomeia campo nem causa.
+  Medido em 2026-08-07 e de novo em 2026-08-24. Para outra pessoa: accountId via
+  REST.
+- **`sprint list-workitems` sai do papel de sensor — entra JQL.** O step 6 vendia
+  aquele comando como "confirmação independente"; ele pagina em ~30 itens e o
+  cartão recém-criado cai fora da primeira página. Seguir a skill produzia
+  exatamente o alarme falso que o passo existe para evitar. Medido no SQ-74 e no
+  SQ-107 — nas duas vezes o cartão **estava** na sprint.
+- **`acli` imprime `✗ Failure` e sai 0** — agora dito no topo dos gotchas.
+  Cadeia `&&` e `$?` são decorativas; o sensor é a releitura do campo.
+- **A criação de branch passa a medir a base em vez de confiar no `pull`.**
+  `git pull … | tail` dentro de um `&&` devolve o exit do `tail`, então um pull
+  que falhou deixa a cadeia seguir e a branch nasce de base não verificada, sem
+  aviso. Poka-yoke: `git rev-list --left-right --count HEAD...origin/$BASE_BRANCH`
+  deve dar `0	0`.
+- **Releitura pós-criação passa a ser por campo**, porque o sensor é literalmente
+  diferente para cada um: `acli view --json` serve para sprint/score e mente
+  sobre fixVersion, que só o REST GET lê.
+
+### Note
+
+Todas as correções desta versão têm a mesma assinatura: **o passo de verificação
+da própria skill é que falhava**, e falhava para o lado que parece seguro (exit
+0, cadeia que continua, listagem que "não achou", campo que volta `[]`). Sensor
+cego é pior que sensor ausente — ele produz confiança.
+
 ## [1.1.1] — 2026-08-07
 
 ### Fixed

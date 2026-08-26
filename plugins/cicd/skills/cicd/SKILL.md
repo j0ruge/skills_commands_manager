@@ -2,7 +2,7 @@
 name: cicd
 metadata:
   version: 2.20.0
-description: "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack: Node (Prisma/Biome), Django (gunicorn), Vite frontend. Deep self-hosted runner runbook: registration-token chicken-and-egg, PAT migration, crashloops, silently-queued deploys. Plus deploy-time proof — rollback on immutable tags with re-smoke, backup gates that check the dump not the healthcheck, transient self-signed TLS after `up -d`, nginx envsubst traps, per-environment image tags. Triggers — CI/CD, GitHub Actions, GHCR auth, self-hosted runner, deploy queued, rollback, smoke, backup gate, nginx envsubst, Django gunicorn."
+description: "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Deep self-hosted runner runbook, deploy-time proof (rollback with re-smoke, backup gates that check the dump not the healthcheck), and Actions minute economics — per-job rounding, self-hosted as the free lever. Triggers — CI/CD, GitHub Actions, Actions minutes, GHCR auth, self-hosted runner, deploy queued, rollback, backup gate, nginx envsubst."
 ---
 
 # CI/CD Skill — GitHub Actions, Docker & GHCR (Unified)

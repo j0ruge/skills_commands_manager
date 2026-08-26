@@ -12,6 +12,26 @@ Duas armadilhas de medição que custaram tempo e viraram lição própria: **`/
 
 E um esclarecimento que evita retrabalho: a **composite action da lição 43 não economiza um minuto**. Ela cura o *drift* entre `ci.yml` e o re-gate do CD, mas o job continua rodando — deduplicar *código* de workflow e deduplicar *execução* são coisas diferentes, e só a segunda aparece na fatura. Mesma classe: `cache: 'yarn'` configurado não garante cache quente (entradas expiram em 7 dias; o repo medido tinha **0 entradas ativas**, ou seja, todo `install` baixando tudo, sempre).
 
+## [2.21.1] — 2026-08-26
+
+Correção de consistência descoberta pelo `validate-versions.py`: a v2.21.0
+acrescentou a cláusula de **Actions minute economics** à `description` do
+`plugin.json` e do `marketplace.json`, mas **não à do `SKILL.md`** — que ficou
+620 chars contra 756 dos outros dois.
+
+Isso importa porque a `description` é a superfície de triggering: com textos
+diferentes, se a skill dispara ou não passa a depender de qual arquivo o harness
+leu. E as duas versões estouravam o cap de 500 do `CLAUDE.md`.
+
+### Fixed
+
+- **Uma descrição só, espelhada nos três arquivos**, com **473 chars** (dentro do
+  cap, era 620/756/756). Encurtada em vez de somada: os quatro sinais de
+  triggering foram preservados — roteamento por stack, runbook de runner
+  self-hosted, prova em tempo de deploy e economia de minutos —, enquanto a
+  enumeração de detalhes (crashloops, PAT migration, TLS self-signed transitório,
+  tags por ambiente) saiu da descrição e continua no corpo da skill.
+
 ## [2.20.0] - 2026-08-08
 
 ### Corrigido

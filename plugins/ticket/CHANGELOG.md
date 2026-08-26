@@ -1,5 +1,36 @@
 # Changelog — ticket
 
+## [1.3.0] — 2026-08-26
+
+A skill já mandava montar ADF por script e já avisava que malformado é recusado
+"sem dizer qual nó". O que faltava era o passo seguinte: **como descobrir qual
+nó**. Sem isso, o aviso só antecipa a frustração — não a resolve.
+
+Motivador concreto (RS-822): um helper de comentário recebeu `"strong"` como
+**string** onde esperava lista. O loop iterou caractere a caractere e gerou
+`{"type":"s"}`, `{"type":"t"}`, `{"type":"r"}`… O JSON ficou sintaticamente
+válido, `json.tool` passou, e o Jira devolveu **400 sem nomear nada**. Montar por
+script não impediu o erro — o script também erra.
+
+### Added
+
+- **`references/templates.md` ganha §"Antes de postar: valide o ADF"**: a lista
+  dos 6 `marks` aceitos (`strong`, `em`, `code`, `link`, `strike`, `underline`)
+  e uma varredura de ~10 linhas que percorre o documento e falha nomeando as
+  marks inválidas. Troca um 400 cego por um diagnóstico exato.
+- **Receita de conserto sem remontar**: quando a varredura acusa marks quebradas
+  em caracteres soltos, juntar os caracteres de cada nó e substituir pela palavra
+  resultante recupera o payload já montado.
+- **Ponteiro para o suspeito seguinte**: se a varredura de marks vier limpa e o
+  400 persistir, o problema costuma ser um `type` de nó fora da tabela (`bold` em
+  vez de `strong`, `italic` em vez de `em`).
+
+### Changed
+
+- **`SKILL.md` deixa de tratar "monte por script" como suficiente.** O texto
+  agora diz explicitamente que o script também erra e aponta para a varredura
+  como passo obrigatório antes do POST.
+
 ## [1.2.0] — 2026-08-24
 
 Rodada motivada por uma constatação desconfortável: das quatro armadilhas

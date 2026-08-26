@@ -58,6 +58,51 @@ O ADF é um JSON com estrutura `{ "version": 1, "type": "doc", "content": [...] 
 | Link | mark `link` | `attrs.href` |
 | Horizontal rule | `rule` | — |
 
+### Antes de postar: valide o ADF
+
+O Jira recusa ADF malformado com **400 sem dizer qual nó** está errado — a
+resposta não nomeia o campo, o índice nem o tipo. Isso transforma um erro de uma
+linha em tentativa e erro. Uma varredura de segundos transforma o mesmo 400 num
+diagnóstico exato, então vale rodá-la sempre antes do POST, não só depois de
+falhar.
+
+Os únicos `marks` aceitos — qualquer outro derruba a requisição:
+
+`strong` · `em` · `code` · `link` · `strike` · `underline`
+
+```python
+VALIDAS = {'strong', 'em', 'code', 'link', 'strike', 'underline'}
+ruim = []
+def check(n):
+    if isinstance(n, dict):
+        for m in n.get('marks', []) or []:
+            if m.get('type') not in VALIDAS:
+                ruim.append(m.get('type'))
+        for c in n.get('content', []) or []:
+            check(c)
+    elif isinstance(n, list):
+        for c in n:
+            check(c)
+check(doc)
+assert not ruim, f'marks invalidas: {sorted(set(ruim))}'
+```
+
+**O erro clássico que isso pega** (medido em 2026-08-26, RS-822): um helper que
+aceita `marks` e recebe **string** em vez de lista. `t("texto", "strong")` faz o
+loop iterar caractere a caractere e produz `{"type":"s"}`, `{"type":"t"}`,
+`{"type":"r"}`… O JSON fica sintaticamente válido, o `python -m json.tool` passa,
+e o Jira devolve 400 mudo. Passe sempre lista: `t("texto", ["strong"])`.
+
+Se a varredura acusar marks quebradas em caracteres soltos, dá para consertar o
+payload já montado em vez de remontá-lo: junte os caracteres soltos de cada nó
+(`''.join(...)`) e, se a palavra resultante estiver em `VALIDAS`, substitua as
+marks daquele nó por ela.
+
+⚠️ O mesmo vale para **tipos de nó**, não só marks: `bold` em vez de `strong`,
+`italic` em vez de `em`, ou um `type` inexistente produzem o mesmo 400 mudo.
+Quando a varredura de marks vier limpa e o 400 persistir, o suspeito seguinte é
+um `type` de nó fora da tabela acima.
+
 ## Template: Descrição de Issue
 
 Usado ao criar issues com `/ticket start`. Enviar como **plain text** — o campo `--description` do `acli` não suporta ADF.

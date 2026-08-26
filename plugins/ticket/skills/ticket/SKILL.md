@@ -4,7 +4,7 @@ description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git
 user_invocable: true
 argument_description: "Subcomando: start (open) | split | close | status"
 metadata:
-  version: 1.2.0
+  version: 1.3.0
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
@@ -325,7 +325,11 @@ Antes de tudo, analisar o argumento passado após `start`:
    ```
 
    Monte o ADF com um script (heredoc Python) em vez de escrever JSON à mão: um
-   `description` malformado é recusado **sem dizer qual nó** está errado.
+   `description` malformado é recusado **sem dizer qual nó** está errado — e
+   montar por script não basta, porque o script também erra. **Rode a varredura
+   de marks antes do POST** (`references/templates.md` §Antes de postar: valide o
+   ADF): ela troca o 400 mudo por um diagnóstico exato em segundos, e pega o erro
+   mais comum — um helper de marks que recebe string em vez de lista.
 
 4. **Confirmar que a issue nasceu completa** — cada campo pelo sensor que o
    enxerga (é literalmente diferente por campo):

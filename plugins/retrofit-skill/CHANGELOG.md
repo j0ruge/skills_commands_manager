@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.3.0] — 2026-08-26
+
+O fluxo já mandava rodar `validate-versions.py` — e mesmo assim um retrofit
+passou deixando dois resíduos: a `description` do `cicd` entrou em 2 dos 3
+arquivos e o README ficou uma versão atrás. O erro só apareceu na sessão
+seguinte, quando outra pessoa rodou o validador.
+
+Ou seja: o problema não era a ausência da instrução. Era o que ela não dizia —
+**quando** rodar, **o que fazer com os warnings**, e que ter editado não é prova
+de que o arquivo mudou.
+
+### Added
+
+- **Passo de verificação antes do commit**, com o validador movido para posição
+  de gate e não de formalidade final, mais um snippet que confere os quatro
+  lugares (`SKILL.md`, `plugin.json`, `marketplace.json`, README) e reporta se a
+  description bate nos três e se a versão chegou ao README.
+- **WARNINGS passam a ser bloqueantes para a skill que está sendo tocada.** Eles
+  não reprovam o gate, e é por isso que passam despercebidos: aviso que nunca
+  reprova vira ruído. Encurtar uma description no ato é barato; deixar acumular
+  virou um mutirão de 7 plugins (até 871 chars).
+- **Aviso sobre `git checkout -- .claude-plugin/marketplace.json`**: o arquivo é
+  único e compartilhado, então usá-lo para desfazer uma sondagem leva junto as
+  edições reais da sessão. A recuperação é ressincronizar a partir do
+  `plugin.json`, que é canônico por plugin.
+
+### Changed
+
+- **A atualização do README deixou de ser condicional.** O texto dizia "*se* a
+  mudança afeta como a skill é descrita/versionada" — mas um bump **sempre**
+  muda a versão na tabela. Foi por esse "se" que o `2.20.0` sobreviveu.
+
 ## [0.2.3] — 2026-07-25
 
 ### Corrigido

@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.2.3
+  version: 0.3.0
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -85,9 +85,43 @@ em vez de rebasear com a edição já feita.
      e POR QUÊ (a lição que motivou).
    - Atualize `<REPO>/.claude-plugin/marketplace.json` (versão espelhada +
      descrição/keywords se relevante).
-   - Atualize `<REPO>/README.md` (tabela de plugins) se a mudança afeta como
-     a skill é descrita/versionada.
-   - Rode `python scripts/validate-versions.py` e corrija o que apontar.
+   - Atualize `<REPO>/README.md`: a **versão na tabela de plugins sempre** muda
+     junto com o bump — não é condicional. Se a linha da skill descreve o que
+     cada versão trouxe, acrescente uma frase; não um parágrafo.
+   - **Verifique por releitura, não por ter editado.** Ter rodado o `sed` não
+     prova que o arquivo mudou: um padrão que não casou falha em silêncio, e a
+     description é a superfície de triggering — com os arquivos fora de sincronia,
+     se a skill dispara passa a depender de qual deles o harness leu.
+
+     ```bash
+     python scripts/validate-versions.py     # ANTES do commit, não depois
+     ```
+
+     **Trate os WARNINGS como bloqueantes para a skill que você está tocando.**
+     Eles não reprovam o gate, e é exatamente por isso que passam: aviso que nunca
+     reprova vira ruído de fundo. Se a sua edição empurrou a description acima do
+     cap, encurte agora — depois vira mutirão.
+
+     Confirmação independente de que os quatro lugares batem:
+
+     ```bash
+     python3 - <<'EOF'
+     import json, re, io
+     nome = 'SUA-SKILL'
+     pj = json.load(open(f'plugins/{nome}/.claude-plugin/plugin.json'))
+     mk = {p['name']: p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins']}[nome]
+     sk = io.open(f'plugins/{nome}/skills/{nome}/SKILL.md', encoding='utf-8').read()
+     d_sk = re.search(r'^description:\s*(.*?)(?=\n[a-z_]+:|\n---)', sk, re.S | re.M).group(1).strip().strip('"')
+     rd = io.open('README.md', encoding='utf-8').read()
+     print('description igual nos 3:', pj['description'] == mk['description'] == d_sk)
+     print('tamanho:', len(pj['description']), '(cap 500)')
+     print('versao no README:', f"| {pj['version']} |" in rd)
+     EOF
+     ```
+
+     ⚠️ Este passo existe porque falhou na prática: um retrofit atualizou a
+     description em 2 dos 3 arquivos e deixou o README numa versão antiga. O erro
+     só apareceu na sessão seguinte, quando outra pessoa rodou o validador.
    - Commit: `feat|fix($ARGUMENTS): vX.Y.Z — <resumo>`. **Sem trailer
      `Co-Authored-By`** — ver *Autoria dos commits* abaixo. Push pra origin/main.
 
@@ -125,5 +159,7 @@ A `description` (frontmatter do SKILL.md + `plugin.json` + `marketplace.json`) �
 ## Editando `marketplace.json` com segurança
 
 Ele lista TODOS os plugins, cada um com seu próprio `"description"`/`"version"`. Ao editar programaticamente, **escope ao bloco do plugin alvo** — um match ingênuo em `"description":` (ou `sed` global) atinge as descrições de todos os plugins e as sobrescreve. Localize o bloco pelo `"name": "$ARGUMENTS"` e só então troque `version`/`description` dentro dele; depois confirme que as demais entradas ficaram intactas (ex.: contar descrições distintas) e rode `python -m json.tool` antes de commitar.
+
+⚠️ **Não use `git checkout -- .claude-plugin/marketplace.json` para desfazer um teste** se você já editou esse arquivo nesta sessão. Ele é único e compartilhado por todos os plugins: o checkout leva junto as suas alterações reais, e o sintoma aparece depois, como divergência entre `plugin.json` e `marketplace.json`. Se precisar reverter uma sondagem, restaure só o valor que você mexeu — ou ressincronize a partir do `plugin.json`, que é a fonte canônica por plugin.
 
 Não invente lições pra justificar uma mudança.

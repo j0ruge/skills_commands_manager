@@ -390,7 +390,13 @@ def main():
                 )
 
         if len(canonical) > DESCRIPTION_MAX_CHARS:
-            warnings.append(
+            # Promovido de WARNING para ERRO em 2026-08-26, depois que os 16 plugins
+            # passaram a caber no cap. Enquanto era aviso, nada forcava a convergencia:
+            # cada retrofit somava uma clausula a description (codereview chegou a 21
+            # commits no plugin.json) e o aviso virou ruido de fundo -- 7 plugins
+            # acumularam ate 871 chars. Agora que a divida esta zerada, o gate segura
+            # o piso: e mais barato encurtar no ato do que num mutirao.
+            errors.append(
                 f'  {name}: description tem {len(canonical)} chars -- acima do cap duro '
                 f'de {DESCRIPTION_MAX_CHARS} do CLAUDE.md (alvo {DESCRIPTION_TARGET_CHARS}). '
                 f'Encurte em vez de somar: detalhe vai para o corpo da skill e o CHANGELOG'

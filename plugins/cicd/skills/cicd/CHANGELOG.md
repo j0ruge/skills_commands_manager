@@ -2,6 +2,16 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-08-26 — Economia de minutos do Actions: medir por job, self-hosted como alavanca — bump 2.20.0 → [2.21.0]
+
+**O quê:** nova reference `references/ci-cost-minutes.md` (modelo de custo, como medir, alavancas por retorno sobre risco, e o que NÃO economiza) + linha na Quick Troubleshooting + linha na routing table + parágrafo de trigger + lições 68–70 + lição 57 estendida (`paths-ignore` vale também em `pull_request`) + 6 keywords espelhadas em SKILL.md/plugin.json/marketplace.json.
+
+**Por quê:** num repo **privado** no limite da cota (`digital_service_report_api`), a skill não tinha o que dizer — ela cobria pipeline quebrado, não pipeline caro. A medição expôs duas causas estruturais que nenhuma lição existente nomeava. **(1) O custo é por JOB arredondado para cima ao minuto**, não por segundo: um `Lint` de 51s custa um minuto cheio, e o instinto de paralelizar `lint`/`test` em dois jobs **adiciona** um minuto por execução — otimizar a duração de um job que já roda em menos de 1 min não economiza nada. **(2) O maior desperdício era estrutural**: `build-and-push` e o gate de CI queimando minutos em `ubuntu-latest` enquanto os runners self-hosted, que a org já paga, rodavam só o `deploy` (47–103s/dia). A skill só tratava self-hosted como *fonte de falha* (§7–§11); como *alavanca de custo* não aparecia em lugar nenhum. Medido: ~11 min por mudança que chega a produção, com o mesmo SHA testado **três vezes** (PR → push `develop` → tag).
+
+Duas armadilhas de medição que custaram tempo e viraram lição própria: **`/actions/runs/<id>/timing` reportou `billable.UBUNTU.total_ms: 0`** com `run_duration_ms: 322000` e `jobs: 2` — quem confia nesse número conclui "não gastamos nada" e para de investigar; o caminho confiável é `/actions/runs/<id>/jobs` separando por **`runner_group_name`** (`GitHub Actions`=cobrado, `Default`=grátis). E **`gh api /repos/.../actions/runners` lista só runners de REPOSITÓRIO** — o de produção era de organização e não aparecia, o que me levou a afirmar que ele não estava registrado quando havia um deploy de 103s comprovando o contrário; lista vazia não prova ausência, confirme pelo `runner_name` de um deploy que concluiu.
+
+E um esclarecimento que evita retrabalho: a **composite action da lição 43 não economiza um minuto**. Ela cura o *drift* entre `ci.yml` e o re-gate do CD, mas o job continua rodando — deduplicar *código* de workflow e deduplicar *execução* são coisas diferentes, e só a segunda aparece na fatura. Mesma classe: `cache: 'yarn'` configurado não garante cache quente (entradas expiram em 7 dias; o repo medido tinha **0 entradas ativas**, ou seja, todo `install` baixando tudo, sempre).
+
 ## 2026-06-27 — Suporte a backend Django/gunicorn + gotchas cross-stack — bump 2.18.1 → [2.19.0]
 
 **O quê:** nova reference `references/django-backend.md` (variante Django do blueprint) + detecção de projeto Django no SKILL.md + 4 linhas na Quick Troubleshooting + entrada na routing table/trigger + lessons 52–57 + descrição enxugada (Django entra; `bind-mount EACCES`/`tsx/tsc-b` saem da descrição, ficam nas keywords/refs).

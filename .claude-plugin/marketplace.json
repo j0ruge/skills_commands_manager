@@ -117,8 +117,8 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.20.0",
-      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack: Node (Prisma/Biome), Django (gunicorn), Vite frontend. Deep self-hosted runner runbook: registration-token chicken-and-egg, PAT migration, crashloops, silently-queued deploys. Plus deploy-time proof — rollback on immutable tags with re-smoke, backup gates that check the dump not the healthcheck, transient self-signed TLS after `up -d`, nginx envsubst traps, per-environment image tags. Triggers — CI/CD, GitHub Actions, GHCR auth, self-hosted runner, deploy queued, rollback, smoke, backup gate, nginx envsubst, Django gunicorn.",
+      "version": "2.21.0",
+      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack: Node (Prisma/Biome), Django (gunicorn), Vite frontend. Deep self-hosted runner runbook: registration-token chicken-and-egg, PAT migration, crashloops, silently-queued deploys. Plus deploy-time proof — rollback on immutable tags with re-smoke, backup gates that check the dump not the healthcheck, transient self-signed TLS after `up -d`, nginx envsubst traps, per-environment image tags. Plus Actions minute economics — per-job rounding, measuring cost by runner group, self-hosted as the free lever. Triggers — CI/CD, Actions minutes, cost, GitHub Actions, GHCR auth, self-hosted runner, deploy queued, rollback, smoke, backup gate, nginx envsubst, Django gunicorn.",
       "category": "development",
       "keywords": [
         "cicd",
@@ -188,7 +188,13 @@
         "csp-empty-origin",
         "vars-repo-vs-environment",
         "prove-the-sensor",
-        "transient-self-signed-cert"
+        "transient-self-signed-cert",
+        "actions-minutes",
+        "per-job-rounding",
+        "self-hosted-cost-lever",
+        "billable-timing-zero",
+        "ci-triple-run",
+        "paths-ignore-pull-request"
       ],
       "platforms": [
         "claude-code",

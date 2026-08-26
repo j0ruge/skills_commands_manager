@@ -1,5 +1,21 @@
 # Changelog — `dev-script`
 
+## [0.5.2] — 2026-08-26
+
+Higiene de `description`, sem mudança de comportamento: o texto tinha **578 chars**,
+acima do cap de 500 do `CLAUDE.md`. A `description` é a superfície de triggering — é só
+por ela que o Claude decide invocar a skill —, e descrição longa demais dilui o sinal e
+pode ser **cortada em silêncio** na lista `/skills`, piorando justamente o que ela deveria
+melhorar.
+
+### Changed
+
+- **Description encurtada de 578 para 434 chars**, espelhada nos três arquivos
+  (`SKILL.md`, `plugin.json`, `marketplace.json`). Encurtada **em vez de somada**: o que
+  saiu foi a enumeração de gatilhos de borda (`strictPort`, `Failed to load native binding`, `yarn cmdtest collision`) e o detalhe do `node_modules` cross-platform — detalhe que continua no corpo da skill, onde é útil de fato.
+  Os sinais de disparo (o que a skill faz + os diferenciais que a distinguem das vizinhas)
+  foram preservados.
+
 ## [0.5.1] — 2026-08-08
 
 Duas armadilhas de `pkill`/background observadas numa sessão de deploy de produção

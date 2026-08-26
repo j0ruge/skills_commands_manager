@@ -11,8 +11,8 @@
     {
       "name": "ansible-docker-backup-restore",
       "source": "./plugins/ansible-docker-backup-restore",
-      "version": "1.3.0",
-      "description": "Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Proves a dump by its contents (gzip -t, COPY blocks, a known record) instead of its size, and distrusts a backup container's healthcheck. Triggers — ansible, playbook, backup, restore, disaster recovery, volume snapshot, mysqldump, retention, dump integrity, backup healthcheck lies.",
+      "version": "1.3.1",
+      "description": "Back up and restore a Linux server's Docker services with Ansible — volume tars, pg_dump/mysqldump, snapshot-guarded overwrite, and proof the nightly backup still runs. Catches restores that look green but are broken: 200s serving the wrong page, auth-plugin drift in restored datadirs, silently dead backups. Proves a dump by its contents, not its size. Triggers — ansible, backup, restore, disaster recovery, mysqldump, retention, dump integrity, backup healthcheck lies.",
       "category": "development",
       "keywords": [
         "ansible",
@@ -66,8 +66,8 @@
     {
       "name": "wsl-windows-onboarding",
       "source": "./plugins/wsl-windows-onboarding",
-      "version": "0.4.0",
-      "description": "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures, migrate repos with C: nearly full, one-repo-at-a-time copy-validate-delete, resume an interrupted WSL migration, Remove-Item nul Incorrect function.",
+      "version": "0.4.1",
+      "description": "End-to-end onboarding of a Windows machine to WSL2 — enable WSL, install rtk, migrate dev projects off C:\\ into the Linux filesystem with rsync that keeps .git/.env and validates before deleting. Knows the traps from a real migration: rtk missing from PATH, /mnt/c slowness, the whole git tree reading as modified (CRLF/filemode). Triggers — migrate projects to WSL, set up WSL for development, install rtk on Windows, slow WSL builds, resume an interrupted migration.",
       "category": "development",
       "keywords": [
         "wsl",
@@ -226,8 +226,8 @@
     {
       "name": "codereview",
       "source": "./plugins/codereview",
-      "version": "1.17.1",
-      "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, contract drift in tests (exported const grew without its assertion updated), and **dead code** via a parallel whole-repo sweep — unused exports, orphaned files, unreachable code (knip/ts-prune/vulture or grep) — with cleanup recs. Final report always includes the Overall Grade table + Recommended Actions. Stack-agnostic with TypeScript/React defaults, dotnet preset. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, unused exports, cleanup, code health.",
+      "version": "1.17.2",
+      "description": "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets, docs/OpenAPI drift, contract drift in tests, and dead code via a parallel whole-repo sweep (unused exports, orphaned files, unreachable code). Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, code health.",
       "category": "quality",
       "keywords": [
         "code-review",
@@ -396,8 +396,8 @@
     {
       "name": "dev-script",
       "source": "./plugins/dev-script",
-      "version": "0.5.1",
-      "description": "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free port discovery for foreign-owned ports / kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards (CRLF .env reads, cross-platform node_modules). Triggers — dev script, single-command dev, local stack, mkcert, kill port, find available port, port discovery, runtime drift, script hangs, strictPort, CRLF .env, Failed to load native binding, yarn cmdtest collision.",
+      "version": "0.5.2",
+      "description": "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free for foreign-owned ports, kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards. Triggers — dev script, single-command dev, local stack, mkcert, kill port, port discovery, script hangs, CRLF .env, native binding error.",
       "category": "development",
       "keywords": [
         "dev-script",
@@ -440,8 +440,8 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.11.0",
-      "description": "Self-hosted Zitadel v4 OIDC field guide — 47 documented quirks + working docker-compose and idempotent TypeScript bootstrap. High-friction traps: FirstInstance env placement, JWT/JWKS over self-signed HTTPS, TLS-terminating reverse proxy (`--tlsMode external`) and the admin-console `Failed to fetch` mixed-content trap, v2.66→v4 upgrade, API v1→v2 mapping, silent-renew, 401-storm defenses. Also credential-free pre-cutover checks (authorize probe, SPA bundle grep), prod+staging instances, user migration. Triggers — zitadel, oidc self-hosted, silent-renew, JWKS, masterkey, v2.66→v4, api v1→v2, tlsMode external, client_id mismatch, pre-cutover check, user migration.",
+      "version": "0.11.1",
+      "description": "Self-hosted Zitadel v4 OIDC field guide — 47 documented quirks, working docker-compose and an idempotent TypeScript bootstrap. High-friction traps: FirstInstance env placement, JWT/JWKS over self-signed HTTPS, TLS-terminating proxy (`--tlsMode external`) and the console's mixed-content `Failed to fetch`, v2.66→v4 upgrade, API v1→v2, silent-renew, 401 storms. Triggers — zitadel, oidc self-hosted, silent-renew, JWKS, masterkey, v2.66→v4, tlsMode external, pre-cutover check.",
       "category": "development",
       "keywords": [
         "zitadel",
@@ -586,8 +586,8 @@
     {
       "name": "whisper-preprocess",
       "source": "./plugins/whisper-preprocess",
-      "version": "1.0.0",
-      "description": "Audio preprocessing and transcription pipeline using ffmpeg + OpenAI Whisper. Use this skill whenever the user wants to transcribe audio or video files (lectures, meetings, podcasts, interviews), improve audio quality before transcription, remove silence from recordings, or mentions Whisper, speech-to-text, or transcricao. Also trigger when the user has MKV, MP4, WAV, M4A, or other media files they want converted to text. This skill handles the full pipeline: audio extraction, silence removal, voice enhancement, segmentation, and Whisper transcription. Works 100% offline.",
+      "version": "1.0.1",
+      "description": "Audio preprocessing and transcription with ffmpeg + OpenAI Whisper, fully offline — extraction, silence removal, voice enhancement, segmentation, then transcription. Handles MKV, MP4, WAV, M4A and other media. Triggers — transcribe audio or video, lecture/meeting/podcast/interview transcript, speech-to-text, transcrição, Whisper, remove silence, improve audio before transcription, convert media to text.",
       "category": "development",
       "keywords": [
         "whisper",

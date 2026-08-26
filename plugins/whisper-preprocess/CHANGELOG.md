@@ -1,5 +1,21 @@
 # Changelog — `whisper-preprocess`
 
+## [1.0.1] — 2026-08-26
+
+Higiene de `description`, sem mudança de comportamento: o texto tinha **578 chars**,
+acima do cap de 500 do `CLAUDE.md`. A `description` é a superfície de triggering — é só
+por ela que o Claude decide invocar a skill —, e descrição longa demais dilui o sinal e
+pode ser **cortada em silêncio** na lista `/skills`, piorando justamente o que ela deveria
+melhorar.
+
+### Changed
+
+- **Description encurtada de 578 para 406 chars**, espelhada nos três arquivos
+  (`SKILL.md`, `plugin.json`, `marketplace.json`). Encurtada **em vez de somada**: o que
+  saiu foi o parágrafo `Use this skill whenever...`, que repetia em prosa o que a linha `Triggers` já entrega de forma compacta — detalhe que continua no corpo da skill, onde é útil de fato.
+  Os sinais de disparo (o que a skill faz + os diferenciais que a distinguem das vizinhas)
+  foram preservados.
+
 ## [1.0.0] — 2026-05-30
 
 Initial packaging of the local `whisper-preprocess` skill into the marketplace. The skill

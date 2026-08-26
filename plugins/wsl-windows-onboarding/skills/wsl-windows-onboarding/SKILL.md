@@ -1,8 +1,8 @@
 ---
 name: wsl-windows-onboarding
 metadata:
-  version: 0.4.0
-description: "End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install rtk (rtk-ai/rtk), migrate dev projects from C:\\Users\\...\\repos into the Linux filesystem with rsync that keeps .git and .env and validates before deleting, and optionally set up zsh + JetBrains Mono. Built from a real migration, so it knows the traps: rtk 'not found' because ~/.local/bin isn't on PATH, /mnt/c being slow, the whole git tree looking modified after migration (CRLF/filemode), and ~/.bashrc config not carrying to ~/.zshrc. Triggers — install rtk on Windows, move or migrate projects to WSL, set up WSL for development, access Windows files from Ubuntu, slow WSL builds, rtk not on PATH, zsh on WSL, JetBrains Mono ligatures, migrate repos with C: nearly full, one-repo-at-a-time copy-validate-delete, resume an interrupted WSL migration, Remove-Item nul Incorrect function."
+  version: 0.4.1
+description: "End-to-end onboarding of a Windows machine to WSL2 — enable WSL, install rtk, migrate dev projects off C:\\ into the Linux filesystem with rsync that keeps .git/.env and validates before deleting. Knows the traps from a real migration: rtk missing from PATH, /mnt/c slowness, the whole git tree reading as modified (CRLF/filemode). Triggers — migrate projects to WSL, set up WSL for development, install rtk on Windows, slow WSL builds, resume an interrupted migration."
 ---
 
 # WSL Windows Onboarding — diagnose WSL · install rtk · migrate projects

@@ -1,5 +1,21 @@
 # Changelog — zitadel-idp
 
+## [0.11.1] — 2026-08-26
+
+Higiene de `description`, sem mudança de comportamento: o texto tinha **670 chars**,
+acima do cap de 500 do `CLAUDE.md`. A `description` é a superfície de triggering — é só
+por ela que o Claude decide invocar a skill —, e descrição longa demais dilui o sinal e
+pode ser **cortada em silêncio** na lista `/skills`, piorando justamente o que ela deveria
+melhorar.
+
+### Changed
+
+- **Description encurtada de 670 para 476 chars**, espelhada nos três arquivos
+  (`SKILL.md`, `plugin.json`, `marketplace.json`). Encurtada **em vez de somada**: o que
+  saiu foi as checagens pré-cutover sem credencial (authorize probe, SPA bundle grep), instâncias prod+staging e migração de usuários — detalhe que continua no corpo da skill, onde é útil de fato.
+  Os sinais de disparo (o que a skill faz + os diferenciais que a distinguem das vizinhas)
+  foram preservados.
+
 ## [0.11.0] — 2026-08-08
 
 Lições de um cutover de produção real (segundo Zitadel, aplicação nova no mesmo IdP).

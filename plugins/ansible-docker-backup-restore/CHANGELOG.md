@@ -2,6 +2,22 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.3.1] — 2026-08-26
+
+Higiene de `description`, sem mudança de comportamento: o texto tinha **593 chars**,
+acima do cap de 500 do `CLAUDE.md`. A `description` é a superfície de triggering — é só
+por ela que o Claude decide invocar a skill —, e descrição longa demais dilui o sinal e
+pode ser **cortada em silêncio** na lista `/skills`, piorando justamente o que ela deveria
+melhorar.
+
+### Changed
+
+- **Description encurtada de 593 para 473 chars**, espelhada nos três arquivos
+  (`SKILL.md`, `plugin.json`, `marketplace.json`). Encurtada **em vez de somada**: o que
+  saiu foi o detalhe de como a prova é feita (`gzip -t`, blocos COPY, registro conhecido) e a desconfiança do healthcheck do container de backup — detalhe que continua no corpo da skill, onde é útil de fato.
+  Os sinais de disparo (o que a skill faz + os diferenciais que a distinguem das vizinhas)
+  foram preservados.
+
 ## [1.3.0] — 2026-08-08
 
 Sexta sessão, e o achado veio de fora: durante um deploy de produção **de outro

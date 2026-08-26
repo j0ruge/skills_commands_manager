@@ -2,7 +2,7 @@
 name: codereview
 metadata:
   version: 1.12.0
-description: Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets (GitGuardian-equivalent regex), docs/OpenAPI sync, contract drift in tests (exported const grew without its assertion updated), and **dead code** via a parallel whole-repo sweep — unused exports, orphaned files, unreachable code (knip/ts-prune/vulture or grep) — with cleanup recs. Final report always includes the Overall Grade table + Recommended Actions. Stack-agnostic with TypeScript/React defaults, dotnet preset. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, unused exports, cleanup, code health.
+description: "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets, docs/OpenAPI drift, contract drift in tests, and dead code via a parallel whole-repo sweep (unused exports, orphaned files, unreachable code). Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, code health."
 ---
 
 ## User Input

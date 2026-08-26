@@ -1,5 +1,21 @@
 # Changelog — `wsl-windows-onboarding`
 
+## [0.4.1] — 2026-08-26
+
+Higiene de `description`, sem mudança de comportamento: o texto tinha **871 chars**,
+acima do cap de 500 do `CLAUDE.md`. A `description` é a superfície de triggering — é só
+por ela que o Claude decide invocar a skill —, e descrição longa demais dilui o sinal e
+pode ser **cortada em silêncio** na lista `/skills`, piorando justamente o que ela deveria
+melhorar.
+
+### Changed
+
+- **Description encurtada de 871 para 468 chars**, espelhada nos três arquivos
+  (`SKILL.md`, `plugin.json`, `marketplace.json`). Encurtada **em vez de somada**: o que
+  saiu foi a enumeração longa de gatilhos (13 frases, incluindo mensagens de erro literais como `Remove-Item nul Incorrect function`) e o detalhe do `~/.bashrc` não migrar para `~/.zshrc` — detalhe que continua no corpo da skill, onde é útil de fato.
+  Os sinais de disparo (o que a skill faz + os diferenciais que a distinguem das vizinhas)
+  foram preservados.
+
 ## [0.4.0] — 2026-06-06
 
 ### Added

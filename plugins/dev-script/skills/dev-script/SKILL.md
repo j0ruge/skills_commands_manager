@@ -1,8 +1,8 @@
 ---
 name: dev-script
 metadata:
-  version: 0.5.1
-description: Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free port discovery for foreign-owned ports / kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards (CRLF .env reads, cross-platform node_modules). Triggers — dev script, single-command dev, local stack, mkcert, kill port, find available port, port discovery, runtime drift, script hangs, strictPort, CRLF .env, Failed to load native binding, yarn cmdtest collision.
+  version: 0.5.2
+description: "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free for foreign-owned ports, kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards. Triggers — dev script, single-command dev, local stack, mkcert, kill port, port discovery, script hangs, CRLF .env, native binding error."
 ---
 
 # dev.script — Local Dev Stack Launcher Generator

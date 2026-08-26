@@ -1,8 +1,8 @@
 ---
 name: whisper-preprocess
 metadata:
-  version: 1.0.0
-description: "Audio preprocessing and transcription pipeline using ffmpeg + OpenAI Whisper. Use this skill whenever the user wants to transcribe audio or video files (lectures, meetings, podcasts, interviews), improve audio quality before transcription, remove silence from recordings, or mentions Whisper, speech-to-text, or transcricao. Also trigger when the user has MKV, MP4, WAV, M4A, or other media files they want converted to text. This skill handles the full pipeline: audio extraction, silence removal, voice enhancement, segmentation, and Whisper transcription. Works 100% offline."
+  version: 1.0.1
+description: "Audio preprocessing and transcription with ffmpeg + OpenAI Whisper, fully offline — extraction, silence removal, voice enhancement, segmentation, then transcription. Handles MKV, MP4, WAV, M4A and other media. Triggers — transcribe audio or video, lecture/meeting/podcast/interview transcript, speech-to-text, transcrição, Whisper, remove silence, improve audio before transcription, convert media to text."
 ---
 
 # Whisper Preprocess Pipeline

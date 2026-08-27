@@ -117,8 +117,8 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.21.1",
-      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Deep self-hosted runner runbook, deploy-time proof (rollback with re-smoke, backup gates that check the dump not the healthcheck), and Actions minute economics — per-job rounding, self-hosted as the free lever. Triggers — CI/CD, GitHub Actions, Actions minutes, GHCR auth, self-hosted runner, deploy queued, rollback, backup gate, nginx envsubst.",
+      "version": "2.22.0",
+      "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Self-hosted runner runbook — including what breaks when you move a billed job onto one — deploy-time proof (rollback with re-smoke, backup gates that check the dump), and Actions minute economics. Triggers — CI/CD, GitHub Actions, job never starts, Actions minutes/quota, GHCR auth, self-hosted runner, deploy queued, rollback, backup gate.",
       "category": "development",
       "keywords": [
         "cicd",

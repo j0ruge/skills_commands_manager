@@ -85,16 +85,28 @@ build-and-push:
   runs-on: [self-hosted, staging]    # era: ubuntu-latest
 ```
 
-Verifique antes:
+⚠️ **A migração custa mais do que trocar o `runs-on`.** O runner hospedado é uma imagem curada
+com toolchain pré-instalada e uma topologia de rede específica; o self-hosted não é nada disso.
+Numa migração real medida, o job levou **cinco execuções** para ficar verde — e o que quebrou não
+foi o que se esperava. **`references/self-hosted-job-migration.md` é o runbook dessa parte**; o
+resumo, na ordem de risco medida:
 
-- **Service containers exigem Docker no runner** (`services: postgres:` etc.). Host que roda deploy
-  com Docker atende, mas é o ponto de falha mais provável da migração.
-- O **build da imagem passa a usar CPU/disco do host de deploy**. Em compensação o cache de camadas
-  fica quente, e o `docker push` sai da rede do runner hospedado.
-- **Um runner executa um job por vez.** Jobs que rodavam em paralelo no hospedado passam a
-  serializar. Se já havia `needs:` encadeando, o wall-clock muda pouco.
-- Replique qualquer step de **limpeza de workspace** que o job de deploy já tenha (o `.git`
-  corrompido entre execuções é recorrente — ver `troubleshooting-shared.md`).
+| # | Verificar | Sintoma |
+| - | --------- | ------- |
+| 1 | **Toolchain que o hospedado dá de graça** (`yarn`, `pnpm`, `jq`, `ss`, `ip`) | `setup-node` com `cache: 'yarn'` morre com `Unable to locate executable file: yarn` — a action invoca o binário para montar a chave do cache |
+| 2 | **Como o job alcança um `services:` container** | `P1001` / `Connection refused` **com o container `healthy`** — se o runner for conteinerizado, `127.0.0.1` é o loopback dele, não o host onde `-p` publicou |
+| 3 | **Versão do runner**, se pensar em `container:` | `exec: "/__e/node24/bin/node": no such file` — o `checkout` nem executa |
+| 4 | Step de **limpeza de workspace** replicado | `fatal: missing blob object` no `checkout` (ver `troubleshooting-shared.md`) |
+| 5 | Docker disponível para `services:` | raro na prática: no host que já faz deploy, `Initialize containers` costuma passar de primeira |
+| 6 | **Um runner executa um job por vez** | jobs antes paralelos serializam; com `needs:` encadeado o wall-clock muda pouco |
+
+O **build da imagem passa a usar CPU/disco do host de deploy**. Em compensação o cache de camadas
+fica quente e o `docker push` sai da rede do runner hospedado.
+
+Uma nota operacional que vale por si: **"movido para self-hosted" não é "funciona em
+self-hosted".** Um workflow cujo `runs-on` foi trocado e que ainda não executou carrega
+configuração não testada — se você migrar `ci.yml` e o job `ci` do `cd-staging.yml`, corrija os dois
+em paralelo, senão o merge redescobre cada armadilha uma por vez.
 
 Rollout: **staging primeiro**, observar um deploy real, só então produção.
 
@@ -113,9 +125,21 @@ on:
     paths-ignore: ['**/*.md', 'docs/**', 'specs/**', '.claude/**']
 ```
 
-Em repositório com documentação viva (ADRs, notas, specs, artefatos de QA) a metade dos commits
-pode ser só `.md`. **Nuance da lição 57:** `paths-ignore` só pula quando **todos** os arquivos do
-push casam — um commit que toque código junto com docs continua rodando tudo.
+🔴 **A economia em `pull_request` é bem menor do que parece — e esta reference já disse o
+contrário.** O filtro tem semânticas diferentes por evento:
+
+| Evento | O que o filtro avalia |
+| ------ | --------------------- |
+| `push` | os arquivos **daquele push** — um commit só de docs pula, mesmo num branch cheio de código |
+| `pull_request` | o diff **INTEIRO** do PR (`base...head`), não o último push |
+
+Ou seja: num PR que toca código, **todo** commit posterior dispara o CI, inclusive um que mexa só em
+`.md`. Medido: um commit tocando apenas `.claude/**` e `docs/**` disparou o run completo num PR de
+148 arquivos. O filtro em `pull_request` só pula um PR cujos arquivos sejam **todos** documentação —
+raro. A alavanca real está no `push` (não redeployar por commit de doc), e é lá que ela paga.
+
+Em repositório com documentação viva (ADRs, notas, specs, artefatos de QA) metade dos commits pode
+ser só `.md`, o que torna o ganho no `push` significativo mesmo assim.
 
 Não aplique em workflow disparado por **tag** (`on.push.tags`): filtro de path com tag tem semântica
 confusa e o deploy de release não deve ser pulável.
@@ -171,13 +195,75 @@ histórico mostra várias execuções seguidas falhando no mesmo passo barato.
 
 ---
 
-## 5. Checklist rápido
+## 5. Quando a cota acaba de verdade — o job que não parece bloqueio
+
+Tudo acima é sobre gastar menos. Esta seção é sobre o dia em que a conta fecha: pagamento recusado,
+ou spending limit atingido. **O sintoma não se parece com cobrança** e custa uma investigação
+inteira se você não o reconhece.
+
+### Assinatura
+
+Um job em runner **hospedado** aparece assim:
+
+| Campo | Valor |
+| ----- | ----- |
+| `conclusion` | `failure` |
+| `steps` | **lista vazia** |
+| `runner_name` | **vazio** |
+| duração | ~3 segundos |
+| log do job | **não existe** — `gh run view --log-failed` responde `log not found` |
+
+Três jobs "falhando" ao mesmo tempo, em ~3s, num commit que passava ontem, tem essa cara — e a
+leitura instintiva é "quebrou o build". Não quebrou: **o job nunca iniciou**.
+
+### Onde a mensagem realmente está
+
+O log não existe porque nada rodou. A explicação vive nas **annotations do check-run**, que nenhum
+comando de log alcança:
+
+```bash
+gh api /repos/<owner>/<repo>/check-runs/<job_id>/annotations \
+  -q '.[] | [.annotation_level, .message] | @tsv'
+```
+
+```
+failure   The job was not started because recent account payments have failed or your
+          spending limit needs to be increased. Please check the 'Billing & plans'
+          section in your settings.
+```
+
+A mensagem é ambígua de propósito — cobre pagamento recusado **e** limite de gasto, que têm curas
+diferentes. Só a página de billing da conta distingue.
+
+### O que continua funcionando
+
+**Runners self-hosted não passam pela cota**, então jobs neles seguem rodando. Isso torna a
+alavanca §3a mais do que economia: com o hospedado bloqueado, mover o gate de CI para self-hosted é
+o que faz o gate **existir**. Um `ci.yml` em `ubuntu-latest` sob bloqueio não reprova nada — ele
+simplesmente não roda, e o PR fica sem rede de segurança sem que ninguém perceba.
+
+⚠️ **Ordem de rollout sob bloqueio:** migre e observe **staging** primeiro. E não esqueça o
+`cd-production.yml` — se ele ficar em `ubuntu-latest`, o bloqueio só aparece no dia da tag de
+release, que é o pior momento possível para descobrir.
+
+### Diagnóstico em uma linha
+
+```bash
+gh api "/repos/<o>/<r>/actions/runs/<id>/jobs" \
+  -q '.jobs[] | [.name, (.runner_name // "VAZIO"), (.steps|length), .conclusion] | @tsv'
+```
+
+`VAZIO` + `0` steps = bloqueio de conta. `runner_name` preenchido = falha real, vá ler o log.
+
+## 6. Checklist rápido
 
 - [ ] O repositório é privado? (se público, não há o que economizar)
 - [ ] Medi por job com `runner_group_name`, sem confiar em `billable.total_ms`?
 - [ ] Há runner self-hosted ocioso que poderia rodar `build`/`ci`?
-- [ ] `paths-ignore` está nos gatilhos de **PR e push**, não só num deles?
+- [ ] `paths-ignore` está no gatilho de **push** (onde ele paga)? Em `pull_request` ele só pula um PR 100% documentação — ver §3b
 - [ ] O mesmo SHA roda CI mais de uma vez? Quantas?
 - [ ] Há job em macOS/Windows (multiplicador 10x/2x)?
 - [ ] O cache tem entradas ativas, ou está expirando entre execuções?
 - [ ] Falhas repetidas de lint/format no histórico sugerem gate local ausente?
+- [ ] Antes de migrar um job para self-hosted, passei o pré-voo de `self-hosted-job-migration.md`?
+- [ ] Se um job "falhou" em ~3s sem steps e sem runner: conferi as **annotations** antes de culpar o código? (§5)

@@ -1,7 +1,7 @@
 ---
-description: Promote code to staging (and on to production) through the repo's real CD pipeline. Derives the trigger branch from the workflow's `on.push.branches` instead of assuming — pushing the wrong branch can deploy production by accident. Waits for CI green on the source commit, promotes by PR merge commit, then watches the run to completion. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.
+description: Promote code to staging (and on to production) through the repo's real CD pipeline. Reads each workflow's `on.push.branches` and `runs-on` instead of assuming — the wrong branch can deploy production, and a hosted job under a billing block never starts. Waits for CI green on the exact commit, promotes by PR merge commit, watches the run, then proves the deploy by the data. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.
 metadata:
-  version: 2.0.0
+  version: 2.1.0
 ---
 
 ## Deploy to Staging
@@ -56,6 +56,37 @@ A useful confirmation, since workflow headers usually state the intent in prose:
 head -12 .github/workflows/cd-*.y*ml
 ```
 
+### Step 0b — Will the target pipeline actually *run*? Read `runs-on` at the promoted commit
+
+Knowing which branch triggers staging is not the same as knowing the job will start. Print the
+runner of every job in the target workflow **as it exists in the commit you are promoting** —
+GitHub runs the workflow file from the pushed commit, so the version on the target branch today
+may not be the one that executes:
+
+```bash
+git show "origin/$SOURCE:.github/workflows/cd-staging.yml" | grep -n 'runs-on'
+```
+
+Hosted labels (`ubuntu-latest`, `windows-*`, `macos-*`) consume the org's Actions quota. When
+the org is over its spending limit or a payment failed, a hosted job **never starts** — and
+nothing tells you. The signature, measured on a real repo: job `conclusion: failure`, **zero
+steps**, empty `runner_name`, ~3 s, and `gh run view --log-failed` answers `log not found`. It
+reads as a broken build. The actual message lives only in the check-run annotations:
+
+```bash
+gh api /repos/<owner>/<repo>/check-runs/<job_id>/annotations -q '.[] | .message'
+# "The job was not started because recent account payments have failed or your spending limit..."
+```
+
+Why this belongs in a *deploy* command: in that repo the staging pipeline had silently not run
+for two months — the last green deploy was the last one before the block — while PRs kept being
+merged, one of them with zero CI. Self-hosted jobs bypass the quota entirely. So **a promotion is
+only safe when the `cd-*.yml` at the promoted commit runs on runners that will pick the job up**;
+if the promotion itself moves the jobs to self-hosted, that very push is the one that revives the
+pipeline (see Step 4 on workflow changes). If it does not, say so before pushing anything: the
+merge would land, the deploy would not, and the environment would keep serving the old image
+while everything looks green.
+
 ### Step 1 — Working tree must be clean
 
 ```bash
@@ -95,6 +126,15 @@ Local checks and CI are not the same thing: CI runs integration suites,
 containers and matrix jobs your laptop skips. Promoting while CI is still
 running means finding out in the deploy what a cheap wait would have told you.
 
+First make sure a run *can* exist. A PR with merge conflicts gets **no `pull_request` run at
+all** — GitHub cannot build the merge ref, so it does not even queue the workflow. Waiting for
+green there waits forever, and the last green run you find belongs to an older commit:
+
+```bash
+gh pr view <number> --json mergeable,mergeStateStatus -q '[.mergeable, .mergeStateStatus] | @tsv'
+# CONFLICTING / DIRTY  → reconcile with the target first (Step 4), then come back
+```
+
 ```bash
 SOURCE=$(git rev-parse --abbrev-ref HEAD)
 git fetch origin
@@ -111,6 +151,10 @@ gh run watch <run-id> --exit-status --interval 20
 ```
 
 Red CI stops the promotion.
+
+A run that is red with **zero steps** is not red CI — it is the quota block from Step 0b, and the
+same block will stop the target pipeline too. Do not read it as "the tests failed"; read the
+annotations.
 
 ### Step 4 — Sensors: what moves, and does it move the pipeline itself?
 
@@ -130,7 +174,18 @@ from previous promotions, and `--no-merges` filters those out. Empty output is
 the healthy case — the target has no content of its own and the merge is clean.
 Real commits there mean someone committed straight to the environment branch. Do
 not force past it: merge the target **back** into the source first (a merge
-commit, not a squash), then promote. Squashing that reconciliation rewrites the
+commit, not a squash), then promote. Measure the conflicts before touching the
+working tree — `git merge-tree --write-tree --name-only origin/$TARGET HEAD` lists
+exactly the files that will conflict, so you know whether it is two adjacent
+`import` lines or a real disagreement before you start.
+
+One more thing that reconciliation brings in: **the target's debt becomes your
+gate.** CI checks the whole repository, not your diff. When the content merged
+back was itself never gated (a PR merged during a quota block, say), its
+formatting or lint failures now fail *your* promotion's CI — 17 files red on
+prettier from the other PR is what it looked like. It is not your regression, but
+it is yours to clear; do it in a separate commit so the merge commit stays a
+pure reconciliation and the fix is easy to drop if upstream cleans it up. Squashing that reconciliation rewrites the
 shared history and guarantees the same conflict returns on the next promotion.
 
 The third command answers a question people forget to ask: if the promotion
@@ -178,6 +233,11 @@ gh run list --branch "$TARGET" --limit 3 \
 gh run watch <run-id> --exit-status --interval 20
 ```
 
+If no run appears, check the workflow's `paths-ignore` before assuming the worst: a push whose
+files **all** match the ignore list (docs, `.claude/**`, specs) does not trigger the pipeline,
+and that is the intended outcome — nothing to deploy. A promotion that carries code and still
+produces no run is the Step 0b case.
+
 ### Step 7 — Report the outcome honestly
 
 On failure, show the failing step and say the deploy did not happen:
@@ -191,8 +251,25 @@ On success, report the run URL and — this is the part worth stating explicitly
 having skipped its smoke step is not the same as a verified deploy; check that
 the smoke/health step actually ran rather than being skipped.
 
-The work is complete only when the pipeline finishes successfully. Do not exit
-silently on failure.
+Green is the pipeline's opinion of itself. When the workflow has no smoke step — many
+do not — prove the deploy with the data it should have changed, at the environment it
+should have changed it in:
+
+```bash
+# 1. Migrations landed where the app reads from (Prisma shown; use the ORM's equivalent)
+DATABASE_URL="<target env DB, read-only credentials>" npx prisma migrate status
+# 2. The container running now was created by THIS run, not last month's
+ssh <host> 'docker inspect <container> --format "{{.Created}} {{.Config.Image}}"'   # compare with the run's timestamps
+# 3. The public hostname answers with the new build
+curl -s -o /dev/null -w '%{http_code}\n' https://<staging hostname>/
+```
+
+Measured on one deploy: four migrations stamped 18:49:18, container `Created` 18:49:18,
+API answering `401 Access Token required` — that is a verified deploy. A green run whose
+container is still `Up 5 days` is not.
+
+The work is complete only when the pipeline finishes successfully **and** the proof
+above holds. Do not exit silently on failure.
 
 ### Promoting to production
 

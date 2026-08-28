@@ -2,6 +2,39 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [2.1.0] - 2026-08-28
+
+### Adicionado (a promoção passa a checar se o pipeline-alvo vai RODAR, não só qual branch o dispara)
+
+- **Step 0b — `runs-on` no commit promovido.** Numa sessão real, o `cd-staging.yml` de
+  `develop` tinha o job `ci` em `ubuntu-latest` e o org estava com o Actions hospedado
+  bloqueado por cobrança: o job **nunca iniciava** (assinatura: `failure` com zero steps,
+  `runner_name` vazio, ~3 s, `log not found`; a mensagem só aparece nas annotations do
+  check-run). Staging ficou dois meses sem deploy, servindo a imagem antiga, enquanto PRs
+  eram mergeados — um deles com zero CI. A skill agora lê o `runs-on` do workflow **na versão
+  do commit promovido** e diz, antes do push, se a promoção vai deployar ou só mergear. Se a
+  própria promoção move os jobs para self-hosted, é esse push que revive o pipeline.
+- **Step 3 — PR em conflito não tem run de `pull_request`.** O GitHub não cria a merge ref,
+  então não enfileira o workflow; "esperar o verde" esperava para sempre e o último verde
+  encontrado era de um commit antigo. Checar `mergeable` vem antes de procurar o run. E um run
+  vermelho com zero steps é o bloqueio de cobrança, não teste falhando.
+- **Step 4 — a dívida do alvo vira o seu gate.** Ao reconciliar com o alvo, o conteúdo que
+  ele traz entra no CI da promoção inteira: 17 arquivos fora do prettier vindos de um PR
+  mergeado sem gate derrubaram o `Lint`. Não é regressão sua, mas é sua para limpar — em
+  commit separado, para o merge commit continuar reconciliação pura. Junto:
+  `git merge-tree --write-tree --name-only` mede os conflitos antes de tocar o worktree.
+- **Step 6 — `paths-ignore` em push.** Promoção só de docs não gera run no alvo, e isso é o
+  comportamento esperado, não falha; promoção com código e sem run é o caso do Step 0b.
+- **Step 7 — prova pelo dado.** Verde é a opinião do pipeline sobre si mesmo. Sem smoke step,
+  provar no ambiente-alvo: `migrate status` no banco de destino, `docker inspect … Created`
+  comparado ao horário do run, HTTP no hostname público. Um run verde com container
+  `Up 5 days` não é deploy.
+
+### Alterado
+
+- Descrição espelhada (SKILL/`plugin.json`/`marketplace.json`) enxuta, 491 chars: ganha a
+  frase sobre `runs-on` e o bloqueio de cobrança; o detalhe fica no corpo do comando.
+
 ## [2.0.0] - 2026-08-10
 
 ### Corrigido (CRÍTICO — a skill podia deployar produção achando que ia para staging)

@@ -1,8 +1,8 @@
 {
   "name": "deploy",
-  "description": "Promote code to staging (and on to production) through the repo's real CD pipeline. Derives the trigger branch from the workflow's `on.push.branches` instead of assuming — pushing the wrong branch can deploy production by accident. Waits for CI green on the source commit, promotes by PR merge commit, then watches the run to completion. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.",
+  "description": "Promote code to staging (and on to production) through the repo's real CD pipeline. Reads each workflow's `on.push.branches` and `runs-on` instead of assuming — the wrong branch can deploy production, and a hosted job under a billing block never starts. Waits for CI green on the exact commit, promotes by PR merge commit, watches the run, then proves the deploy by the data. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.",
   "author": { "name": "Chewiesoft" },
-  "version": "2.0.0",
+  "version": "2.1.0",
   "category": "development",
   "keywords": ["deploy", "staging", "production", "cd", "pipeline", "git-flow", "github-actions"],
   "platforms": ["claude-code", "cursor"],

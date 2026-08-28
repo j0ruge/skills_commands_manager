@@ -2,6 +2,12 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-08-28 — Ler o `Config.Image`, e contar o backlog antes de promover — bump 2.1.0 → [2.1.1]
+
+**O quê:** Step 7 passa a dizer como **ler** os dois campos do `docker inspect`, e o Step 4 ganha a contagem do backlog com a consequência de um CD longamente parado.
+
+**Por quê:** o Step 7 já mandava inspecionar `{{.Created}} {{.Config.Image}}`, mas só explicava o `Created`. Medido num host real: o container servia `dsr-web:latest` — **sem prefixo de registry** — enquanto o compose declarava `ghcr.io/<org>/<img>:staging`. Ou seja, aquilo tinha sido buildado à mão no host e o pipeline **nunca** havia entregado ali; por semanas "container up + hostname 200" foi lido como pipeline funcionando. O campo já estava no comando; faltava a leitura. No Step 4, a mesma investigação mostrou por que contar o backlog importa: com o CD parado por seis semanas, o primeiro deploy verde carregaria 15 commits **e** trocaria a imagem feita à mão por uma de pipeline nunca executada naquele ambiente — duas novidades no mesmo instante, e nenhuma forma de separá-las se algo quebrar depois.
+
 ## [2.1.0] - 2026-08-28
 
 ### Adicionado (a promoção passa a checar se o pipeline-alvo vai RODAR, não só qual branch o dispara)

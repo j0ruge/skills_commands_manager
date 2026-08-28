@@ -36,6 +36,10 @@ self-hosted".** Um workflow que teve o `runs-on` trocado e ainda não executou c
 não testada. Se você mover `ci.yml` e o job `ci` do `cd-staging.yml` juntos, corrija os dois em
 paralelo — senão o merge descobre cada armadilha de novo, uma por vez.
 
+> **§1–§5b tratam do runner. §6–§9 tratam do que aparece quando o runner passa a funcionar.**
+> Se a migração está saindo de um período de CI bloqueado por cota, o job pode ficar verde de
+> primeira e o **repositório** estar vermelho — comece pelo §6, não pela tabela acima.
+
 ---
 
 ## §1. O runner não tem `yarn` — e o `cache:` do `setup-node` morre antes do `install`
@@ -258,7 +262,141 @@ workflow irmão verde com jobs byte-idênticos, mais o CI do PR que trouxe a mud
 
 ---
 
-## §6. A lição que generaliza
+## §6. A migração desvenda a dívida do repositório — e o primeiro verde não está a um passo
+
+Tudo acima parte do mesmo modelo: **o job quebra porque falta algo no runner**. Existe outra classe
+de falha, e ela aparece justamente quando a migração dá certo.
+
+Medido numa migração real: o runner pegou o job de primeira e o `Type Check` ficou verde em 2m17s.
+O que estava vermelho era **o repositório** — 5 testes e 1 erro de ESLint que entraram enquanto o
+Actions hospedado estava bloqueado por cota. A aritmética é desconfortável: um CI bloqueado não
+reprova nada (§5 e `ci-cost-minutes.md` §5), mas os merges continuaram acontecendo. Quanto mais
+tempo durou o bloqueio, mais vermelho se acumulou — e a migração é o que revela tudo de uma vez, no
+PR que só queria trocar `runs-on`.
+
+**Triagem: dois PRs, não um.** Deixe o PR de pipeline ser só pipeline. Ele vai ficar vermelho, e
+isso é honesto: ele *revela* a dívida, não a criou. Abra um segundo PR para os defeitos. Duas
+razões práticas — o histórico fica legível depois ("quem quebrou isto" não vira "quem mexeu no
+runner"), e se a correção do defeito for polêmica a mudança de pipeline não afunda junto. Diga a
+**ordem de merge** no corpo do PR: o CI do PR de defeitos ainda vai falhar no que o PR de pipeline
+conserta.
+
+**Prove que é preexistente antes de afirmar.** Duas medições baratas, nessa ordem:
+
+```bash
+git diff origin/<base>...HEAD --stat        # seu PR só tocou .github/workflows/?
+git switch --detach origin/<base> && <comando de lint/test>   # reproduz sem a sua mudança?
+```
+
+Sem isso a conversa vira "sua migração quebrou o build", e você gasta a rodada seguinte defendendo
+a mudança em vez de consertar o repo.
+
+**E não presuma que teste vermelho = código quebrado.** Dos 5 vermelhos aqui, 2 eram defeito real
+(uma guarda de segurança dependente de plataforma) e **3 eram setup de teste que contradizia a
+própria asserção** — inclusive um assert impossível de satisfazer, porque o `beforeEach` já criava o
+registro cuja ausência o teste exigia. A investigação começou supondo defeito de produção e terminou
+provando o contrário; o que decidiu foi um teste descartável de 20 linhas imprimindo o estado do
+banco logo após o setup, não a leitura do código. Faz sentido: enquanto o CI esteve cego, os testes
+introduzidos naquela janela **também nunca executaram** — são tão candidatos a estar errados quanto
+o código que cobrem.
+
+---
+
+## §7. Sem `.env` no CI, um módulo que faz `throw` no import derruba a suíte inteira
+
+O `.env` é gitignored — corretamente — então o checkout do CI não tem nenhum. Se algum módulo faz
+`throw` no **nível do módulo** quando falta uma variável, a falha não é "1 teste falhou": é todo
+arquivo de teste que o importa transitivamente morrendo no import.
+
+```
+Error: [PortModel] Missing required environment variable VITE_API_URL.
+ ❯ src/models/PortModel.ts:3:9
+```
+
+A assinatura que economiza tempo: **o mesmo erro repetido em arquivos de teste sem relação entre
+si, nomeando um módulo em vez de um teste**. Aqui eram 9 módulos e centenas de linhas idênticas.
+
+Fix — `env` no nível do job:
+
+```yaml
+  test:
+    runs-on: [self-hosted, staging]
+    env:
+      VITE_API_URL: http://localhost:3003
+      VITE_GOOGLE_CLIENT_ID: ci-placeholder
+```
+
+⚠️ Nem todo valor é livre — ver §8.
+
+Por que isso não aparecia antes: **esta classe não é específica de self-hosted**; falharia igual em
+`ubuntu-latest`. Ela surge *no momento da migração* porque é quando os testes voltam a rodar de
+verdade.
+
+**Descubra a lista completa de uma vez**, em vez de uma rodada de CI por variável:
+
+```bash
+grep -rhoP "Missing required environment variable \K[A-Z_]+" src/ | sort -u
+# ou reproduza o ambiente do CI localmente:
+mv .env .env.bak && npx vitest run; mv .env.bak .env
+```
+
+A execução local custa segundos; cada rodada de CI custa minutos, um push e a sua atenção.
+
+---
+
+## §8. Snapshot que grava valor de ambiente força o CI a reproduzir o valor EXATO
+
+Depois do §7 a suíte parou de explodir — e 2 testes de snapshot continuaram falhando, com
+`Snapshot ... mismatched`, mensagem que não diz absolutamente nada sobre ambiente.
+
+Causa: o componente renderiza um `href` a partir de `import.meta.env.VITE_*`, e o `.snap`
+**versionado** guardou o valor renderizado. Qualquer outro valor falha a comparação. Ou seja: essas
+variáveis **não** são placeholder livre como as do §7 — elas têm exatamente um valor aceitável, e
+ele está no `.snap`.
+
+Como descobrir em um comando, em vez de por eliminação:
+
+```bash
+grep -oP 'href="\K[^"]*' src/**/__snapshots__/*.snap | sort -u   # compare com o .env
+```
+
+Duas saídas, e vale dizer qual você escolheu: **injetar os mesmos valores do `.snap`** (rápido,
+mantém o acoplamento) ou **desacoplar o componente do env no teste** (mock/fixture; remove a
+classe). Qualquer que seja, deixe um comentário no bloco `env` dizendo que o valor está amarrado ao
+`.snap` — senão a próxima pessoa "limpa o placeholder" e quebra o CI sem encostar no teste.
+
+---
+
+## §9. Job de GATE muda de natureza ao migrar — o que vigia o runner não pode rodar nele
+
+Esta é traiçoeira porque a mudança de YAML é idêntica à de qualquer outro job, e o job **continua
+passando**. O que mudou foi o que o verde dele significa.
+
+Um `preflight` que barra o deploy quando não há runner com o label X online (lição 51) existe para
+transformar um `queued` silencioso em falha rápida. Mova-o para `[self-hosted, X]` e ele fica
+**tautológico**: com o runner offline, o próprio preflight fica `queued` — exatamente o silêncio que
+ele foi escrito para quebrar.
+
+O que decide é **qual runner vigia qual**:
+
+| Gate | Roda em | Vigia | Sobrevive à migração? |
+| ---- | ------- | ----- | --------------------- |
+| preflight de staging | `[self-hosted, staging]` | label `staging` | ❌ tautológico — perde o fail-fast |
+| preflight de produção | `[self-hosted, staging]` | label `production` | ✅ máquinas diferentes, fail-fast intacto |
+| watchdog agendado (lição 51) | `ubuntu-latest` | qualquer label | ✅ — e por isso **fica** no hospedado |
+
+O watchdog é o que **não** deve migrar, nem sob bloqueio de cota. Sob bloqueio ele está morto — mas
+alarme morto é melhor que alarme verde que não enxerga, e ele é o que sobra da camada de detecção
+quando o preflight do deploy perde o fail-fast.
+
+Na prática, migrar o preflight de staging costuma **ainda** ser a decisão certa: com o `ci` e o
+`build-and-push` bloqueados por cota, deixá-lo no hospedado faz o CD inteiro morrer antes do
+`deploy` (ele é `needs:` dele). Só não deixe o arquivo afirmando algo que ele não faz mais — o
+comentário no job é o único lugar onde a próxima pessoa vai ler o que aquele gate ainda garante.
+
+---
+
+## §10. A lição que generaliza
 
 Foram **quatro rodadas de CI gastas em hipóteses lidas do YAML** (IPv6, `container:`, ordem dos
 candidatos) contra **uma** que respondeu: a que fez o job descrever o próprio ambiente.

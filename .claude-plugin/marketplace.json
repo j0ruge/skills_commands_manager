@@ -117,7 +117,7 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.23.0",
+      "version": "2.24.0",
       "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Self-hosted runner runbook — what breaks when you move a billed job onto one, which runner to trust for production — deploy-time proof (rollback with re-smoke, backup gates that check the dump), and Actions minute economics. Triggers — CI/CD, GitHub Actions, job never starts, Actions minutes/quota, GHCR auth, self-hosted runner, deploy queued, rollback, backup gate.",
       "category": "development",
       "keywords": [
@@ -204,7 +204,7 @@
     {
       "name": "deploy",
       "source": "./plugins/deploy",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "description": "Promote code to staging (and on to production) through the repo's real CD pipeline. Reads each workflow's `on.push.branches` and `runs-on` instead of assuming — the wrong branch can deploy production, and a hosted job under a billing block never starts. Waits for CI green on the exact commit, promotes by PR merge commit, watches the run, then proves the deploy by the data. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.",
       "category": "development",
       "keywords": [

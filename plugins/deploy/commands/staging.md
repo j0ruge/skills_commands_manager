@@ -1,7 +1,7 @@
 ---
 description: Promote code to staging (and on to production) through the repo's real CD pipeline. Reads each workflow's `on.push.branches` and `runs-on` instead of assuming — the wrong branch can deploy production, and a hosted job under a billing block never starts. Waits for CI green on the exact commit, promotes by PR merge commit, watches the run, then proves the deploy by the data. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.
 metadata:
-  version: 2.1.0
+  version: 2.1.1
 ---
 
 ## Deploy to Staging
@@ -159,7 +159,8 @@ annotations.
 ### Step 4 — Sensors: what moves, and does it move the pipeline itself?
 
 ```bash
-# Content this promotion carries (source → target)
+# Content this promotion carries (source → target) — count it, don't just skim it
+git log --no-merges origin/$TARGET..origin/$SOURCE --oneline | wc -l
 git log --no-merges origin/$TARGET..origin/$SOURCE --oneline
 
 # Content that exists ONLY on the target — the one that bites
@@ -187,6 +188,15 @@ prettier from the other PR is what it looked like. It is not your regression, bu
 it is yours to clear; do it in a separate commit so the merge commit stays a
 pure reconciliation and the fix is easy to drop if upstream cleans it up. Squashing that reconciliation rewrites the
 shared history and guarantees the same conflict returns on the next promotion.
+
+Count the first one before you promote. A CD that has been failing for a while (Step 0b) turns
+the next successful run into something that is **not incremental**: the backlog ships all at once.
+Measured on one repo — the pipeline had been dead for six weeks, and the first green deploy carried
+15 commits including an offline-storage feature, *and* replaced a hand-built image with a pipeline
+one that had never run in that environment. Both halves are new at the same moment, so a failure
+afterwards has two candidate causes and no way to separate them. Say the number out loud in the
+promotion, and treat a long backlog as a reason to have the rollback target ready before you start,
+not after.
 
 The third command answers a question people forget to ask: if the promotion
 changes `cd-*.yml`, which pipeline is about to run — the old one or the new one?
@@ -260,6 +270,11 @@ should have changed it in:
 DATABASE_URL="<target env DB, read-only credentials>" npx prisma migrate status
 # 2. The container running now was created by THIS run, not last month's
 ssh <host> 'docker inspect <container> --format "{{.Created}} {{.Config.Image}}"'   # compare with the run's timestamps
+#    Read BOTH fields. `Created` catches a stale container; `Config.Image` catches a stranger one:
+#    an image name with no registry prefix (`dsr-web:latest`, not `ghcr.io/<org>/<img>:staging`)
+#    means the container was built by hand on the host and the pipeline has never deployed here at
+#    all. Compare it against the `image:` the compose file declares — measured once, they differed,
+#    and "container up + hostname 200" had been reading as a working pipeline for weeks.
 # 3. The public hostname answers with the new build
 curl -s -o /dev/null -w '%{http_code}\n' https://<staging hostname>/
 ```

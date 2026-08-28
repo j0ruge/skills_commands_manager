@@ -222,6 +222,42 @@ gh api "/repos/<o>/<r>/actions/runs/<id>/jobs" \
 
 ---
 
+## §5b. Produção: qual runner — e quando a mudança passa a valer
+
+A alavanca da §3a foi puxada no `cd-staging.yml` e o job ficou verde. Agora o `cd-production.yml`,
+disparado por **tag**, ainda está em `ubuntu-latest` — e sob bloqueio de cota (§5 da
+`ci-cost-minutes.md`) ele vai falhar **no dia da release**, o momento de menor tolerância a surpresa.
+Duas perguntas que a §3a não responde:
+
+**Em qual runner?** O reflexo é `[self-hosted, production]`, espelhando o `deploy`. Mas o runner de
+produção costuma ser de **organização** — este repositório não consegue nem listá-lo
+(`gh api repos/<o>/<r>/actions/runners` só mostra os de repositório; `orgs/<o>/actions/runners`
+devolve `403` sem `admin:org`) — e você não sabe se ele tem Docker para o `services:`, `buildx`
+para o push, ou `yarn`. Estreá-lo na tag é repetir as quatro rodadas da §6 com produção esperando.
+
+Rode `ci` e `build-and-push` no runner **já provado** — o de staging, que executou exatamente esses
+jobs no `cd-staging` — e deixe **só o `deploy`** no runner do ambiente. Nada de produção depende de
+onde a imagem foi construída: ela vai para o GHCR, e o host de produção só puxa. Copie o job `ci`
+inteiro do `cd-staging.yml` e confira com `diff` (ignorando comentários) que ficou byte-idêntico;
+no `build-and-push` só as tags da imagem mudam.
+
+```bash
+diff <(sed -n '/^  ci:/,/^  build-and-push:/p' .github/workflows/cd-staging.yml    | grep -v '^\s*#') \
+     <(sed -n '/^  ci:/,/^  build-and-push:/p' .github/workflows/cd-production.yml | grep -v '^\s*#') \
+  && echo "job ci identico"
+```
+
+Os grupos de `concurrency` continuam separados (`deploy-staging-*` × `deploy-production-*`); o único
+custo é uma release enfileirar atrás de um CI de staging se coincidirem.
+
+**Quando passa a valer?** O GitHub executa o arquivo de workflow **do commit que dispara o evento**.
+Para `push` de branch isso é o próprio push (a migração do `cd-staging` vale já no merge que a
+traz). Para `tag`, é o commit **taggeado**: a migração precisa estar mesclada na branch de onde a
+tag é cortada, *antes* da tag. E não há como ensaiar sem taggear — a evidência aceitável é o
+workflow irmão verde com jobs byte-idênticos, mais o CI do PR que trouxe a mudança.
+
+---
+
 ## §6. A lição que generaliza
 
 Foram **quatro rodadas de CI gastas em hipóteses lidas do YAML** (IPv6, `container:`, ordem dos

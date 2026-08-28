@@ -55,6 +55,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_dir": "plugins/codereview/skills/coderabbit_pr",
     },
     {
+        "plugin": "cors",
+        "cursor_name": "cors",
+        "display": "CORS — diagnosticar o bloqueio entre origens e configurar a politica por stack",
+        "source_type": "skill",
+        "source_dir": "plugins/cors/skills/cors",
+    },
+    {
         "plugin": "deploy",
         "cursor_name": "deploy-staging",
         "display": "Deploy Staging — merge branch to develop and trigger the CD Staging pipeline",

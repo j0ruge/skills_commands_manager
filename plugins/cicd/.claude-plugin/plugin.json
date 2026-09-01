@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "2.24.0",
+  "version": "2.25.0",
   "category": "development",
   "keywords": [
     "cicd",
@@ -86,7 +86,10 @@
     "service-container-unreachable",
     "runner-externals-node24",
     "quota-block-zero-steps",
-    "discover-dont-assume"
+    "discover-dont-assume",
+    "zero-file-push-skips-workflow",
+    "workflow-dispatch-valve",
+    "environment-branch-no-deploy"
   ],
   "platforms": [
     "claude-code",

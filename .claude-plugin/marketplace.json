@@ -117,7 +117,7 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.24.0",
+      "version": "2.25.0",
       "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Self-hosted runner runbook — what breaks when you move a billed job onto one, which runner to trust for production — deploy-time proof (rollback with re-smoke, backup gates that check the dump), and Actions minute economics. Triggers — CI/CD, GitHub Actions, job never starts, Actions minutes/quota, GHCR auth, self-hosted runner, deploy queued, rollback, backup gate.",
       "category": "development",
       "keywords": [

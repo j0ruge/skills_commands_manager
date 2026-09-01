@@ -2,6 +2,12 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-01 — O push que não altera arquivo nenhum: a branch de ambiente que nasce sem deploy — bump 2.24.0 → [2.25.0]
+
+**O quê:** `ci-cost-minutes.md` §3b ganha a subseção *"O outro lado da moeda"* + lição **81** + 1 linha na Quick Troubleshooting.
+
+**Por quê:** a §3b recomendava `paths-ignore` e media a economia dele; faltava o que acontece quando o push **não tem arquivo nenhum**. O filtro pula quando *todos* os arquivos casam — com **zero** arquivos a condição é **vacuamente verdadeira**, e é exatamente esse o push que cria uma branch de ambiente a partir de um commit que já existe. Medido em 01/09/2026, promovendo um frontend cujo `cd-staging.yml` acabara de migrar de `branches: [develop]` para `branches: [staging]`: a branch foi criada com `git push origin origin/develop:refs/heads/staging`, o merge estava certo, o runner self-hosted estava **online** — e nenhum run apareceu. Nada falha, nada fica vermelho, e o `gh run list` continua exibindo os runs antigos, então o silêncio se parece com "deploy ok" (é o mesmo modo de falha da lição 51, por outra porta). Dois agravantes fecham a saída: `git commit --allow-empty` cai na mesma condição — é o reflexo natural da lição 8 e aqui não funciona — e a **documentação oficial do GitHub não cobre o caso** (conferido), então a confirmação é empírica (`gh run list --workflow=<wf> -L 3`), não documental. O conserto é `workflow_dispatch` como válvula permanente, com o detalhe de ordem que decide se ela existe na hora H: o GitHub lê o workflow **do ref**, então ele precisa já estar no commit para onde a branch aponta — somá-lo depois de cortar a branch não cria botão nenhum, e a única alternativa passa a ser empurrar um commit que altere arquivo fora do `paths-ignore`, sujando a branch de ambiente com conteúdo que não veio da promoção.
+
 ## 2026-08-28 — O pós-migração: a dívida que o CI cego acumulou — bump 2.23.0 → [2.24.0]
 
 **O quê:** `self-hosted-job-migration.md` ganha **§6–§9** (a antiga §6 vira §10) + nota de navegação no pré-voo + lições **77–80** + routing table.

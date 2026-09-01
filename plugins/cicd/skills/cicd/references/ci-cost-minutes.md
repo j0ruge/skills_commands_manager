@@ -144,6 +144,48 @@ ser só `.md`, o que torna o ganho no `push` significativo mesmo assim.
 Não aplique em workflow disparado por **tag** (`on.push.tags`): filtro de path com tag tem semântica
 confusa e o deploy de release não deve ser pulável.
 
+#### O outro lado da moeda: `paths-ignore` também pula o push que não altera arquivo nenhum
+
+🔴 **É assim que uma branch de ambiente nasce sem deploy.** Criar `staging` apontando para um commit
+que já existe é um push com **zero arquivos alterados**. O filtro pula quando *todos* os arquivos do
+push casam com a lista — com nenhum arquivo, a condição é **vacuamente verdadeira** e o workflow não
+dispara. Nada falha, nada fica vermelho: o `gh run list` continua mostrando os runs antigos, e o
+silêncio se parece exatamente com "deploy ok".
+
+Medido em 01/09/2026, num frontend cujo `cd-staging.yml` acabara de migrar de `branches: [develop]`
+para `branches: [staging]`. A branch foi criada com `git push origin origin/develop:refs/heads/staging`,
+o merge estava correto, o runner self-hosted estava **online** — e nenhum run apareceu.
+
+Dois agravantes que fecham a saída:
+
+- **Commit vazio não resolve.** `git commit --allow-empty` também não altera arquivo, então cai na
+  mesma condição. É o reflexo natural (lição 8) e aqui ele não funciona.
+- **A [documentação oficial do GitHub][gh-events] não cobre o caso.** Ela documenta o filtro para
+  pushes comuns e o *fail-open* de pushes gigantes, mas não diz o que acontece quando o diff é
+  vazio. Não adianta procurar: confirme empiricamente com `gh run list --workflow=<wf> -L 3`.
+
+O conserto é uma válvula permanente — e o detalhe de ordem é o que decide se ela existe quando você
+precisa dela:
+
+```yaml
+on:
+  push:
+    branches: [staging]
+    paths-ignore: ['**/*.md', 'docs/**', 'specs/**', '.claude/**']
+  # Push com ZERO arquivos alterados (criar a branch, commit vazio) casa
+  # vacuamente com o paths-ignore acima e NAO dispara. Este e o unico caminho:
+  #   gh workflow run cd-staging.yml --ref staging
+  workflow_dispatch:
+```
+
+⚠️ **`workflow_dispatch` precisa já estar no commit para onde a branch aponta** — o GitHub lê o
+workflow do ref, então adicioná-lo *depois* de cortar a branch não dá botão nenhum para apertar.
+Ordem correta: somar o `workflow_dispatch` na branch de origem, mesclar, e só então cortar a branch
+de ambiente. Sem ele, a única saída é empurrar um commit que altere um arquivo fora do
+`paths-ignore` — o que suja o histórico da branch de ambiente com conteúdo que não veio da promoção.
+
+[gh-events]: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+
 ### (c) O mesmo commit testado três vezes
 
 Blueprint comum: `ci.yml` no PR, job `ci` no `cd-staging.yml` (push em `develop`) e outro job `ci`

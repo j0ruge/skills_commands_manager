@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-03 — Falha transitória de registry: reexecutar, não re-promover — bump 2.1.1 → [2.2.0]
+
+**O quê:** o Step 7 ganha a seção *"Some red runs mean run it again, not start over"*, e o Step 4
+ganha como criar alvo de rollback quando o ambiente só tem tag móvel.
+
+**Por quê:** numa promoção real o `Build & Push` falhou com `ERROR: unknown blob` ao empurrar para
+o GHCR — **depois** de todas as camadas subirem (76,7 s), no fechamento do manifesto. Não havia
+nada a corrigir: `gh run rerun --failed` passou verde sem uma linha de mudança. A skill só
+ensinava o desfecho terminal ("say the deploy did not happen"), então o reflexo disponível era
+re-promover, que gera um segundo merge commit na branch de ambiente e não conserta nada.
+
+Três detalhes que a seção fixa, e que não são adivinháveis:
+
+- **Qual passo falhou decide se o rerun é neutro.** Falha em build-and-push acontece antes de
+  qualquer deploy; falha em smoke ou cleanup acontece *depois* de a imagem nova estar no ar, e ali
+  reexecutar **redeploya**. A prova é o `docker inspect ... {{.Created}}`, não o raciocínio — foi
+  assim que se confirmou que staging seguia no container antigo antes de retentar.
+- **`gh run rerun --failed` reaproveita o MESMO run id.** O `gh run watch <id>` e os comandos de
+  verificação continuam valendo, e o `gh run list` não mostra run novo — quem procura um id novo
+  perde tempo achando que o rerun não disparou.
+- **Duas falhas iguais no mesmo passo deixam de ser transitórias.** Sem esse limite, "é só
+  reexecutar" vira laço.
+
+No Step 4, a lacuna era outra: ele já mandava ter o alvo de rollback pronto, mas o pipeline
+publicava só a tag móvel `:staging`, que o próprio deploy re-aponta — depois de promover não
+sobra nome para a imagem anterior. A saída é marcá-la **antes** do push, e ela sobrevive ao
+`docker image prune -f` do próprio deploy porque prune sem `-a` só remove imagem *dangling*.
+
 ## 2026-08-28 — Ler o `Config.Image`, e contar o backlog antes de promover — bump 2.1.0 → [2.1.1]
 
 **O quê:** Step 7 passa a dizer como **ler** os dois campos do `docker inspect`, e o Step 4 ganha a contagem do backlog com a consequência de um CD longamente parado.

@@ -1,7 +1,7 @@
 ---
 description: Promote code to staging (and on to production) through the repo's real CD pipeline. Reads each workflow's `on.push.branches` and `runs-on` instead of assuming — the wrong branch can deploy production, and a hosted job under a billing block never starts. Waits for CI green on the exact commit, promotes by PR merge commit, watches the run, then proves the deploy by the data. Triggers — deploy staging, promote to staging, subir para staging, CD pipeline, cd-staging, promover para produção.
 metadata:
-  version: 2.1.1
+  version: 2.2.0
 ---
 
 ## Deploy to Staging
@@ -198,6 +198,20 @@ afterwards has two candidate causes and no way to separate them. Say the number 
 promotion, and treat a long backlog as a reason to have the rollback target ready before you start,
 not after.
 
+**"Have the rollback target ready" is often impossible with what the pipeline leaves behind.** Many
+staging pipelines publish only a **mobile tag** (`:staging`, `:latest`): every deploy re-points it,
+so a minute after the promotion there is no name left for the image that was serving before. The
+moment to fix that is *before* pushing, while the old image is still identifiable:
+
+```bash
+ssh <host> 'docker inspect <container> --format "{{.Image}}"'      # sha256:1b09...
+ssh <host> 'docker tag sha256:1b09... <img>:pre-<version>'
+```
+
+That tag survives the pipeline's own cleanup — `docker image prune -f` without `-a` removes only
+**dangling** images, and a tagged one is not dangling. Skip it and rollback degrades into "rebuild
+the previous commit and hope", which is not a rollback.
+
 The third command answers a question people forget to ask: if the promotion
 changes `cd-*.yml`, which pipeline is about to run — the old one or the new one?
 GitHub uses the workflow file **from the pushed commit**, so a change to the
@@ -255,6 +269,39 @@ On failure, show the failing step and say the deploy did not happen:
 ```bash
 gh run view <run-id> --log-failed
 ```
+
+#### Some red runs mean "run it again", not "start over"
+
+Registry pushes fail transiently. Measured here: `ERROR: unknown blob` pushing to GHCR *after*
+every layer had uploaded (76.7 s of pushing, then the manifest step failed). Nothing was wrong
+with the build or the commit — `gh run rerun --failed` went green with no code change. Re-promoting
+would have been the wrong reflex: there is nothing to fix, and a second merge commit on the
+environment branch buys noise instead of a deploy. Same family: `TLS handshake timeout` or
+`unauthorized` on `docker login`, `blob upload unknown`, `502`/`503` from the registry.
+
+Before rerunning, answer one question: **did the failed run already change the environment?** Which
+step failed decides it. A failure in build-and-push happens before anything is deployed; a failure
+in a smoke or cleanup step happens *after* the new image is live, and there a rerun is not neutral —
+it redeploys. Prove it instead of reasoning about it, with the verification command above:
+
+```bash
+ssh <host> 'docker inspect <container> --format "{{.Created}} {{.Config.Image}}"'
+```
+
+An unchanged `Created` means the environment is still on the old image and the rerun is safe. A
+changed one means the deploy landed and the failure is downstream of it — read that step before
+touching anything.
+
+```bash
+gh run rerun <run-id> --failed     # keeps the SAME run id
+```
+
+The reused run id is worth knowing because it saves a wrong turn: `gh run watch <run-id>` and every
+verification command above keep working unchanged, and `gh run list` will not show a new run to
+chase.
+
+If the same step fails twice with the same error, stop calling it transient and read it as a real
+fault.
 
 On success, report the run URL and — this is the part worth stating explicitly —
 **which environment is now serving the new code**. A pipeline that ends green

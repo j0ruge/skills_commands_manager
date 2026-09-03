@@ -2,6 +2,22 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.3.2] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Skill de operação frágil: scripts e assets ficam byte-idênticos (keep list #3).
+
+- `backup-pipeline-e-falha-silenciosa.md`: o usuário `erp,zitadel` e "o IdP que autenticava todos
+  os serviços" eram nomes de uma instalação usados como exemplo do mecanismo — a sonda do auditor
+  mostrou o modelo repetindo `erp,zitadel` ao diagnosticar um host com outros nomes. Placeholders,
+  gravidade generalizada.
+- `provas-que-nao-mentem.md`: "vale contar como esta seção envelheceu / o parágrafo acima já
+  existia" é diff contra a versão anterior do próprio arquivo; o caso real e a lição ficam, a
+  arqueologia sai (está no CHANGELOG).
+- Registrado como oportunidade (fora deste diff): a prova de "há dados" por blocos `COPY` é
+  Postgres-only — `mysqldump` grava `INSERT INTO`, então o detector acusa todo dump MySQL como
+  schema-only, e a skill promete `mysqldump`.
+- `SKILL.md` ganha `metadata.version`.
+
 ## [1.3.1] — 2026-08-26
 
 Higiene de `description`, sem mudança de comportamento: o texto tinha **593 chars**,

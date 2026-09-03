@@ -84,8 +84,8 @@ expõe**, não o arquivo que o job deveria produzir. O container fica genuinamen
 Caso real: **três meses `healthy`, zero dumps.** A causa foi configuração —
 a imagem faz fan-out de lista CSV **só** em `POSTGRES_DB`, contra **um** host/usuário/senha;
 uma lista em `POSTGRES_HOST`/`POSTGRES_USER`/`POSTGRES_PASSWORD` é usada literalmente, então
-o `pg_dump` tentava autenticar com o usuário `erp,zitadel` e morria. O banco que ficou
-desprotegido era o do IdP que autenticava todos os outros serviços do host.
+o `pg_dump` tentava autenticar com o usuário `<usuario_a>,<usuario_b>` e morria. O banco que
+ficou sem dump era justamente aquele de que todos os outros serviços do host dependiam.
 
 ```bash
 # Não pergunte ao healthcheck. Force um ciclo e olhe o artefato.

@@ -78,14 +78,12 @@ docker exec <container> curl -s -o /dev/null -w '%{http_code}' http://localhost:
 
 ### Escreva isso como contrato da role, não como conselho
 
-Vale contar como esta seção envelheceu, porque a lição é sobre o formato do
-conhecimento, não sobre HTTP.
-
-O parágrafo acima já existia — inclusive citando o domínio real que servia a
-página padrão do servidor web. Meses depois, esse mesmo domínio passou **quatro
-dias** servindo a mesma página errada, num restore cujo playbook terminou verde
-o tempo todo. A nota estava escrita, foi lida, e não impediu nada: quem roda o
-restore confia no que a role afirma, não no que um documento sugere conferir.
+A lição aqui é sobre o formato do conhecimento, não sobre HTTP. Caso real: a
+recomendação de conferir o corpo estava documentada e tinha sido lida, e mesmo
+assim um domínio passou **quatro dias** servindo a página padrão do servidor
+web, num restore cujo playbook terminou verde o tempo todo. A nota não impediu
+nada: quem roda o restore confia no que a role afirma, não no que um documento
+sugere conferir.
 
 Então promova a prova de conteúdo a **variável do contrato**, com default vazio
 para não mexer nos playbooks que já existem:

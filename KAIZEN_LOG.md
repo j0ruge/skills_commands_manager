@@ -6,6 +6,132 @@ para não se perder. Complementa os `CHANGELOG.md` de cada plugin — eles conta
 
 ---
 
+## 2026-09-03 — Prompt audit das 16 skills + poka-yoke na kaizen-software + custo do codereview
+
+- **Tipo:** melhoria (16 skills re-lidas para o modelo atual) · correção de causa raiz (cruft
+  acumulado por retrofit) · oportunidade (custo do `codereview` — mudança publicada, medição
+  pós-mudança pendente)
+- **Antes:** skills escritas para Opus 4.x carregavam ênfase em caps, narrativas de incidente com
+  data/ticket/PR, nomes/hosts/e-mail do projeto de origem e modelos fixos em prosa; 10 plugins sem
+  `metadata.version` no `SKILL.md`; a `kaizen-software` ensinava poka-yoke no verbete mas fechava
+  o fluxo com regra escrita; uma invocação de `/codereview` custava **$11–16** (46–65% de cada
+  sessão REVIEW do pipeline `sdd_agents`, medido em 16 sessões).
+- **Depois:** 14 commits em `origin/main` (tabela abaixo), `validate-versions.py` verde em todos,
+  `metadata.version` em todos os SKILL.md tocados; `kaizen-software` 1.3.0 com poka-yoke,
+  yokoten, andon e Ishikawa no fluxo (sonda A/B: 14/14 sem regressão; menções a poka-yoke
+  0→4 e 1→4 nos cenários em que a antiga fechava com regra escrita); `codereview` 1.19.0 com
+  contrato dos agentes em arquivo, prompt de lançamento curto, `model` como poka-yoke, Bucket B
+  opt-in e linha *Cost footprint* — **custo pós-mudança ainda não medido** (plano: 2 rodadas
+  REVIEW na mesma missão, ≈ $40; ver "O que aprendemos").
+- **Causa raiz (5 porquês abaixo):** sem eval nem sensor, a única evidência de que uma linha da
+  skill "funciona" é o incidente que a gerou — ninguém tem base para removê-la, então só se
+  acrescenta.
+- **Padronizado em:** `CLAUDE.md` § *Prompt hygiene* (confirmado no arquivo após a edição):
+  re-rodar `/claude-api prompt-audit` a cada retrofit e a cada release de modelo; brief
+  reutilizável em `~/.claude/handoff/prompt-audit-2026-09-03/prompt-audit/BRIEF-auditoria.md`;
+  o quê/porquê vai para o CHANGELOG do plugin, relatórios e diffs ficam fora do repo.
+- **Yokoten:** a mesma causa existe fora do marketplace — `sdd_agents/agents/sdd-reviewer.md`
+  ("Reproduce before you conclude" + "adversarial" = cauda de ≈ $5,4 e ~50 turnos por sessão
+  REVIEW, e é o que empurra os agentes a construir sandboxes) e o `CLAUDE.md` + `.claude/rules`
+  do `digital_service_report_api` (≈ 110 KB ≈ 28k tokens injetados em **cada** subagente).
+  Registrados como oportunidades (f); não feitos nesta rodada.
+
+### Antes → Depois (um commit por plugin, todos em `origin/main`)
+
+| Commit | Plugin | Versão | O quê |
+|---|---|---|---|
+| `ac59240` | kaizen-software | 1.2.0 | poka-yoke entra no fluxo (escada de padronização, Fase 1/2/3, template dos 5 Porquês, desperdício #7, description com 8 gatilhos) |
+| `7569ff9` | kaizen-software | 1.3.0 | yokoten, andon, Ishikawa, mura/muri, kaikaku, 8º desperdício, gemba sem ticket |
+| `186948c` | codereview | 1.18.0 | Fase A inline (sem agente haiku), 28 de 32 linhas em caps voltam ao tom normal, registry de reviewers medido, "opus" fixo sai |
+| `efbd550` | dotnet-wpf | 1.7.0 | hooks JSON inválido corrigido, VMs Singleton nas references, resíduos VDA/VDR fora |
+| `cf9ab8e` | cicd | 2.26.0 | nomes JRC → placeholders, runner version → latest, lições alinhadas ao paths-ignore |
+| `dfe3de7` | zitadel-idp | 0.12.0 | e-mail/IP/hosts fora, "47 quirks" → catálogo, quirks 38–45 viram gatilhos |
+| `1647f39` | whisper-preprocess | 1.1.0 | copiar os 2 scripts (merge silencioso), lição 9 no presente, afftdn escopado |
+| `fa90577` | pdf-generation | 1.6.1 | linha de downloads npm (falsa) fora, skill inexistente fora, NON-NEGOTIABLE/MUST |
+| `4b58bf3` | ddd | 0.4.2 | e-mail do autor e marca → Acme/example.com, "fora de escopo" sem diff de versão |
+| `8068660` | ansible-docker-backup-restore | 1.3.2 | nomes de uma instalação → placeholders; arqueologia fora |
+| `df3f2c7` | dev-script | 0.5.3 | contagens de incidente fora, tetos numéricos viram qualitativos, 8 gatilhos |
+| `174373f` | cors | 1.0.1 | hosts internos e data saem do caso medido; acentos na description |
+| `2dc4881` | wsl-windows-onboarding | 0.4.2 | descoberta de caminho sem assumir o layout do autor; "current WSL" robusto |
+| `6322d3b` | codereview | 1.19.0 | custo: contrato dos agentes em `references/`, prompt de ~12 linhas, `model: "sonnet"` como poka-yoke, Bucket B opt-in, Cost footprint |
+
+Fora do rollout: `ticket` (árvore com edição em andamento do usuário — auditar depois do commit
+dele; sinais já medidos: 8 linhas com datas, 5 com IDs de issue, e-mail pessoal no `SKILL.md`).
+
+### 5 Porquês — por que as skills acumularam cruft
+- **Sintoma:** 16 de 16 skills com achados de confiança alta/média no prompt audit — ênfase em
+  caps que não previne mais nada, incidentes com data e ticket no corpo, nomes do projeto de
+  origem virados regra, modelos fixos em prosa.
+1. Por quê? O `retrofit-skill` soma **uma lição por sessão** ao texto que já existe.
+2. Por quê somar em vez de reescrever? A lição chega com o nome, o host e o número do incidente
+   que a gerou, e vira regra com eles dentro — reescrever custaria re-ler a skill inteira.
+3. Por quê ninguém re-lê? Cada retrofit edita só o trecho da lição; não há passo que leia a skill
+   **inteira contra o modelo novo**, e a release de modelo não dispara nada no repo.
+4. Por quê nada dispara? Não existe eval nem sensor: nada mede se a ênfase ainda previne a falha
+   para a qual foi escrita (a sonda do piloto foi a primeira medição desse tipo).
+5. **Causa raiz (processo):** sem eval, a única evidência de que uma linha "funciona" é o
+   incidente que a gerou; ninguém tem base para removê-la, então só se acrescenta.
+- **Contramedida:** o audit periódico é regra escrita (`CLAUDE.md` § *Prompt hygiene*) — poka-yoke
+  não coube: o único gate do repo (`validate-versions.py`) vê só a description. O sensor que
+  nasceu nesta rodada é a linha *Cost footprint* do `codereview` — custo e turnos por agente
+  passam a aparecer no próprio relatório, sem abrir log.
+- **Teste que teria pegado:** nenhum existe; o mais perto é o grep de sinais do brief
+  (caps, datas, tickets, e-mails, modelos fixos) — roda em segundos sobre `plugins/`.
+
+### Desperdícios evitados (cortes conscientes)
+- **Sem `docs/prompt-audit` no repo** — 16 relatórios + 20 diffs ficam em
+  `~/.claude/handoff/prompt-audit-2026-09-03/`; o CHANGELOG de cada plugin carrega o quê e o
+  porquê. Evitou superprocessamento e um diretório que envelheceria como as skills.
+- **Sonda A/B só onde o diff muda comportamento** (kaizen-software). Nas outras, o diff é
+  remoção; validação estática (`git apply --check` + validate) bastou.
+- **Trade-offs do codereview fora até existir eval:** Haiku nos agentes, `effort: low`, agrupar
+  5 arquivos por agente, sweep inteiro opt-in — cada um muda o que se analisa e não há como
+  julgar achados perdidos hoje.
+
+### O que aprendemos
+- **O sensor pré-registrado do piloto não discriminou** (14/14 asserções passam nas duas versões
+  da kaizen-software): o enunciado do cenário já apontava a falha da regra escrita, então a
+  skill antiga também acertava. A métrica que separou as versões apareceu depois (menções a
+  poka-yoke no Act). Cenário-sensor de comportamento novo tem de ser um em que o enunciado
+  **não** empurre para a resposta.
+- **A description cap é a única superfície com gate**; todo o resto do prompt audit é revisão
+  humana — daí a regra escrita, e não um validador.
+- **Agentes derrubados pelo 429 já tinham gravado os artefatos** em disco — conferir o disco
+  antes de relançar; 4 relançamentos evitados.
+- **No codereview o custo não era o tamanho das references** (1 de 66 agentes as leu) nem o
+  prompt: era **turnos por agente** (~45 contra ~6 no desenho) — cache-read cresce com o
+  quadrado dos turnos. Caminho relativo nas instruções + orquestrador que parafraseia o bloco
+  `Agent(...)` = agente explorando livre.
+- **`sdd retry` retenta a fase corrente da missão**, não uma fase nomeada: na missão do baseline
+  (`20260901-o-revisor-so-acha`, já em PR) re-medir REVIEW é `sdd run --phase REVIEW`, que por
+  desenho ignora o teto de rodadas. O comando faz checkout da branch da missão no
+  `sdd_agents` — rodar só com a árvore limpa e sem trabalho em outra branch.
+- **Bucket B do sweep sem foco no prompt de lançamento é regra sem sensor**: o agente não tinha
+  como saber o foco; o prompt agora leva `Focus area` e `Sweep`.
+
+### Oportunidades registradas (dono: j0ruge — único mantenedor)
+- (a) `scripts/validate-versions.py` não lê `metadata.version` do `SKILL.md` e o check 6 procura
+  só `skills/<plugin>/SKILL.md` — plugins multi-skill (`codereview`, `dotnet-wpf`) ficam sem
+  verificação de description e de versão por skill.
+- (b) `README.md` com células-changelog na tabela de plugins (`kaizen-software`, `codereview` —
+  a de codereview cresceu de novo nesta rodada); mover para os CHANGELOGs e deixar uma frase.
+- (c) `coderabbit-review.md`, `copilot-review.md`, `gemini-review.md` soltos na raiz —
+  ignorados por `.gitignore:4`, sobras de runs da `coderabbit_pr` anteriores à Fase 6 (1.17.0);
+  apagar depois de confirmar que nenhum PR aberto os usa.
+- (d) `create-readme` duplicado em `.claude/skills/` e `.agents/skills/`.
+- (e) `ansible-docker-backup-restore`: a prova "há dados" conta blocos `COPY` — Postgres-only;
+  `mysqldump` grava `INSERT INTO` (já anotado no CHANGELOG 1.3.2, sem diff).
+- (f) Fora do repo: `sdd_agents/agents/sdd-reviewer.md` "Reproduce before you conclude" —
+  reproduzir só CRITICAL/HIGH; `CLAUDE.md` + `.claude/rules` do DSR com ≈ 110 KB — cada
+  subagente paga ≈ 28k tokens de prefixo.
+- (g) `ticket`: auditar com o brief assim que o usuário commitar a edição em andamento.
+- (h) Medição da 1.19.0 (aprovada, ≈ $40): 2 rodadas `sdd run --phase REVIEW` na missão do
+  baseline (r1 = $17,92, sessão `2762a593`; r4, a última, = $6,83); ler `pipeline.log`,
+  `analisa_agentes.py` e o *Cost footprint*; manter L1/L4 se o custo dos agentes cair ≥ 30%
+  **sem** sumir CRITICAL/HIGH — senão reverter primeiro só "Plan on roughly ten tool calls".
+
+---
+
 ## 2026-08-26 — Descriptions acima do cap: da dívida ao gate
 
 **Problema:** 7 dos 16 plugins tinham `description` acima do cap de 500 chars do

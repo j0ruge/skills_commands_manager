@@ -148,6 +148,24 @@ work stop firing on their canonical phrases, and `/doctor` shows
 the budget (raising costs ~5k tokens per session and consumes rate limits
 faster).
 
+## Prompt hygiene
+
+Skills are prompts, and prompts age with the model they were written for. A
+retrofit adds one lesson to the text that is already there; nothing removes the
+caps-lock emphasis, the incident narrative, the origin project's hostname or the
+pinned model name once the failure they guarded against stops reproducing. The
+2026-09-03 audit of all 16 skills found that in every one of them (see
+`KAIZEN_LOG.md`).
+
+- Re-run `/claude-api prompt-audit` on a skill **at every retrofit** and **at
+  every model release** — it is the only pass that reads the whole skill against
+  the current model instead of appending to it.
+- The reusable brief (procedure, signal greps, report shape, diff recipe with
+  `git apply --check` only) lives outside the repo at
+  `~/.claude/handoff/prompt-audit-2026-09-03/prompt-audit/BRIEF-auditoria.md`.
+- What changed and why goes to the plugin's `CHANGELOG.md`, with the numbers;
+  the audit reports and diffs themselves stay out of the repo.
+
 ## Identity & canonical repository
 
 **Chewiesoft is the fictional software company / brand. j0ruge is the GitHub

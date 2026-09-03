@@ -1,5 +1,7 @@
 ---
 name: dotnet-wpf-e2e-testing
+metadata:
+  version: 1.7.0
 description: FlaUI + xUnit E2E testing for WPF — project setup, AutomationId annotation, Page Objects, smoke tests, file-dialog automation, CI/CD wiring. Unit tests live in dotnet-wpf-mvvm. Triggers — WPF E2E, FlaUI, AutomationId, Page Object, smoke test.
 ---
 
@@ -26,7 +28,7 @@ Testes E2E são os mais caros de manter. Crie poucos — apenas smoke tests que 
 
 ## Workflow Completo
 
-Siga estes passos na ordem. Cada seção referencia arquivos detalhados em `references/` quando necessário.
+As seções seguem a ordem de dependência (projeto → AutomationIds → base class → Page Objects → testes); os Passos 6 e 7 só se aplicam quando o app tem file dialogs ou pipeline de CI. Cada seção referencia arquivos detalhados em `references/` quando necessário.
 
 ### Passo 1: Criar Projeto de Testes E2E
 
@@ -362,10 +364,10 @@ public class MainWindowTests : FlaUITestBase
 
 #### Cuidado com linters e auto-formatters
 
-Testes E2E têm fluxos complexos (Arrange → Act com dialog → Assert) que podem ser quebrados por linters ou auto-formatters que reorganizam código sem entender a lógica. Uma linter pode remover uma chamada de helper (como `LoadHardwareId()`) por achar que é "código morto" ou substituir strings hardcoded por `CultureInfo.CurrentCulture`. Isso quebra silenciosamente o teste.
+Testes E2E têm fluxos com efeito colateral (Arrange → Act com dialog → Assert) que linters e refactors automáticos podem reorganizar sem entender a lógica: uma chamada de helper cujo único efeito é abrir o dialog parece "código morto", e um literal de teste parece candidato a `CultureInfo.CurrentCulture`. O teste continua compilando e passa a verificar outra coisa.
 
 Recomendações:
-- Use formato de data **fixo** (`"31/12/2027"`) em vez de `CultureInfo.CurrentCulture` — o ViewModel espera `dd/MM/yyyy` explícito
+- Use literais de data **fixos**, no formato que o ViewModel do app espera (ex.: `"31/12/2027"` para `dd/MM/yyyy`), em vez de `CultureInfo.CurrentCulture` — o valor não pode depender da cultura da máquina que roda o teste
 - Após qualquer modificação automática, verifique que o Act section ainda contém a ação correta
 - Considere adicionar comentário `// DO NOT REMOVE — core test action` em chamadas críticas de helpers
 

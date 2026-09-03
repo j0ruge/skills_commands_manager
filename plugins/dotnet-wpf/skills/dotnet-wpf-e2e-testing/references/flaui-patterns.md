@@ -53,7 +53,7 @@ var wpfElements = window.FindAllDescendants(cf => cf.ByFrameworkType(FrameworkTy
 
 ## Wait e Retry
 
-FlaUI fornece a classe `Retry` para esperas — **nunca use `Thread.Sleep()`**.
+FlaUI fornece a classe `Retry` para esperas — use-a no lugar de `Thread.Sleep()`. A exceção é a automação de file dialogs Win32 (SKILL.md, Passo 6): o dialog entra na árvore de automação antes dos controles internos estarem prontos, e ali os sleeps entre operações de teclado são necessários.
 
 ### WhileNull — esperar elemento aparecer
 ```csharp

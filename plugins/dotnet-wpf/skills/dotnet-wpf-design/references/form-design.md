@@ -54,7 +54,7 @@ Microsoft recomenda 24px entre campos de formulario (`Margin="0,24,0,0"`):
 
 ### Compacto (8-12px) — para formularios densos
 
-Para formularios com muitos campos (como APT com 80+ controles), o padrao de 24px
+Para formularios com muitos campos (ex.: 80+ controles), o padrao de 24px
 consome muito espaco vertical. Um compromisso aceitavel:
 
 ```xml
@@ -159,7 +159,7 @@ horizontal). Em paginas reais, isso e raro — quase sempre a versao cirurgica e
 
 ## Label Placement
 
-### Labels ao lado (horizontal) — padrao deste projeto
+### Labels ao lado (horizontal) — para formularios densos
 
 Para formularios densos com muitos campos, labels ao lado economizam espaco vertical:
 

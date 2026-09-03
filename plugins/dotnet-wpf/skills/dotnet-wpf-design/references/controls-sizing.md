@@ -41,7 +41,7 @@ Leia quando houver controles pequenos, texto cortado ou touch targets inadequado
 
 ---
 
-## Controles Customizados deste Projeto
+## Controles Customizados Compostos (exemplos de um projeto real)
 
 ### AptDateWPF (Day / Month / Year)
 
@@ -56,28 +56,32 @@ Leia quando houver controles pequenos, texto cortado ou touch targets inadequado
 
 **Recomendado:**
 ```xml
-<UserControl Height="32" Margin="0,2">
+<!-- Sem Height no UserControl: auto-tamanho pelo filho mais alto (FORM-002, Anti-padrao #8) -->
+<UserControl Margin="0,2">
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
         <TextBox x:Name="txtDay" Width="40" MaxLength="2" FontSize="13"
-                 MinHeight="28" TextAlignment="Center"
+                 MinHeight="32" TextAlignment="Center"
                  VerticalContentAlignment="Center" />
         <TextBlock Text="/" VerticalAlignment="Center"
                    Margin="4,0" FontSize="13"
                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+        <!-- Height>=36 para FontSize=13 nao clipar "Jan."/"Jun." (Detalhe Critico #9) -->
         <ComboBox x:Name="cmbMonth" Width="80" FontSize="13"
-                  MinHeight="28" VerticalContentAlignment="Center" />
+                  Height="36" VerticalContentAlignment="Center" />
         <TextBlock Text="/" VerticalAlignment="Center"
                    Margin="4,0" FontSize="13"
                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
         <TextBox x:Name="txtYear" Width="55" MaxLength="4" FontSize="13"
-                 MinHeight="28" TextAlignment="Center"
+                 MinHeight="32" TextAlignment="Center"
                  VerticalContentAlignment="Center" />
     </StackPanel>
 </UserControl>
 ```
 
 **Mudancas:**
-- Height: 27 → 32 (alinha com padrao Fluent)
+- Height fixo 27 → sem Height no UserControl (auto-tamanho); `Height="32"` a FontSize=13
+  clipa "Jun." e MinHeight nos filhos nao recupera o espaco (FORM-002, Detalhe Critico #9)
+- ComboBox: Height 36 para FontSize=13 renderizar abreviacoes com ponto sem clip
 - ComboBox Width: 65 → 80 (mostra "Jun." completo com padding)
 - TextBox Day Width: 35 → 40
 - TextBox Year Width: 50 → 55
@@ -97,7 +101,7 @@ Leia quando houver controles pequenos, texto cortado ou touch targets inadequado
 
 **Recomendado:**
 ```xml
-<UserControl Height="32" MinWidth="155">
+<UserControl MinHeight="32" MinWidth="155">
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
         <ToggleButton Content="Yes" Width="48" Height="28"
                       FontSize="12" Margin="0,0,4,0" />
@@ -110,7 +114,7 @@ Leia quando houver controles pequenos, texto cortado ou touch targets inadequado
 ```
 
 **Mudancas:**
-- Height: 27 → 32
+- Height fixo 27 → MinHeight 32 (o UserControl nao capa os filhos)
 - ToggleButton: 45x25 → 48x28 (atende touch target minimo 24x24)
 - FontSize: 11 → 12 (Caption size, minimo legivel)
 - Margin entre botoes: 2px → 4px
@@ -127,11 +131,11 @@ Leia quando houver controles pequenos, texto cortado ou touch targets inadequado
 
 **Recomendado:**
 ```xml
-<UserControl Height="32" Margin="0,2">
+<UserControl MinHeight="32" Margin="0,2">
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-        <TextBox Width="40" FontSize="13" MinHeight="28" />
+        <TextBox Width="40" FontSize="13" MinHeight="32" />
         <TextBlock Text=":" Margin="4,0" FontSize="13" />
-        <TextBox Width="40" FontSize="13" MinHeight="28" />
+        <TextBox Width="40" FontSize="13" MinHeight="32" />
     </StackPanel>
 </UserControl>
 ```
@@ -201,7 +205,7 @@ Para DataGrids com muitas linhas (>100), garantir virtualizacao:
 
 **Consistencia:** Usar o mesmo RowHeight em todas as paginas da aplicacao. A diferenca
 visual entre 22px e 30px e significativa — 30px e o sweet spot entre densidade e
-conforto para tabelas de dados maritimos com muitas colunas.
+conforto para tabelas de dados com muitas colunas.
 
 **ListBox equivalente:** Para paginas que usam ListBox em vez de DataGrid (ex: Log com
 virtualizacao), setar `Height` no `ListBoxItem` Style:

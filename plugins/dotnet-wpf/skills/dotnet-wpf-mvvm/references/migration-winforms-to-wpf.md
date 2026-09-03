@@ -7,7 +7,7 @@ Leia quando o projeto ainda e WinForms.
 
 ## Estrategia: Strangler Fig Pattern
 
-NAO reescreva tudo de uma vez. Migre form-a-form, mantendo o app funcional a cada passo:
+Nao reescreva tudo de uma vez. Migre form-a-form, mantendo o app funcional a cada passo:
 
 ```
 [Fase 0] Desacoplar services do Form atual (pre-requisito)

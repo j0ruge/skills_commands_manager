@@ -1,5 +1,7 @@
 ---
 name: dotnet-desktop-setup
+metadata:
+  version: 1.7.0
 description: C#/.NET desktop scaffolding (WinForms / WPF / Avalonia) — generates CLAUDE.md, scoped rules, .editorconfig, Directory.Build.props, global.json. Audits coupling (UI/logic, God Classes). Triggers — dotnet setup, .NET scaffolding, WPF project, WinForms project, editorconfig.
 ---
 
@@ -27,8 +29,11 @@ detalhados ficam em `references/` e sao lidos sob demanda.
 
 ## Workflow: 8 Passos
 
-Execute os passos em ordem. Cada passo verifica o estado atual antes de agir — nunca sobrescreve
-arquivos existentes sem apresentar diff ao usuario.
+Duas ordens importam: a auditoria (Passo 1) vem antes de tudo — os outros passos usam o que ela mede
+(SDK instalado, configs existentes, acoplamento); e o CLAUDE.md do projeto (Passo 4) vem antes das
+regras escopadas (Passo 5), porque `domain.md` e extraido dele. Os demais passos sao independentes —
+pule ou reordene conforme o cenario (secao "Tratamento de Cenarios"). Cada passo verifica o estado
+atual antes de agir — nunca sobrescreve arquivos existentes sem apresentar diff ao usuario.
 
 ### Passo 1: Auditoria do Ambiente
 
@@ -81,7 +86,7 @@ Este arquivo contem convencoes que se aplicam a **qualquer** projeto C#/.NET do 
 - Anti-padroes universais (MessageBox em dominio, static mutavel)
 - Preferencias de linguagem C# moderna (file-scoped namespaces, pattern matching, collection expressions)
 
-**Regra:** Se `~/.claude/CLAUDE.md` ja existe, NAO sobrescreva. Leia o conteudo atual, identifique
+**Regra:** Se `~/.claude/CLAUDE.md` ja existe, nao sobrescreva. Leia o conteudo atual, identifique
 lacunas comparando com o template, e proponha apenas as adicoes necessarias.
 
 ### Passo 4: CLAUDE.md do Projeto
@@ -93,8 +98,8 @@ O CLAUDE.md do projeto segue o framework **WHAT-WHY-HOW**:
 - **WHY**: Decisoes arquiteturais e motivacoes
 - **HOW**: Comandos exatos de build/test/release
 
-Limite: **300 linhas maximo**. Se o existente ja esta bom (como projetos com CLAUDE.md detalhado),
-proponha apenas melhorias incrementais:
+Limite: **300 linhas maximo** — acima disso, mova conteudo para `.claude/rules/` (Passo 5). Se o
+existente ja esta bom (como projetos com CLAUDE.md detalhado), proponha apenas melhorias incrementais:
 - Adicionar secao de convencoes se ausente
 - Adicionar referencia a codigo canonico (ex: "Para novo service, veja `Services/LicenseValidationService.cs`")
 - Adicionar anti-padroes especificos do projeto
@@ -153,7 +158,8 @@ Se `Directory.Build.props` ja existe, mostre diff. Nunca sobrescreva.
 
 ### Passo 8: Hooks Claude Code (recomendacao)
 
-Apresente ao usuario como **recomendacao**, nao aplique automaticamente:
+Apresente ao usuario como **recomendacao**, nao aplique automaticamente. Build rapido apos cada
+edicao de arquivo C#, em `.claude/settings.json` — o comando fica dentro de `hooks[]`, com `type`:
 
 ```json
 {
@@ -161,19 +167,20 @@ Apresente ao usuario como **recomendacao**, nao aplique automaticamente:
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
-        "command": "dotnet build --no-restore -v q 2>&1 | tail -5",
-        "description": "Build rapido apos editar arquivo C#"
-      }
-    ],
-    "PreCommit": [
-      {
-        "command": "dotnet test --no-build -v q",
-        "description": "Roda testes antes de commit"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dotnet build --no-restore -v q 2>&1 | tail -5"
+          }
+        ]
       }
     ]
   }
 }
 ```
+
+Claude Code nao tem evento de commit: para rodar `dotnet test --no-build -v q` antes de cada commit,
+use um git hook `pre-commit` do proprio repositorio.
 
 Explique: hooks de build a cada edicao podem ser lentos em solutions grandes. O usuario decide.
 
@@ -215,15 +222,15 @@ Leia estes arquivos **somente quando necessario** no passo correspondente:
 
 ## Detalhes Criticos (aprendidos nos testes)
 
-Estes pontos falharam consistentemente quando a skill NAO foi usada — preste atencao especial:
+Estes pontos falharam consistentemente quando a skill nao foi usada:
 
-1. **utf-8-bom, NAO utf-8** — Projetos em portugues PRECISAM de `charset = utf-8-bom` no .editorconfig. utf-8 sem BOM causa problemas com acentos em builds do Visual Studio.
+1. **utf-8-bom, nao utf-8** — Projetos em portugues precisam de `charset = utf-8-bom` no .editorconfig: utf-8 sem BOM causa problemas com acentos em builds do Visual Studio.
 
-2. **YAML frontmatter nas regras escopadas** — Toda regra em `.claude/rules/` DEVE ter frontmatter com `paths:`. Sem isso, a regra carrega em todo contexto e polui o prompt.
+2. **YAML frontmatter nas regras escopadas** — Toda regra em `.claude/rules/` precisa de frontmatter com `paths:`; sem isso, a regra carrega em todo contexto e polui o prompt.
 
-3. **Condicoes no Directory.Build.props** — Solutions com frameworks mistos (net5.0 + net8.0) QUEBRAM se voce aplicar `<ImplicitUsings>enable</ImplicitUsings>` sem condicao de framework. Sempre use `Condition="$([MSBuild]::IsTargetFrameworkCompatible(...))"`.
+3. **Condicoes no Directory.Build.props** — Solutions com frameworks mistos (net5.0 + net8.0) quebram se voce aplicar `<ImplicitUsings>enable</ImplicitUsings>` sem condicao de framework. Sempre use `Condition="$([MSBuild]::IsTargetFrameworkCompatible(...))"`.
 
-4. **CLAUDE.md global vs projeto** — O modelo sem skill nao conhece a hierarquia `~/.claude/CLAUDE.md` (global) vs `./CLAUDE.md` (projeto). Sempre crie ambos.
+4. **CLAUDE.md global vs projeto** — Crie ambos, com conteudo distinto: `~/.claude/CLAUDE.md` guarda o que vale para qualquer projeto C#/.NET do usuario (naming, CLI, anti-padroes universais); `./CLAUDE.md` guarda so o que e deste projeto (stack, dominio, comandos). Convencao universal no arquivo do projeto se repete a cada projeto; convencao do projeto no global vaza para os outros.
 
 5. **Nunca sobrescrever CLAUDE.md existente** — Proponha adicoes como diff. O usuario pode ter contexto importante que seria perdido.
 
@@ -237,10 +244,7 @@ Estes pontos falharam consistentemente quando a skill NAO foi usada — preste a
 
 Evite estes erros ao executar o workflow:
 
-- **Sobrescrever sem perguntar** — Sempre mostre diff para arquivos existentes
-- **Directory.Build.props sem condicoes** — Solutions com frameworks mistos quebram se voce assume net8.0 para todos
 - **Fixar SDK nao instalado** — global.json deve refletir o que `dotnet --list-sdks` retorna
 - **Adicionar pacotes sem consultar** — Nao adicione FluentAssertions, NSubstitute etc. sem perguntar
 - **Forcar MVVM em WinForms** — WinForms nao tem data binding nativo. Use Passive View/MVP como intermediario
 - **Ignorar convencoes existentes** — Se o projeto usa portugues nos testes, mantenha. Se usa Assert direto, nao force FluentAssertions
-- **CLAUDE.md gigante** — Se passar de 300 linhas, mova conteudo para .claude/rules/

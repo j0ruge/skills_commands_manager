@@ -112,8 +112,8 @@ Para DataTemplates (navegacao via ContentControl):
 
 | Ciclo | Quando usar | Exemplo |
 |-------|-------------|---------|
-| **Singleton** | Estado compartilhado, services stateless | `INavigationService`, `AppState` |
-| **Transient** | Nova instancia a cada pedido | ViewModels, Pages |
+| **Singleton** | Estado compartilhado, services stateless, ViewModels (ver SKILL.md, Detalhe #27) | `INavigationService`, `AppState`, `*ViewModel` |
+| **Transient** | Nova instancia a cada pedido | Pages de navegacao |
 | **Scoped** | Per-request (raro em desktop) | Quase nunca em WPF |
 
 ### Template de registro
@@ -136,15 +136,19 @@ services.ConfigureServices((context, services) =>
 
     // Pages (Transient — criadas sob demanda pela navegacao)
     services.AddTransient<DashboardPage>();
-    services.AddTransient<DashboardViewModel>();
     services.AddTransient<SettingsPage>();
-    services.AddTransient<SettingsViewModel>();
     services.AddTransient<AlertsPage>();
-    services.AddTransient<AlertsViewModel>();
+
+    // ViewModels de pagina (Singleton — Transient + assinatura de servico Singleton
+    // vaza memoria a cada navegacao; ver SKILL.md, Detalhe #27)
+    services.AddSingleton<DashboardViewModel>();
+    services.AddSingleton<SettingsViewModel>();
+    services.AddSingleton<AlertsViewModel>();
 });
 ```
 
 ### Regra geral
 - **1 Window, 1 ViewModel** para a janela principal → Singleton
-- **N Pages, N ViewModels** para paginas de navegacao → Transient
+- **N Pages** de navegacao → Transient; **seus ViewModels** → Singleton (Transient +
+  assinatura de servico Singleton = memory leak; ver SKILL.md, Detalhe #27)
 - **Services de negocio** → Singleton (a menos que mantenham estado per-operacao)

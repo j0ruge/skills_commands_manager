@@ -1,5 +1,7 @@
 ---
 name: dotnet-wpf-design
+metadata:
+  version: 1.7.0
 description: Professional WPF/XAML design guide — Fluent Design (90+ controls, DataGrid icons, RowHeight), layout troubleshooting (ScrollViewer, toolbar, form spacing), control sizing, dark theme, branding. MVVM and E2E live in sibling skills. Triggers — WPF design, XAML layout, Fluent, DataGrid icon, form spacing, dark theme.
 ---
 
@@ -14,36 +16,7 @@ e sao lidos sob demanda.
 
 ---
 
-## Versao e Changelog
-
-Historico completo em `CHANGELOG.md` (ao lado deste arquivo). As duas versoes mais
-recentes ficam aqui para contexto rapido.
-
-**v1.6.0** (2026-04-16) — Confirmar antes de acoes destrutivas
-- **CTRL-008** novo: padrao "guard before mutate" para ContentDialog. Botoes que
-  sobrescrevem estado (Load Last Export, Reset, Restore, Discard) chamam o dialogo
-  como **primeira linha** do handler e fazem early-return em
-  `result != ContentDialogResult.Primary` — preserva o trabalho do usuario se ele
-  cancelar. Inclui criterio "sempre confirmar vs. dirty-tracking" (sempre vence
-  quando o estado raramente esta vazio) e regras de UX (texto do botao descreve a
-  acao, `Appearance="Danger"` so quando irreversivel, dialog mora no code-behind).
-- **Detalhe Critico #7** expandido: lista explicita de aliases comuns
-  (`ControlAppearance`, `SymbolIcon`, `SymbolRegular`, `SimpleContentDialogCreateOptions`,
-  `ContentDialogResult`). `ContentDialogResult` em particular e facil de esquecer
-  porque so aparece quando voce troca "single OK" por "Primary + Close".
-
-**v1.5.0** (2026-04-14) — Theming overrides e branding
-- Cookbook: BRAND-001 (brand color em Primary sem delay), CTRL-004 (texto branco em
-  ToggleButton checked), CTRL-005 (cor do CheckBox), CTRL-006 (ClearButtonEnabled=False),
-  CTRL-007 (cor do ProgressRing), DRY-001 (Style compartilhado + Tag binding para abas),
-  RES-001 (como descobrir nomes de resources do WPF-UI via `strings Wpf.Ui.dll`).
-- Recipes detalhadas de BRAND-001/CTRL-004/5/6/7/RES-001 em
-  `references/wpfui-theming-overrides.md` (stubs compactos neste SKILL.md).
-- Anti-padroes: #12 (`Style` sem `BasedOn` quebra Fluent), #13 (`control.Foreground`
-  via code-behind perde para template), #14 (chutar nome de DynamicResource).
-- Detalhe Critico #11: regra canonica sobre precedencia de `ControlTemplate.Triggers`
-  com `TargetName` sobre Style externo — override de DynamicResource e a unica forma
-  confiavel de customizar estados de template.
+Historico de versoes em `CHANGELOG.md` (ao lado deste arquivo).
 
 ---
 
@@ -105,13 +78,13 @@ Estes sao os valores mais usados. Para tabelas completas, leia `references/typog
 
 | Elemento | Cor | Brush WPF-UI |
 |----------|-----|-------------|
-| Background app | `#202020` | `SolidBackgroundFillColorBase` |
-| Card/secao | `#0DFFFFFF` | `CardBackgroundFillColorDefault` |
+| Background app | `#202020` | `SolidBackgroundFillColorBaseBrush` |
+| Card/secao | `#0DFFFFFF` | `CardBackgroundFillColorDefaultBrush` |
 | Texto primario | `#FFFFFF` | `TextFillColorPrimaryBrush` |
 | Texto secundario | `#C5FFFFFF` (~77%) | `TextFillColorSecondaryBrush` |
 | Texto desabilitado | `#5DFFFFFF` (~36%) | `TextFillColorDisabledBrush` |
-| Borda controle | `#12FFFFFF` | `ControlStrokeColorDefault` |
-| Separador/divider | `#15FFFFFF` | `DividerStrokeColorDefault` |
+| Borda controle | `#12FFFFFF` | `ControlStrokeColorDefaultBrush` |
+| Separador/divider | `#15FFFFFF` | `DividerStrokeColorDefaultBrush` |
 
 ---
 
@@ -174,7 +147,7 @@ Para detalhes e exemplos completos, leia o arquivo correspondente em `references
    - Contraste adequado entre texto e fundo
 
 > ⚠️ **Se voce alterou XAML de um UserControl que vive numa biblioteca referenciada**
-> (ex.: `VDAControls.dll` consumida pelo executavel principal), o `dotnet build` atualiza
+> (ex.: `MyControls.dll` consumida pelo executavel principal), o `dotnet build` atualiza
 > o DLL no disco, mas o processo da app rodando ainda tem o DLL antigo carregado em
 > memoria. **Instrua o usuario a fechar e reabrir a app** para ver as mudancas — o XAML do
 > UserControl e compilado em BAML embutido no DLL e so e recarregado no startup do
@@ -193,70 +166,23 @@ dentro de um `NavigationView` do WPF-UI.
 em um `DynamicScrollViewer` interno (propriedade `IsDynamicScrollViewerEnabled = true`).
 Isso faz com que o Grid inteiro da pagina (incluindo toolbar em Row 0) role.
 
-**Solucao:** Adicionar `ScrollViewer.CanContentScroll="False"` no elemento `<Page>`:
-
-```xml
-<Page
-    x:Class="MeuProjeto.Pages.MinhaPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    ScrollViewer.CanContentScroll="False"
-    Loaded="Page_Loaded">
-
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />  <!-- Toolbar: fica fixa -->
-            <RowDefinition Height="*" />     <!-- Conteudo: rola independente -->
-        </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="0" Orientation="Horizontal">
-            <!-- botoes da toolbar -->
-        </StackPanel>
-
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <!-- conteudo scrollavel -->
-        </ScrollViewer>
-    </Grid>
-</Page>
-```
+**Solucao:** Adicionar `ScrollViewer.CanContentScroll="False"` no elemento `<Page>` e
+estruturar a pagina como Grid com `RowDefinition Height="Auto"` (toolbar) e
+`Height="*"` (conteudo dentro de um `ScrollViewer`).
 
 **Como funciona:** O `NavigationViewContentPresenter` le
 `ScrollViewer.GetCanContentScroll(page)`. Quando retorna `false`, seta
 `IsDynamicScrollViewerEnabled = false`, removendo o wrapper `DynamicScrollViewer`.
 
-**Variante: Paginas com DataGrid (sem ScrollViewer explicito)**
+**Variante: Paginas com DataGrid (sem ScrollViewer explicito)** — o DataGrid tem
+ScrollViewer interno; basta o `CanContentScroll="False"` no `<Page>` para que o DataGrid
+em Row `*` receba altura finita e ative seu scroll. Tambem funciona com ListBox
+virtualizado: o `CanContentScroll="False"` na Page afeta apenas o DynamicScrollViewer
+externo, e o ListBox interno com `ScrollViewer.CanContentScroll="True"` continua
+virtualizando normalmente.
 
-Paginas que usam DataGrid nao precisam de `<ScrollViewer>` explicito em Row 1 — o DataGrid
-tem ScrollViewer interno. Basta `ScrollViewer.CanContentScroll="False"` no `<Page>` para que
-o DynamicScrollViewer seja desabilitado e o DataGrid receba altura finita, ativando seu
-scroll interno automaticamente:
-
-```xml
-<Page
-    ScrollViewer.CanContentScroll="False">
-
-    <Grid Margin="16,8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />  <!-- Toolbar fixa -->
-            <RowDefinition Height="*" />     <!-- DataGrid com scroll interno -->
-        </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-            <ui:Button Content="Channels" Icon="{ui:SymbolIcon Grid24}" />
-        </StackPanel>
-
-        <DataGrid Grid.Row="1"
-                  ItemsSource="{Binding Data}"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="True"
-                  RowHeight="30" />
-    </Grid>
-</Page>
-```
-
-Tambem funciona com ListBox virtualizado — o `CanContentScroll="False"` na Page afeta apenas
-o DynamicScrollViewer externo. O ListBox interno com `ScrollViewer.CanContentScroll="True"`
-continua virtualizando normalmente.
+Recipe completo (XAML da Page, variante DataGrid, o que nao funciona e efeito colateral
+conhecido) em `references/layout-patterns.md` secao "Toolbar Fixa com WPF-UI NavigationView".
 
 **Referencia:** WPF-UI GitHub Issue #1041, PR #1504
 
@@ -732,10 +658,10 @@ using ContentDialogResult = Wpf.Ui.Controls.ContentDialogResult;
 
 **Problema:** Paginas com toolbar de 3-5 botoes que destacam a aba ativa acabam
 com `<ui:Button.Style>` inline duplicado. Cada botao tem 9 linhas de XAML identicas
-variando so o Binding path. Com 7 abas em 2 paginas, sao 63 linhas redundantes.
+variando so o Binding path — multiplicado pelo numero de abas e de paginas.
 
 ```xml
-<!-- ❌ ANTES: 9 linhas de Style inline por botao, repetido 7 vezes -->
+<!-- ❌ ANTES: 9 linhas de Style inline por botao, repetido em cada aba -->
 <ui:Button Content="VDR Form" Command="{Binding ShowVDRFormCommand}">
     <ui:Button.Style>
         <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
@@ -942,7 +868,7 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
 
 ---
 
-## Detalhes Criticos (aprendidos nos testes)
+## Detalhes Criticos
 
 1. **ScrollViewer.CanContentScroll="False" e a unica forma confiavel** de desabilitar o
    DynamicScrollViewer do NavigationView no WPF-UI 4.2.0. `ScrollViewer.VerticalScrollBarVisibility="Disabled"` no Page NAO funciona — o NavigationViewContentPresenter ignora essa propriedade.
@@ -951,7 +877,7 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
    `ContentPresenter`. Isso significa que a pagina nao recebe constraints de tamanho
    automaticamente como em ContentPresenter.
 
-3. **DynamicResource vs StaticResource** — para cores de tema, SEMPRE use `DynamicResource`.
+3. **DynamicResource vs StaticResource** — para cores de tema, use `DynamicResource`.
    `StaticResource` nao atualiza quando o tema muda em runtime.
 
 4. **ComboBox items com espacos iniciais** — se os ComboBoxItems usam `Content="   Good"`
@@ -999,16 +925,16 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
    de **~38-40px**. A `FontSize="12"` (Caption) suporta `Height="32"` na maioria dos casos.
 
 10. **Mudancas em XAML de UserControl em DLL referenciada precisam de process restart** —
-    se voce edita `MyControl.xaml` que vive em `VDAControls.csproj` (DLL referenciada por
-    `VDRDataAnalyzer.exe`), o XAML e compilado em BAML e embutido no `VDAControls.dll`. O
-    processo `VDRDataAnalyzer.exe` carregou esse DLL na memoria no startup e nao recarrega
+    se voce edita `MyControl.xaml` que vive em `MyControls.csproj` (DLL referenciada por
+    `MyApp.exe`), o XAML e compilado em BAML e embutido no `MyControls.dll`. O
+    processo `MyApp.exe` carregou esse DLL na memoria no startup e nao recarrega
     automaticamente. `dotnet build` atualiza o DLL no disco mas nao afeta o processo
     rodando. **Sempre instruir o usuario:** "feche e reabra a app para ver as mudancas".
 
 11. **Hierarquia de precedencia WPF para triggers do template** — para customizar
-    aparencia de controles WPF-UI em estados (hover, pressed, checked), **sempre
-    sobrescreva os `DynamicResource` que o template consulta, NUNCA as properties
-    do controle via Style externo ou code-behind**. O `ControlTemplate.Triggers`
+    aparencia de controles WPF-UI em estados (hover, pressed, checked), sobrescreva
+    os `DynamicResource` que o template consulta, nao as properties do controle via
+    Style externo ou code-behind. O `ControlTemplate.Triggers`
     com `Setter TargetName="X" Property="Y" Value="{DynamicResource Z}"` aplica o
     valor no elemento INTERNO do template — esse escreve tem precedencia sobre:
     - Setters de Style externo (mesmo com `BasedOn`)
@@ -1021,7 +947,7 @@ simetrico. Isso cria uma linha horizontal sutil que separa grupos sem "encaixota
     via RES-001 e sobrescreva no escopo apropriado (local = UserControl.Resources,
     global = App.xaml).
 
-    Exemplos na sessao onde este padrao apareceu:
+    Casos deste padrao no cookbook:
     - Botao Primary com brand color voltando para azul no hover → BRAND-001
     - ToggleButton checked com texto escuro sobre fundo colorido → CTRL-004
     - CheckBox glyph da cor errada → CTRL-005
@@ -1038,7 +964,7 @@ Leia estes arquivos **somente quando necessario** no passo correspondente:
 | `references/form-design.md` | Espacamento entre campos, label alignment, respiro, FORM-003 (Margin cirurgico vs estilo implicito) |
 | `references/typography-colors.md` | FontSize, type ramp, cores dark theme, contraste WCAG |
 | `references/controls-sizing.md` | MinHeight/MinWidth, ComboBox, TextBox, touch targets |
-| `references/wpfui-components.md` | Card, CardExpander, InfoBar, DynamicResource brushes, ControlAppearance, DI services |
-| `references/wpfui-controls-catalog.md` | Catalogo completo de 90+ controles WPF-UI com exemplos XAML |
+| `references/wpfui-components.md` | Card, CardExpander, InfoBar, DynamicResource brushes, theming setup, SymbolIcon, header do NavigationView |
+| `references/wpfui-controls-catalog.md` | Catalogo completo de 90+ controles WPF-UI com exemplos XAML, enum ControlAppearance, DI services (IContentDialogService, ISnackbarService), gotchas do WPF-UI 4.2.0 |
 | `references/wpfui-theming-overrides.md` | Recipes detalhadas de BRAND-001, CTRL-004/5/6/7, RES-001 — customizar brand color em Primary buttons, cor de ToggleButton checked, CheckBox, ProgressRing, e descobrir nomes de resources do WPF-UI |
 | `references/sources.md` | URLs de documentacao oficial e fontes da pesquisa |

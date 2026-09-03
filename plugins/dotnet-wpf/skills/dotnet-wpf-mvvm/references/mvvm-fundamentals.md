@@ -163,8 +163,11 @@ Nao use `[ObservableProperty]` na collection — declare como propriedade public
 
 ## Messenger (Comunicacao entre ViewModels)
 
-Quando um ViewModel precisa avisar outro sobre algo (ex: usuario logou, dados mudaram),
-use o `WeakReferenceMessenger` do CommunityToolkit:
+Quando um ViewModel precisa avisar outro de um evento pontual (ex: arquivo salvo,
+navegacao concluida), use o `WeakReferenceMessenger` do CommunityToolkit. Para estado que
+varios ViewModels leem (usuario logado, dados carregados, modo de operacao), um servico
+Singleton com `INotifyPropertyChanged` e mais simples — ver SKILL.md, secao
+"Estado Compartilhado (IAppStateService)":
 
 ### 1. Defina a mensagem
 ```csharp

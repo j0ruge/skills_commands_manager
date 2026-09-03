@@ -63,11 +63,11 @@ public partial class App : Application
                 services.AddSingleton<MainWindow>();
                 services.AddSingleton<MainWindowViewModel>();
 
-                // === Pages (se usar navegacao) ===
+                // === Pages (se usar navegacao) — VMs Singleton, ver SKILL.md Detalhe #27 ===
                 // services.AddTransient<DashboardPage>();
-                // services.AddTransient<DashboardViewModel>();
+                // services.AddSingleton<DashboardViewModel>();
                 // services.AddTransient<SettingsPage>();
-                // services.AddTransient<SettingsViewModel>();
+                // services.AddSingleton<SettingsViewModel>();
             })
             .Build();
 
@@ -229,11 +229,12 @@ public class PageService(IServiceProvider serviceProvider) : INavigationViewPage
 services.AddSingleton<INavigationService, NavigationService>();
 services.AddSingleton<INavigationViewPageProvider, PageService>();
 
-// Cada pagina e seu ViewModel
+// Cada pagina (Transient) e seu ViewModel (Singleton — Transient + assinatura de
+// servico Singleton vaza memoria a cada navegacao; ver SKILL.md, Detalhe #27)
 services.AddTransient<DashboardPage>();
-services.AddTransient<DashboardViewModel>();
+services.AddSingleton<DashboardViewModel>();
 services.AddTransient<SettingsPage>();
-services.AddTransient<SettingsViewModel>();
+services.AddSingleton<SettingsViewModel>();
 ```
 
 ### Setup no construtor da MainWindow
@@ -320,7 +321,7 @@ NavigationView suporta dois tipos de items:
     Tag="browse" />
 ```
 
-**IMPORTANTE**: Usar `PreviewMouseLeftButtonUp` diretamente no NavigationViewItem.
+Usar `PreviewMouseLeftButtonUp` diretamente no NavigationViewItem.
 No WPF-UI 4.2.0, nem `ItemInvoked` nem `SelectionChanged` disparam de forma confiavel
 para items sem `TargetPageType`. `PreviewMouseLeftButtonUp` e um evento WPF nativo que
 **sempre** dispara.
@@ -365,7 +366,7 @@ services.AddSingleton<IContentDialogService, ContentDialogService>();
 
 ### Inicializacao na MainWindow
 
-**IMPORTANTE:** O elemento XAML correto e `ContentDialogHost` (nao `ContentPresenter`
+O elemento XAML correto e `ContentDialogHost` (nao `ContentPresenter`
 ou `ContentDialogPresenter`). A ordem de inicializacao deve ser: services primeiro,
 DataContext depois.
 

@@ -2,6 +2,34 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.7.0] - 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Quatro skills auditadas; um commit por plugin.
+
+- **dotnet-desktop-setup** — o JSON de hooks do Passo 8 usava um evento `PreCommit`, que não existe
+  no Claude Code, e o shape `command`/`description` direto no matcher, que o schema não aceita: quem
+  colava a config recebia um hook que nunca rodava. Corrigido para `hooks[] { type: command }`; o
+  teste antes do commit vai para um git hook `pre-commit`. "Execute os passos em ordem" vira "duas
+  ordens importam" (auditoria antes de tudo; CLAUDE.md antes das rules escopadas); caps sem razão
+  rebaixados; o Detalhe #4 ganha o motivo real (o que é global vs. do projeto), no lugar de "o
+  modelo sem skill não conhece a hierarquia"; templates gerados sem `NUNCA` e sem categorias de
+  domínio de um projeto (`MMSI`).
+- **dotnet-wpf-mvvm** — as references ainda registravam ViewModels como `Transient`, o que o
+  próprio corpo (Detalhe #27) diz vazar memória: o exemplo reintroduzia o leak sem erro de build.
+  Alinhadas a Singleton. O ponteiro para `TODO_SPECS/SPEC-Automated-UI-Testing.md` (inexistente)
+  vira ponteiro para a skill irmã `dotnet-wpf-e2e-testing`. Resíduos do projeto de origem
+  (`VDAControls/WPF/`, `SC-002`, "projeto VDRDataAnalyzer") saem; ~18 caps rebaixados.
+- **dotnet-wpf-design** — o bloco "Versão e Changelog" sai do corpo (o CHANGELOG já existe);
+  nomes de brushes corrigidos (faltava o sufixo `Brush`); receita da toolbar fixa vira ponteiro para
+  `layout-patterns.md` em vez de duplicata; `VDAControls`/`VDRDataAnalyzer` → nomes genéricos; o
+  XAML do AptDate deixa de fixar `Height=32` a FontSize 13 (contradizia o Detalhe #9, que diz que
+  clipa); "aprendidos nos testes" e "Exemplos na sessão" saem dos títulos.
+- **dotnet-wpf-e2e-testing** — "nunca use `Thread.Sleep()`" ganha a exceção que o próprio corpo
+  já fazia (dialogs Win32); o incidente do linter que removeu `LoadHardwareId()` vira o princípio;
+  "siga estes passos na ordem" diz onde a ordem importa e que os Passos 6–7 são condicionais.
+
+As quatro skills ganham `metadata.version` espelhando o plugin (antes ausente).
+
 ## [1.6.1] - 2026-05-06
 
 ### Changed

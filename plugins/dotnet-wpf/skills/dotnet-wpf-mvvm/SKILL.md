@@ -1,5 +1,7 @@
 ---
 name: dotnet-wpf-mvvm
+metadata:
+  version: 1.7.0
 description: WinForms→WPF MVVM migration plus new WPF screens — CommunityToolkit.Mvvm, WPF-UI, ViewModels, data binding, Commands, navigation, DI via Microsoft.Extensions.Hosting. Setup and E2E live in sibling skills. Triggers — MVVM, WinForms to WPF, CommunityToolkit, data binding, RelayCommand.
 ---
 
@@ -175,9 +177,9 @@ public partial class MainWindowViewModel : ObservableObject
 }
 ```
 
-**Regras criticas:**
-- A classe DEVE ser `partial` — source generators precisam disso
-- Campos `[ObservableProperty]` DEVEM ser `private` — `_name` gera propriedade `Name`
+**Regras do source generator:**
+- A classe deve ser `partial` — source generators precisam disso
+- Campos `[ObservableProperty]` devem ser `private` — `_name` gera propriedade `Name`
 - Metodos `[RelayCommand]` geram propriedade com sufixo `Command` — `Salvar()` gera `SalvarCommand`
 - Metodos async geram `IAsyncRelayCommand` com cancelamento automatico
 
@@ -320,9 +322,9 @@ ANTES de mover codigo — consulte a checklist pre-migracao.
 
 ### Testes E2E (para projetos maiores)
 
-Para smoke tests visuais em projetos com muitas telas, considere FlaUI
-(framework de automacao UI para WPF). Veja `TODO_SPECS/SPEC-Automated-UI-Testing.md`
-para o plano completo.
+Para smoke tests visuais em projetos com muitas telas, use a skill irma
+`dotnet-wpf-e2e-testing` (FlaUI + xUnit): setup do projeto, AutomationId, Page Objects
+e CI. Os testes unitarios de ViewModel continuam aqui.
 
 ---
 
@@ -358,7 +360,7 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
 
 ## Detalhes Criticos
 
-1. **Classes DEVEM ser `partial`** — source generators do CommunityToolkit exigem `partial class`.
+1. **Classes devem ser `partial`** — source generators do CommunityToolkit exigem `partial class`.
    Sem `partial`, `[ObservableProperty]` e `[RelayCommand]` nao geram codigo e o build falha.
 
 2. **Campos `[ObservableProperty]` devem ser `private`** — o generator cria a propriedade publica
@@ -405,7 +407,7 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
     alias: `using MessageBoxButton = System.Windows.MessageBoxButton;` e
     `using MessageBoxImage = System.Windows.MessageBoxImage;`.
 
-14. **NAO importar `Wpf.Ui.Controls` globalmente** — causa conflitos com `MessageBoxButton`,
+14. **Nao importar `Wpf.Ui.Controls` globalmente** — causa conflitos com `MessageBoxButton`,
     `Page`, etc. Qualificar tipos WPF-UI individualmente:
     `public partial class MainWindow : Wpf.Ui.Controls.FluentWindow`.
 
@@ -426,7 +428,7 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
 18. **NavigationView quebra virtualizacao** — o NavigationView do WPF-UI internamente usa layout
     que da **altura infinita** as paginas. Qualquer ListBox/DataGrid/ListView dentro de uma Page
     recebe ActualHeight infinito e renderiza TODOS os items (virtualizacao desabilitada).
-    **Fix obrigatorio**: usar `MaxHeight` fixo + `Page_SizeChanged` para ajustar dinamicamente:
+    Fix: usar `MaxHeight` fixo + `Page_SizeChanged` para ajustar dinamicamente:
     ```csharp
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -444,8 +446,8 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
     internamente, o que torna controles WinForms (via WindowsFormsHost) **invisiveis**. Bug
     documentado pela Microsoft. Usar `WindowBackdropType="None"` se WindowsFormsHost for necessario.
 
-21. **Page.Resources ANTES do conteudo** — declarar `<Page.Resources>` com Styles/converters
-    ANTES do conteudo XAML (DockPanel, Grid, etc). Se declarado depois, `StaticResource` falha
+21. **Page.Resources antes do conteudo** — declarar `<Page.Resources>` com Styles/converters
+    antes do conteudo XAML (DockPanel, Grid, etc). Se declarado depois, `StaticResource` falha
     com erro "StaticResourceExtension" em runtime.
 
 22. **SolidColorBrush.Freeze()** — brushes estaticos devem ser frozen para thread-safety:
@@ -503,8 +505,9 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
 
 ## Anti-padroes desta Skill
 
-- **ViewModel referenciando UI** — ViewModel NUNCA deve importar `System.Windows` ou acessar
-  controles da View. Use bindings e Messenger para tudo.
+- **ViewModel referenciando UI** — ViewModel nao importa `System.Windows` nem acessa
+  controles da View; e isso que o mantem testavel sem abrir janela. Use bindings, Messenger
+  (eventos pontuais) ou um servico de estado compartilhado (secao abaixo).
 - **Logica de negocio no ViewModel** — ViewModel orquestra, Service executa. Se o ViewModel
   esta fazendo IO, parsing ou calculo complexo, mova para um Service.
 - **`new ViewModel()` no XAML** — funciona, mas impede DI. Prefira injetar via construtor.
@@ -531,7 +534,7 @@ Use `INavigationService` + `IPageService` do WPF-UI para navegacao DI-friendly.
   `<ui:ContentPresenter>` ou `<ui:ContentDialogPresenter>`. Erro comum que causa crash.
 - **ShowSimpleDialogAsync sem using** — `ShowSimpleDialogAsync` e extension method em
   `Wpf.Ui.Extensions`. Requer `using Wpf.Ui.Extensions;` no arquivo.
-- **`new Service()` dentro do ViewModel** — ViewModel NAO deve instanciar servicos diretamente.
+- **`new Service()` dentro do ViewModel** — ViewModel nao deve instanciar servicos diretamente.
   Use injecao de construtor. Se o service e thin wrapper (ex: `new UsuariosServicos(repo)`), injete
   a interface subjacente diretamente (`IUsuariosRepositorio`) e chame `_repo.Salvar()`. Instanciar
   services no VM impede mocking nos testes e viola o principio de inversao de dependencias.
@@ -556,7 +559,7 @@ Antes de migrar cada Page para MVVM, audite o code-behind e verifique:
 5. **Custom controls imperativos** — controles com API `GetValue()/SetValue()/SetDate()` sem
    DependencyProperties → nao suportam binding (ver secao Custom Controls abaixo)
 6. **Operacoes visuais** — `ScrollToTop()`, `Focus()`, `Mouse.OverrideCursor` → manter em
-   code-behind como excecao documentada (SC-002 exception)
+   code-behind como excecao MVVM documentada (a mesma da tabela do Passo 5)
 7. **Testes com reflection** — testes que usam `typeof(Page).GetMethod()` para metodos privados
    quebrarao quando o metodo for movido para o ViewModel. Atualizar `typeof` apos mover
 
@@ -608,7 +611,7 @@ APTCheckBoxWPF, AptDateWPF), audite ANTES de planejar a migracao:
 
 1. **Verificar DependencyProperties** — o controle expoe DP para seu valor principal?
    ```bash
-   grep -r "DependencyProperty" VDAControls/WPF/
+   grep -r "DependencyProperty" <pasta-dos-controles-custom>/
    ```
    Se retorna vazio, o controle nao suporta data binding.
 

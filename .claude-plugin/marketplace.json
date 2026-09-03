@@ -318,7 +318,7 @@
     {
       "name": "dotnet-wpf",
       "source": "./plugins/dotnet-wpf",
-      "version": "1.6.1",
+      "version": "1.7.0",
       "description": "Complete C#/.NET WPF development toolkit — project setup & audit, Fluent Design guide (90+ controls, form spacing recipes, height clipping diagnosis, Grid row separators, multi-column layouts, ContentDialog confirmation pattern for destructive actions), WinForms-to-WPF MVVM migration, and FlaUI E2E testing.",
       "category": "development",
       "keywords": [

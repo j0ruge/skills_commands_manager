@@ -73,7 +73,7 @@ public void ConverterBinarioParaHex_ValorValido_RetornaCorreto(string input, str
 Sempre adicione `[Trait("Category", "...")]` para permitir filtro:
 - `"UnitTest"` — testes sem dependencia externa
 - `"Integration"` — testes que acessam arquivo, rede, hardware
-- Use categorias de dominio tambem: `"MMSI"`, `"PDF"`, `"License"`
+- Use categorias de dominio tambem, com os termos do proprio projeto (ex.: `"PDF"`, `"License"`)
 
 ## Regras
 

@@ -75,12 +75,12 @@ dotnet build -v q -c Release --no-restore
 
 ## Anti-padroes Universais
 
-### NUNCA faca isto em classes que NAO sao Form/UI:
+### Nao faca em classes que nao sao Form/UI:
 - `MessageBox.Show()` — retorne Result<T> ou lance excecao
 - `OpenFileDialog` / `SaveFileDialog` — receba path como parametro
 - `System.Windows.Forms` no using — classes de dominio/service nao devem ter esta referencia
 
-### NUNCA faca isto em qualquer classe:
+### Nao faca em nenhuma classe:
 - `public static` mutavel como service locator (padrao Global.cs) — use DI
 - `catch { }` vazio — no minimo faca log
 - `Thread.Sleep()` em testes — use async/await ou fakes de tempo

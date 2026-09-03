@@ -227,7 +227,7 @@ No XAML, erros aparecem automaticamente com `ValidatesOnDataErrors`:
 
 ## Exemplo Completo: LicenceManager ViewModel
 
-Baseado no LicenceManager real do projeto VDRDataAnalyzer:
+Exemplo ilustrativo — ViewModel de um gerenciador de licenca (file dialog, validacao e CanExecute):
 
 ```csharp
 using CommunityToolkit.Mvvm.ComponentModel;

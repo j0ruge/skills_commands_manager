@@ -268,8 +268,8 @@ Em ambos os casos, os services criados no desacoplamento sao reutilizados — so
 
 ## Exemplo Canonico
 
-Se o projeto tem um SPEC de refatoracao (como `SPEC-LicenceManager-Refactoring.md`),
-use-o como referencia para o padrao de desacoplamento. Ele documenta:
+Se o projeto tem um SPEC de refatoracao, use-o como referencia para o padrao de desacoplamento.
+Um SPEC util documenta:
 - Estado atual (acoplamento)
 - Arquitetura-alvo (camadas)
 - Tarefas sequenciais

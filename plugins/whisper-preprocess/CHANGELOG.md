@@ -1,5 +1,23 @@
 # Changelog — `whisper-preprocess`
 
+## [1.1.0] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo.
+
+- **Contrato ≠ comportamento (achado alto)**: o `SKILL.md` mandava copiar só
+  `whisper_preprocess.py`, mas o merge bilíngue faz `from merge_passes import …` a partir do próprio
+  diretório, dentro de um `try/except` que só loga: com `--secondary-language` e um arquivo só, as
+  duas passagens saem e o `*_transcricao_merged.txt` prometido nunca aparece. Agora manda copiar os
+  dois scripts e diz o sintoma.
+- **Lição #9 era um changelog de sessão** ("used to inherit", "Fix (now built in)", "the old recipe
+  clipped at +0.7 dBFS"): reescrita no presente, com as razões preservadas; a arqueologia está no
+  CHANGELOG.
+- **"NEVER use `afftdn`"** contradizia a flag `--denoise` do próprio script: escopado ao caminho de
+  transcrição. "Follow them carefully" vira "each one names the failure it prevents". Tabela de
+  troubleshooting sem "Old:"/"Fixed —".
+- Description mantida (a palavra `transcrição` é gatilho legítimo para quem digita em português).
+  `SKILL.md` ganha `metadata.version`.
+
 ## [1.0.1] — 2026-08-26
 
 Higiene de `description`, sem mudança de comportamento: o texto tinha **578 chars**,

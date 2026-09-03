@@ -380,6 +380,19 @@ curl -sf https://idp.example.com/oauth/v2/keys | jq '.keys | length'
 
 Se `/.well-known/openid-configuration` retornar 404 mas `/ui/v2/login` retornar 200, seu roteamento está invertido — provavelmente o `location /` veio antes do `location /ui/v2/login` e nginx pegou o match mais geral. Reordenar para que rotas específicas venham primeiro.
 
+#### Provar `client_id` + `redirect_uri` sem credencial (Quirk 44)
+
+Todo outro check de client precisa de PAT (`GetApplication`, Console) — inútil num ambiente novo onde ninguém logou ainda. Zitadel valida `client_id` e casa `redirect_uri` byte a byte **antes** de renderizar qualquer coisa, então o próprio redirect para a login UI é a prova:
+
+```bash
+AUTHZ=$(curl -s https://<idp>/.well-known/openid-configuration | grep -oE '"authorization_endpoint":"[^"]+"' | cut -d'"' -f4)
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' \
+  "$AUTHZ?client_id=<numeric>&redirect_uri=<urlencoded>&response_type=code&scope=openid&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=probe"
+# expect: 302 https://<idp>/ui/login/login?authRequestID=…
+```
+
+O `code_challenge` literal é o vetor de teste da RFC 7636 — o fluxo nunca é completado, então não precisa de verifier correspondente. Qualquer outra resposta é achado: `400`/página de erro significa app não registrado sob esse `client_id` (Quirk 29 — provavelmente o UUID `applicationId` no lugar do `clientId` numérico) ou `redirect_uri` fora de `redirectUris` (byte-match do Quirk 18, barra final inclusive). Combine com o Quirk 45: 45 prova que a SPA *pede* os valores certos, 44 prova que o IdP *aceita*.
+
 ### E se eu quiser ficar com Login UI v1?
 
 Path B do `migration-v2-to-v4.md §2`. Não suba o container `zitadel-login`, não faça split de routing — só desligue o flag de instância:

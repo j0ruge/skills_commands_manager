@@ -373,7 +373,7 @@ You're writing Playwright specs that drive a real login flow against your local 
 
 ### Why the obvious thing fails
 
-The SPA loads from `http://localhost:5173` (Vite default, a `crypto.subtle`-eligible secure context per Quirk 16). The OIDC `authority` is `https://192.168.0.1.sslip.io:8443` (Caddy + mkcert). When `signinRedirect()` runs, `oidc-client-ts` issues a `fetch` for `<authority>/.well-known/openid-configuration` — and **Chromium under Playwright validates the cert independently of your host's trust store**. Even if `mkcert -install` made the cert work in your real browser, the Playwright-launched browser doesn't see it.
+The SPA loads from `http://localhost:5173` (Vite default, a `crypto.subtle`-eligible secure context per Quirk 16). The OIDC `authority` is `https://<lan-ip>.sslip.io:8443` (Caddy + mkcert). When `signinRedirect()` runs, `oidc-client-ts` issues a `fetch` for `<authority>/.well-known/openid-configuration` — and **Chromium under Playwright validates the cert independently of your host's trust store**. Even if `mkcert -install` made the cert work in your real browser, the Playwright-launched browser doesn't see it.
 
 What you see: the SPA renders the login page, you fill the email, click "Entrar", and **nothing visible happens**. No console error (the typical `react-oidc-context` consumer `void`s the promise), no network navigation, no Zitadel redirect. The test times out waiting for `waitForURL` to match the IdP's `/ui/login` page. DevTools console (`page.on('console', ...)` in your spec) shows `net::ERR_CERT_AUTHORITY_INVALID` against the discovery URL — the only hint, and only if you remembered to capture it.
 

@@ -184,4 +184,4 @@ Se 1-3 estão verdes mas 4 mostra azul Zitadel, **muito provavelmente** é quirk
 
 ## Bootstrap completo (referência operacional)
 
-Veja `packages/idp/scripts/bootstrap-zitadel.ts` no projeto JRC — funções `ensureLabelPolicy`, `ensureLabelAssets`, `ensureCustomTexts`, e `ensureProject` com sync do `privateLabelingSetting`. Idempotente, trata os 2 error IDs do quirk 20, faz o `_activate` no fim de cada mutação.
+O `assets/bootstrap-zitadel.ts` desta skill **não** cobre branding. A forma que funciona: funções `ensureLabelPolicy`, `ensureLabelAssets`, `ensureCustomTexts` e `ensureProject` (com sync do `privateLabelingSetting`), cada uma idempotente — GET prévio, ramificação por `isDefault`, os 2 error IDs do quirk 20 tratados como no-op — e `_activate` no fim de cada mutação.

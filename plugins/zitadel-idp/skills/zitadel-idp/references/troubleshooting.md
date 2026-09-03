@@ -245,7 +245,7 @@ A pegadinha mais sutil dessa família, e a que reaparece toda vez que alguém fa
 3. Pior: a JWKS foi baixada na primeira request da sessão anterior e está cacheada em memória pelo `createRemoteJWKSet`. Como `--reset-zitadel` apaga o volume e regenera as **signing keys da instância**, os tokens novos têm `kid` desconhecido pra esse cache.
 4. Resultado: 401 storm idêntico ao cause 1/2, mas `bootstrap.json`, `.env` e o disco inteiro estão consistentes. Diff por inspeção visual não acha nada.
 
-Pior ainda em projetos de dev de longa duração: cada sessão que termina sem `Ctrl+C` no `dev.sh` deixa um `tsx watch` órfão no PID space. Acumulam ao longo de dias. No projeto JRC encontramos **8 instâncias paralelas** rodando, das quais 5 com env de bootstraps anteriores. Só uma ia responder pra um dado request — qual? Race.
+Pior ainda em projetos de dev de longa duração: cada sessão que termina sem `Ctrl+C` no `dev.sh` deixa um `tsx watch` órfão no PID space. Acumulam ao longo de dias. Num ambiente de dev real foram encontradas **8 instâncias paralelas** rodando, 5 delas com env de bootstraps anteriores. Só uma ia responder pra um dado request — qual? Race.
 
 **Fix em 3 camadas** (defesa em profundidade — esta é a parte que falta na maioria dos guides):
 
@@ -463,7 +463,7 @@ Update via Console (Project → Settings; App → Token Settings) or API. Roles 
 **Fix immediately** — search-then-PUT (Quirk 8 pattern):
 
 ```bash
-ZITADEL=https://192.168.0.1.sslip.io:8443  # or your authority
+ZITADEL=https://<lan-ip>.sslip.io:8443  # your authority
 PAT=$(cat /path/to/admin.pat)
 USER_ID=<user UUID>
 ORG_ID=<org UUID>
@@ -770,6 +770,15 @@ If the failure persists without those envs, your underlying issue is somewhere e
 
 Backend `AUTH_AUDIENCE` for JWT validation can stay as the deterministic `projectId` — the JWT `aud` claim contains both, and Zitadel emits projectId for backend validation.
 
+**Diagnose from the served bundle** (Quirk 45) — `VITE_*` (and `NEXT_PUBLIC_*`) are inlined at build time, so check what the deployed SPA actually shipped rather than what the workflow says:
+
+```bash
+BUNDLE=$(curl -s https://<app>/ | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -1)
+curl -s "https://<app>$BUNDLE" | grep -oE 'https://[a-z.]+|[0-9]{15,20}' | sort -u
+```
+
+You are looking for the authority host, the numeric `client_id`, the redirect URI and the API base URL — and specifically that **none of them belong to another environment**. Grep the served bundle, not the one inside the container (`docker exec … grep /usr/share/nginx/html`): the served copy also catches a stale container still registered in the reverse-proxy upstream pool (Quirk 32's neighbourhood), which the in-container check cannot see. If the bundle disagrees with the secret, rebuild the frontend image — updating the secret alone is a no-op, since it is read at the *next* build.
+
 ### Wrong-environment IDs in prod IdP — bootstrap defaulted to `dev`
 
 **Symptom**: bootstrap succeeded; entities have *dev* deterministic IDs from your YAML (e.g., `applications[].ids.dev`); the frontend secret has *prod* IDs; OIDC authorize returns `Errors.App.NotFound`. Same surface symptom as Quirk 29 but different root cause.
@@ -789,7 +798,7 @@ Backend `AUTH_AUDIENCE` for JWT validation can stay as the deterministic `projec
 
 ### "A senha é inválida" / `password.check.failed` despite the env value matching
 
-**Symptom**: `it@jrcbrasil.com` (FirstInstance human admin) can't login. The container env literally has `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=<secret-value>` — verified via `docker inspect <ctr> --format '{{range .Config.Env}}{{println .}}{{end}}'` — and that's exactly what the operator is typing.
+**Symptom**: `admin@example.com` (FirstInstance human admin) can't login. The container env literally has `ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=<secret-value>` — verified via `docker inspect <ctr> --format '{{range .Config.Env}}{{println .}}{{end}}'` — and that's exactly what the operator is typing.
 
 **Most common cause**: Zitadel default `passwordChangeRequired=true` forced a password change on first login; operator changed it; current password ≠ secret value. After a volume wipe, FirstInstance recreates the user with the secret value but the operator forgets and tries the *changed* password — or types the secret value correctly but is misled by stale earlier attempts.
 
@@ -804,7 +813,7 @@ docker exec <postgres-idp-container> psql -U zitadel -d zitadel -tAc "
       SELECT aggregate_id
       FROM eventstore.events2
       WHERE event_type = 'user.human.added'
-        AND payload->>'userName' = 'it@jrcbrasil.com'
+        AND payload->>'userName' = 'admin@example.com'
       LIMIT 1
     )
   ORDER BY position ASC;"

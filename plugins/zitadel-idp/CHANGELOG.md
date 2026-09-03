@@ -1,5 +1,25 @@
 # Changelog — zitadel-idp
 
+## [0.12.0] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo.
+
+- **Dados de uma instalação num plugin distribuído**: `it@jrcbrasil.com` (3 lugares),
+  `192.168.0.1.sslip.io`, `idp.jrcbrasil.com`, `jrc.idp.jrcbrasil.com`, `tadeu.mezzavilla@…` viram
+  `admin@example.com`, `<lan-ip>`, `acme.idp.example.com`, `jane.doe@…`.
+- **Description**: "47 documented quirks" → "a numbered quirk catalogue" — o número cresce a cada
+  retrofit e envelhece na superfície de trigger (Grupo 2 do guia).
+- **A lista-gatilho dos quirks volta a ser gatilho**: 38–42, 44 e 45 carregavam receitas inteiras
+  (YAML, bash, TypeScript) dentro do `SKILL.md`; cada um vira um parágrafo que diz o sintoma, o
+  diagnóstico e onde está a receita. As receitas de 38–42 já existiam nas references; **44 e 45
+  ganham seção nova** em `docker-compose-bootstrap.md` e `troubleshooting.md`, porque só existiam
+  no corpo.
+- "Source of truth" deixa de apontar para `docs/zitadel-reference.md` e
+  `packages/idp/scripts/bootstrap-zitadel.ts` (arquivos de outro projeto) e aponta para os assets
+  da própria skill; `branding.md` diz o que o asset **não** cobre em vez de mandar ler um repo
+  alheio. "save 1-3 hours" e "the same eight gotchas" (contagem morta) saem.
+- `SKILL.md` ganha `metadata.version`.
+
 ## [0.11.1] — 2026-08-26
 
 Higiene de `description`, sem mudança de comportamento: o texto tinha **670 chars**,

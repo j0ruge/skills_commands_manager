@@ -75,7 +75,7 @@ The wrapper is `result` for `UserService.ListUsers` (above), but each *item* in 
   "result": [
     {
       "userId": "371797720757239825",   // ← this is the field
-      "username": "it@jrcbrasil.com",
+      "username": "admin@example.com",
       "details": { /* ... */ },
       "human": { /* ... */ }
     }

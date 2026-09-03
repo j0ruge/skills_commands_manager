@@ -124,7 +124,7 @@ The fallback uses the orgId itself when no mapping is configured — useful in d
 
 If your backend translates **human** IdP roles (`battery.operator`, `battery.admin`) into **canonical** domain roles (`battery:writer`, `battery:reader`, `battery:admin`) via an Anti-Corruption Layer, **the SPA must duplicate that translation table**. Reason: in the SPA + API + IdP triangle, the access token goes **directly** from IdP to SPA. The backend never gets to inspect or rewrite it before the SPA reads `roles` from the JWT for UI gating.
 
-**Symptom of a missing parity** (a real one we hit): a user with Zitadel role `battery.admin` logs in. Backend-protected routes work fine (backend translates the claim and authorizes). But the UI hides every admin button because the SPA's `extractRoles` filters for `["battery:reader", "battery:writer", "battery:admin"]` and the JWT only has `battery.admin` (with a dot, not a colon).
+**Symptom of a missing parity**: a user with Zitadel role `battery.admin` logs in. Backend-protected routes work fine (backend translates the claim and authorizes). But the UI hides every admin button because the SPA's `extractRoles` filters for `["battery:reader", "battery:writer", "battery:admin"]` and the JWT only has `battery.admin` (with a dot, not a colon).
 
 ```typescript
 // SPA must mirror the backend ROLE_TRANSLATION_TABLE:
@@ -147,7 +147,7 @@ function extractRoles(profile: IdTokenClaims): BatteryRole[] {
 
 **Principle**: whenever a token bypasses an interpreter, the interpretation must be re-applied at every consumer. Either translate at the IdP (Zitadel Actions can rewrite claims pre-emission) **or** translate at every consumer (backend AND frontend), but never only at one consumer downstream.
 
-For the JRC ERP we chose option B (translate at consumers) because it keeps the IdP config minimal and auditable; the trade-off is that any new consumer (mobile app, CLI, batch job) must include the same translation table.
+Option B (translate at consumers) keeps the IdP config minimal and auditable; the trade-off is that any new consumer (mobile app, CLI, batch job) must include the same translation table.
 
 ## Future-proofing
 

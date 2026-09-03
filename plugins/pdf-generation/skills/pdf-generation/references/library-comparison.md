@@ -12,7 +12,6 @@
 | TypeScript | Good (@types) | @types/pdfkit | Good | Good (native) | **@types/pdfmake** |
 | Bundle size (server) | ~200 KB | ~1 MB | **~400 MB** (Chromium) | ~2 MB | ~1.5 MB |
 | Generation speed | Fast (~100ms) | Fast (~200ms) | **Slow (2-5s)** | ~500ms | **~300ms** |
-| npm weekly downloads | ~1.5M | ~800K | ~3M | ~860K | **~1.76M** |
 | Learning curve | High (coordinate math) | Medium | Low (if know CSS) | Medium (JSX) | **Low (declarative JSON)** |
 | Custom fonts | Yes (embed TTF/OTF) | Yes (register path) | CSS @font-face | Yes (register) | **Yes (VFS or path)** |
 | Images | Yes (embed) | Yes (file/buffer) | HTML img/CSS | Yes (source prop) | **Yes (data URI or path)** |

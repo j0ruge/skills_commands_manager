@@ -1,7 +1,7 @@
 ---
 name: pdf-generation
 metadata:
-  version: 1.6.0
+  version: 1.6.1
 description: "PDF generation design toolkit — analyze a reference template, pick the library (pdfmake, pdf-lib, PDFKit, Puppeteer, @react-pdf), and design modular sections with conditional columns, revision control, and visual verification. Carries hard-won pdfmake pitfalls: column widths that silently push the table off the page, colorless SVG logos, glyph-eating ligatures. Triggers — PDF generation, PDF template, pdfmake, invoice/proposal/report PDF, column overflow, SVG logo in PDF."
 ---
 
@@ -11,14 +11,14 @@ description: "PDF generation design toolkit — analyze a reference template, pi
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding.
+Consider the user input before proceeding.
 
 ## Purpose
 
 Guide the design and implementation of programmatic PDF generation from structured data. This skill covers the full lifecycle: analyzing reference templates, recommending libraries, designing modular layouts, and producing implementation-ready specifications.
 
 **This skill is NOT for:**
-- Acrobat JavaScript / AcroForms (use `pdf-intelligent-forms` skill)
+- Acrobat JavaScript / AcroForms (interactive form logic)
 - Editing or merging existing PDFs (use `pdf-lib` directly)
 - Browser-side PDF viewing (standard iframe/embed)
 
@@ -217,7 +217,7 @@ Produce a complete specification covering:
 - Conditional logic rules
 - Test scenarios (column combinations, multi-page pagination, revision idempotency)
 
-### Phase 6: Visual Verification (NON-NEGOTIABLE)
+### Phase 6: Visual Verification
 
 Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues, conditional column logic, and pagination behavior **only show up in the rendered PDF**. Make this an explicit phase, not optional:
 
@@ -225,7 +225,7 @@ Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues,
 2. **Test with edge cases** — single row, max rows, all conditional columns hidden, all visible, multi-page pagination
 3. **Render and open EVERY page, not just page 1** — convert each page to an image (`pdftoppm -png -r 150 out.pdf page`) and inspect them. Page 1 looking right tells you nothing about whether the header/footer survive onto page 2 (a frequent bug — see the `content[]` trap below). Always exercise a 2+ page case.
 4. **Bust the cache before re-rendering** — if the pipeline caches by input-hash (Revision Control), a layout/code change won't regenerate. Delete the persisted revision + cached file first, or you'll inspect the stale PDF and wrongly conclude your edit had no effect.
-5. **Check specific render risks** (these have all bitten real implementations):
+5. **Check specific render risks**:
    - Last column not cut at right margin (the pdfmake padding pitfall — see `references/pdfmake-patterns.md`)
    - All values fully visible (no `R$49.12` when value is `R$49.126,35`)
    - Header/footer present on page 2+ — **inspect page 2 itself**; a header placed in `content[]` instead of the `header`/`footer` slots renders once and silently vanishes on later pages
@@ -237,7 +237,7 @@ Automated tests cannot catch rendering bugs. Layout overflow, font glyph issues,
 
 6. **Diff the rendered PDF against reference template visually** — open both side-by-side. Automated pixel diff is overkill; human eye catches what matters.
 
-Skipping this phase will ship bugs that passed every automated test. Several real-world session bugs (overflow, font ligatures, a header that only existed on page 1, an "empty" field that was actually just missing data) only surfaced here.
+Skipping this phase will ship bugs that passed every automated test.
 
 ## References
 

@@ -451,7 +451,7 @@ Palavras com "fi"/"fl"/"ffi" perdem a letra "f" no PDF renderizado:
 
 **Diagnóstico**: se uma palavra rara perdeu uma letra "f" interna, é esse bug — não é typo do banco.
 
-**Causa real** (verificada por parse SFNT — corrige o diagnóstico "fonte antiga / glyph vazio" de versões anteriores): a Roboto bundled em `pdfmake@0.3.9` é **atual** (`name[5]` = "Version 3.014; 2025"), tem `GSUB` com as features `liga`/`dlig` **ativas**, e os glifos de ligadura **existem** no `cmap` (`U+FB01`/`FB02`/`FB03` → glyphs 471/472/473). A cadeia pdfkit/fontkit interna **aplica** a substituição `liga` (`f`+`i` → glyph 471) durante o layout, mas **falha ao embutir/subsetar** esse glifo no PDF — daí o "fi" sumir. Não é fonte velha nem glyph ausente: é o embedding do glifo de ligadura quebrado no pipeline do pdfmake 0.3.x.
+**Causa real** (verificada por parse SFNT): a Roboto bundled em `pdfmake@0.3.9` é **atual** (`name[5]` = "Version 3.014; 2025"), tem `GSUB` com as features `liga`/`dlig` **ativas**, e os glifos de ligadura **existem** no `cmap` (`U+FB01`/`FB02`/`FB03` → glyphs 471/472/473). A cadeia pdfkit/fontkit interna **aplica** a substituição `liga` (`f`+`i` → glyph 471) durante o layout, mas **falha ao embutir/subsetar** esse glifo no PDF — daí o "fi" sumir. Não é fonte velha nem glyph ausente: é o embedding do glifo de ligadura quebrado no pipeline do pdfmake 0.3.x.
 
 **Confirme antes de trocar a fonte.** Chutar "a fonte está quebrada" custa tempo; as tabelas SFNT respondem direto: `name[5]` = versão, `GSUB` = features ativas, `cmap` = se o glifo de ligadura existe. Glifo presente + feature ativa + palavra sumindo ⇒ o problema é embedding (pipeline), não a fonte.
 

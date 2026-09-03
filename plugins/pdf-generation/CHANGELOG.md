@@ -1,5 +1,20 @@
 # Changelog — pdf-generation
 
+## [1.6.1] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo.
+
+- **Medida falsa na matriz de bibliotecas (achado alto)**: a linha "npm weekly downloads" não
+  tinha data e hoje está 1,5–8,4× abaixo do real, invertendo o ranking — vendia o pdfmake (último
+  dos cinco) como segundo, em negrito. Removida; as demais colunas seguem como critério de escolha.
+- Ponteiro para a skill `pdf-intelligent-forms` (não existe no marketplace nem localmente) sai; a
+  exclusão de AcroForms fica.
+- "(NON-NEGOTIABLE)" no título da Fase 6 e o "You **MUST** consider" do spec-kit voltam ao tom
+  normal — a razão já está ao lado, e ênfase sem razão nova se aplica em excesso nos modelos atuais.
+  "Several real-world session bugs …" e "corrige o diagnóstico … de versões anteriores" saem
+  (arqueologia; a regra e o checklist ficam). README acompanha.
+- `SKILL.md` ganha `metadata.version`.
+
 ## [1.6.0] — 2026-08-11
 
 ### Added

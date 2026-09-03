@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "category": "development",
   "keywords": ["kaizen", "melhoria-continua", "continuous-improvement", "pdca", "sdca", "lean", "gemba", "muda", "jidoka", "5s", "5-porques", "root-cause", "kaizen-log", "retrospectiva", "technical-debt", "planning", "maintenance", "toyota"],
   "platforms": ["claude-code", "cursor"],

@@ -51,6 +51,7 @@ Registro de melhorias contínuas. Toda entrada tem: o que melhorou, o que aprend
 - **Depois:** <situação nova em 1 linha, com métrica se houver>
 - **Causa raiz (se defeito):** <resultado dos 5 porquês>
 - **Padronizado em:** <convenção/doc/teste/CI atualizado — ou "pendente">
+- **Yokoten:** <onde mais a mesma causa existe e o que foi feito lá — ou "não se aplica">
 
 ### Desperdícios evitados (cortes conscientes)
 - <o que ficou fora do escopo e por quê — qual dos 7 desperdícios evitou>
@@ -91,7 +92,7 @@ Registre dentro da entrada do kaizen log ou no corpo da correção do bug.
 - **Teste que teria pegado:** <teste adicionado>
 ```
 
-Regra de ouro: a causa raiz é sempre um processo ou uma ausência de salvaguarda, nunca uma pessoa ("fulano errou" → continue perguntando: por que o erro foi possível e passou?).
+Regra de ouro: a causa raiz é sempre um processo ou uma ausência de salvaguarda, nunca uma pessoa ("fulano errou" → continue perguntando: por que o erro foi possível e passou?). Se um "por quê" bifurca em duas respostas verdadeiras, registre os ramos como 4a/4b e uma contramedida por ramo — é o Ishikawa em forma de lista.
 
 ## Retrospectiva
 

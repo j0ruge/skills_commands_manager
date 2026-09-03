@@ -2,6 +2,43 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.3.0] — 2026-09-03
+
+Pergunta do usuário, logo depois da 1.2.0: "além do poka-yoke, algum outro conceito do Kaizen está
+sendo ignorado no fluxo? Cada passo é útil em qualquer área, inclusive resolução de problemas de TI."
+
+### Medição, não opinião
+
+`grep` de cada conceito do cânone em `SKILL.md` × references separou três estados: **passo no
+fluxo** (Gemba, PDCA, SDCA, jidoka, 5 Porquês, 5S, poka-yoke, retrospectiva), **só verbete**
+(mura/muri, kaikaku, blitz, genchi genbutsu) e **ausente** (yokoten, andon, Ishikawa, o 8º
+desperdício, hansei, kata, A3, kanban, VSM). Nas seis respostas da sonda A/B da 1.2.0, o modelo
+não usou yokoten, Ishikawa nem o 8º desperdício uma vez sequer; mura/muri e kaikaku só apareceram
+quando o subagente leu a referência inteira. Mesmo defeito do poka-yoke: verbete não vira ação.
+
+### Sete conceitos ganham um lugar no fluxo (+16 linhas, description intacta)
+
+- **Yokoten** — Fase 3, bugs, passo 4 novo: a causa raiz achada aqui existe onde mais (servidores,
+  repositórios, clientes, skills)? Campo `Yokoten` no template do Kaizen Log. Padronizar é vertical;
+  yokoten é lateral — sem ele o mesmo incidente é resolvido N vezes, uma por equipe.
+- **Andon** — princípio 5 e Fase 2: parar **visivelmente**; "pare, avise, conserte". Conserto
+  silencioso não vira contagem nem padrão — e é a raiz do "tudo falha em silêncio".
+- **Ishikawa** — Fase 3, bugs, passo 2 e nota no template dos 5 Porquês: quando um "por quê" tem
+  duas respostas verdadeiras, siga cada ramo (processo, ferramenta, ambiente, medição,
+  conhecimento) com contramedida própria. Incidente de TI raramente tem uma causa só.
+- **Mura/Muri** — Fase 1, caça de desperdícios: o plano empilha tudo no fim? sobrecarrega alguém?
+- **Kaikaku** — Fase 1, sinal de alerta: quando nem refatiando dá, nomear, exigir ADR com a
+  alternativa kaizen medida, e fatiar o próprio kaikaku (strangler, feature flag).
+- **8º desperdício** — seção nova em `desperdicios.md` (sem renumerar os 7): talento e conhecimento
+  não usados — quem já resolveu não é consultado, runbook inexistente, bus factor.
+- **Gemba sem ticket** — Fase 3, intro: olhar logs, alertas, métricas e as oportunidades do log
+  periodicamente; o problema achado antes do usuário custa uma fração.
+
+`kaizen-conceitos.md` ganha os verbetes de andon, Ishikawa e yokoten, para o ensino acompanhar o
+corpo — e o corpo aponta para o verbete em vez de duplicá-lo. Ficam de fora, de propósito: hansei
+(a retrospectiva cobre), kanban/WIP ("um incremento por vez" já é WIP 1), A3 (Plano PDCA + 5
+Porquês já é um A3), kata, VSM, takt, hoshin — superprocessamento para uma skill de código.
+
 ## [1.2.0] — 2026-09-03
 
 Duas fontes, uma mudança. **Relato do usuário:** "a skill tem acionado pouco o poka-yoke, na

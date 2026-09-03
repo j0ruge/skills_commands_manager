@@ -17,6 +17,10 @@ No Kaizen/Lean, desperdício é tudo que consome esforço sem gerar valor para q
 - **Mura (desnivelamento):** fluxo irregular de trabalho — semanas ociosas seguidas de crunch; sprints com 2 entregas e sprints com 20. Kaizen busca fluxo constante de incrementos pequenos.
 - **Muri (sobrecarga):** exigir além da capacidade — de pessoas (horas extras crônicas) ou de sistemas (módulo que faz coisas demais, função de 300 linhas). Sobrecarga gera defeito; defeito gera retrabalho; retrabalho gera mais sobrecarga.
 
+## O oitavo desperdício — talento e conhecimento não usados
+
+O Lean acrescentou aos 7 da Toyota um oitavo, e em TI ele é o mais caro: quem já resolveu o problema não é consultado; o conhecimento vive numa cabeça só (bus factor); o runbook não existe; a sugestão de quem opera o sistema é ignorada. Perguntas para detectar: "Quem já resolveu isso antes? Onde está escrito? Quem opera foi ouvido?"
+
 ## Como usar esta referência
 
 - **No planejamento:** percorra a tabela e confronte cada item do plano. Corte ou adie o que cair em superprodução ou superprocessamento.

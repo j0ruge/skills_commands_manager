@@ -1,5 +1,20 @@
 # Changelog — `dev-script`
 
+## [0.5.3] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo.
+
+- **Contagens de incidente apresentadas como argumento** ("4 zombie backend trees", "8 zombie tsx
+  watch trees", "4 sessions over 5 days", "why it bit us", "the bugs that bit JRC projects
+  (Zitadel/Battery Lifecycle, DSR Ecosystem)") saem; a regra e a razão ficam, em presente.
+- **Tetos numéricos de saída** ("5–10 bullets", "10–15 line summary", "4–6 lines") viram orientação
+  qualitativa — Grupo 1f do guia: caps numéricos calibrados contra a verbosidade de um modelo antigo.
+- "Walk the project tree and identify, in this order" perde o "in this order" (a detecção não tem
+  dependência de ordem); "CVE-2025-XXXXX-class" (placeholder) sai; "Always include a sanity check
+  … note" vira "syntax-check before handing back".
+- Description: gatilho "local stack" sai (9 → 8; os outros oito cobrem o uso).
+- `SKILL.md` ganha `metadata.version`.
+
 ## [0.5.2] — 2026-08-26
 
 Higiene de `description`, sem mudança de comportamento: o texto tinha **578 chars**,

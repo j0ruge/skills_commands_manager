@@ -77,7 +77,7 @@ What this buys you:
 
 Some steps are expensive (bootstrap calls a remote API; cert generation calls mkcert). Skipping them on no-op re-runs is great for adoption — "the script takes 4s vs. 35s every time" is the difference between "I always run it" and "I run things by hand because the script is slow."
 
-### The naive skip — and why it bit us
+### The naive skip — and why it breaks
 
 The obvious cache key is "the externally-visible identity changed":
 
@@ -88,7 +88,7 @@ if [[ "$PREV_EXTERNAL" == "$CURRENT_EXTERNAL" && -f "$BOOTSTRAP_JSON" ]]; then
 fi
 ```
 
-This works when `EXTERNAL_FULL` (scheme + domain + port) is the only thing that affects the bootstrap output. It **breaks silently** the moment any other input changes — typically the redirect / post-logout URIs, the OIDC scope list, or the login version flag. The script re-runs successfully, the user thinks the change propagated, and the IdP keeps the old config. Real-world hit: changing `OIDC_POST_LOGOUT_URIS="${WEB_BASE}/"` to `"${WEB_BASE}/login,${WEB_BASE}/"` did nothing because the cache key didn't include the URI list — every logout kept failing with `error=invalid_request post_logout_redirect_uri invalid` until someone ran `--reset` (data-destructive) or hand-edited the cache file.
+This works when `EXTERNAL_FULL` (scheme + domain + port) is the only thing that affects the bootstrap output. It **breaks silently** the moment any other input changes — typically the redirect / post-logout URIs, the OIDC scope list, or the login version flag. The script re-runs successfully, the user thinks the change propagated, and the IdP keeps the old config. Concrete case: adding a second URI to `OIDC_POST_LOGOUT_URIS` changes nothing, because the cache key doesn't include the URI list — every logout fails with `error=invalid_request post_logout_redirect_uri invalid`, and the only ways out are `--reset` (data-destructive) or hand-editing the cache file.
 
 ### The fix — pick one of two
 

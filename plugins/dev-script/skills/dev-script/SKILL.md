@@ -1,8 +1,8 @@
 ---
 name: dev-script
 metadata:
-  version: 0.5.2
-description: "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free for foreign-owned ports, kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards. Triggers — dev script, single-command dev, local stack, mkcert, kill port, port discovery, script hangs, CRLF .env, native binding error."
+  version: 0.5.3
+description: "Generates idempotent dev.sh / dev.ps1 launchers for the current stack — Compose orchestration, healthchecks, two-strategy port handling (find-next-free for foreign-owned ports, kill-and-reclaim for own orphans), HTTPS-on-LAN via mkcert+Caddy, boot-time sanity check, Windows↔WSL migration guards. Triggers — dev script, single-command dev, mkcert, kill port, port discovery, script hangs, CRLF .env, native binding error."
 ---
 
 # dev.script — Local Dev Stack Launcher Generator
@@ -30,7 +30,7 @@ The skill works in five short phases. Don't skip phases — each one feeds the n
 
 ### Phase 1 — Detect the stack (read before write)
 
-Walk the project tree and identify, in this order:
+Walk the project tree and identify:
 
 1. **Compose files** — `docker-compose.yml`, `infra/docker/*.yml`, `infra/postgres/*.yml`, `compose.*.yml`. Note services, ports, healthcheck blocks, volumes. Compose is the source of truth for what containerized infra exists.
 2. **Monorepo layout** — `package.json` `workspaces`, `pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`. Identify each workspace's role from its own `package.json` (`scripts.dev`, `scripts.start`, declared deps).
@@ -47,7 +47,7 @@ Walk the project tree and identify, in this order:
 
 ### Phase 2 — Confirm the plan with the user
 
-Before writing anything, **state the plan in 5–10 bullets**:
+Before writing anything, **state the plan** as a short bullet list:
 
 - "I'll generate `dev.sh` (or `dev.ps1`) that does X, Y, Z."
 - "Sections included: Postgres healthcheck, Zitadel + Caddy TLS, backend with `NODE_EXTRA_CA_CERTS`, Vite via `--config` wrapper, frontend bootstrap of `VITE_OIDC_CLIENT_ID` from `bootstrap.json`."
@@ -75,13 +75,13 @@ Write the script(s) to the project root, plus any sidecar files (`infra/caddy/Ca
 
 **Always update `.gitignore`** for runtime artifacts the script creates: state files, generated overrides, mkcert-bootstrapped `infra/certs/`, the auto-generated Vite config wrapper. Spell these out in `.gitignore` so the user doesn't accidentally commit them.
 
-**Always include a sanity check at the top**: a `bash -n` / `pwsh -NoProfile -Command "{ . ./dev.ps1 }"` syntax check note, or run it yourself before handing back.
+Syntax-check the generated script before handing back: `bash -n dev.sh` / `pwsh -NoProfile -Command "{ . ./dev.ps1 }"`.
 
 ### Phase 5 — Document the entrypoint
 
 After writing, summarize for the user:
 
-- What `./dev.sh` (or `pwsh dev.ps1`) does — 4–6 lines.
+- What `./dev.sh` (or `pwsh dev.ps1`) does, in a few lines.
 - The flags and when each one matters.
 - Pitfalls the script protects against (e.g., "If your LAN IP changes between runs, the Zitadel volume already encodes the old `externalDomain` — re-run with `--reset` to nuke it").
 - One-line "first-run instructions" for new contributors (clone → `./dev.sh`).
@@ -145,7 +145,7 @@ If the user wants other devices on the network to test, **the script must genera
 
 ## Pitfalls to encode in every script
 
-These are not exotic edge cases — they are the bugs that bit us in JRC projects. Read `references/pitfalls.md` for the full list with symptoms; the highlights:
+These are the recurring traps in JRC stacks. Read `references/pitfalls.md` for the full list with symptoms; the highlights:
 
 - **Vite ≥ 5 blocks non-localhost hosts** by default. Generate a `.vite.config.lan.ts` wrapper with `server.allowedHosts: true` and run Vite with `--config <wrapper>` — don't ask the user to edit `vite.config.ts`.
 - **Node backend can't validate JWKS over self-signed HTTPS** unless `NODE_EXTRA_CA_CERTS=$(mkcert -CAROOT)/rootCA.pem` is on the process. Inject it at the script level.
@@ -166,7 +166,7 @@ These are not exotic edge cases — they are the bugs that bit us in JRC project
 | PowerShell equivalents (idiomatic, not literal ports) | `references/powershell-patterns.md` |
 | The full mkcert + Caddy + Vite + backend wiring | `references/tls-https-recipe.md` |
 | State file format, drift detection, re-run discipline | `references/idempotency-and-state.md` |
-| The recurring traps that bit JRC projects | `references/pitfalls.md` |
+| The recurring traps in JRC stacks | `references/pitfalls.md` |
 
 ## Templates — `assets/`
 

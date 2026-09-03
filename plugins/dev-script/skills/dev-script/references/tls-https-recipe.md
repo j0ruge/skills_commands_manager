@@ -112,7 +112,7 @@ services:
 
 ## Step 3a — Vite ≥ 5 needs `allowedHosts: true`
 
-Vite 5 added a host-allowlist defense (CVE-2025-XXXXX-class). Out of the box it returns
+Vite 5 added a host-allowlist defense. Out of the box it returns
 
 ```text
 Blocked request. This host ("<LAN_IP>.sslip.io") is not allowed.

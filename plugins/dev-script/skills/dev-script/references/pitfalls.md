@@ -1,6 +1,6 @@
 # Pitfalls — the recurring traps to encode in every script
 
-These are the bugs that bit JRC projects (Zitadel/Battery Lifecycle, DSR Ecosystem) and cost real hours to diagnose. The dev script must protect against them — either by setting things up correctly the first time, or by surfacing the failure mode loudly when conditions change.
+These are the recurring traps in JRC stacks. The dev script must protect against them — either by setting things up correctly the first time, or by surfacing the failure mode loudly when conditions change.
 
 ## P1 — Vite ≥ 5 blocks non-localhost hosts
 
@@ -319,7 +319,7 @@ Linux-only scripts can ignore this; cross-platform scripts must handle it.
 2. **Processes in sync**: `kill_known_dev_servers` with a regex that actually matches your stack's cmdline (see `bash-patterns.md` §"Fourth fallback" + the monorepo gotcha).
 3. **Heap in sync**: app boot-time sanity check that compares runtime env to source-of-truth file and warns LOUD on divergence (see `idempotency-and-state.md` §"Boot-time sanity check inside the app").
 
-Real-world hit count from JRC: 4 sessions over 5 days, each spending 15-60 minutes diagnosing "I reset the IdP and now nothing works", every time blaming a different layer (mkcert cert? .env? bootstrap?). The 3-layer defense was the only thing that broke the cycle — any single layer continued to fail because the other two leaked state across runs.
+All three layers are needed: any single one keeps failing because the other two leak state across runs, and each recurrence gets blamed on a different layer (mkcert cert? `.env`? bootstrap?).
 
 **How to detect the trap**: if your project hits the same 401-storm symptom twice across separate sessions, stop debugging the symptom and run `pgrep -af '<your-runner-pattern>' | wc -l`. Anything > 1 is the smoking gun.
 

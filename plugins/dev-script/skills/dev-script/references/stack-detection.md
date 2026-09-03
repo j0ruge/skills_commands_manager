@@ -125,7 +125,7 @@ If any of these exists, the user's intent is probably "improve" or "port to Powe
 
 ## Output of detection — a quick summary
 
-After running through the list, produce a 10–15 line summary for the user:
+After running through the list, produce a short summary for the user:
 
 ```text
 Stack detected:

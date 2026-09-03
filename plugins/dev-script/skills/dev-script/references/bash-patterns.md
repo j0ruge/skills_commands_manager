@@ -297,7 +297,7 @@ Why three methods: `ss -p` requires root on some distros to show PIDs; `fuser` m
 
 ### Fourth fallback: `pgrep` by command line
 
-Even with all three above, there's a real failure mode: hardened kernels (recent Ubuntu, container hosts with `hidepid=2`, some sandboxed sessions) hide PIDs of processes owned by other UIDs **and** sometimes from the same UID across PID namespaces. `ss -p` then returns the listener but no `pid=` token; `lsof` returns empty; `fuser` returns empty. `kill_port` becomes a silent no-op and the next `npm run dev` fails with `EADDRINUSE`. Real-world hit count from the JRC stack: 4 zombie backend trees survived a `dev.sh` Ctrl+C because no port-based tool could see the PIDs.
+Even with all three above, there's a real failure mode: hardened kernels (recent Ubuntu, container hosts with `hidepid=2`, some sandboxed sessions) hide PIDs of processes owned by other UIDs **and** sometimes from the same UID across PID namespaces. `ss -p` then returns the listener but no `pid=` token; `lsof` returns empty; `fuser` returns empty. `kill_port` becomes a silent no-op and the next `npm run dev` fails with `EADDRINUSE`.
 
 When the dev stack uses well-known commands (Vite, `tsx watch`, `nest start --watch`, `dotnet watch`), `pgrep -af` finds them by the command line itself — no port lookup required:
 
@@ -358,7 +358,7 @@ Right pattern for monorepo scoping (don't mention `tsx` at all — pin to the pa
 '\.vite\.config\.lan|apps/web.*vite\.config'
 ```
 
-Real-world hit count from JRC: 8 zombie `tsx watch` trees from previous sessions survived months because the regex was wrong; the next `--reset-zitadel` produced a 401-storm because those zombies had stale env+JWKS in the heap. The lesson generalizes: when tightening a pgrep pattern, sanity-check by spawning a test process and running the regex against `ps -ef | grep <test-process>` *before* trusting that `kill_known_dev_servers` does anything.
+Zombies that a wrong regex leaves behind keep stale env and JWKS in the heap, so the next IdP reset turns into a 401 storm (`pitfalls.md` §P16). When tightening a pgrep pattern, sanity-check by spawning a test process and running the regex against `ps -ef | grep <test-process>` *before* trusting that `kill_known_dev_servers` does anything.
 
 #### Companion gotcha — `tsx watch` doesn't watch `.env`
 

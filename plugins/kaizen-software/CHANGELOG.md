@@ -2,6 +2,60 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.2.0] — 2026-09-03
+
+Duas fontes, uma mudança. **Relato do usuário:** "a skill tem acionado pouco o poka-yoke, na
+verdade quase nunca." **Auditoria de prompt** (`/claude-api prompt-audit`, modelo-alvo Claude Fable
+5.1) sobre os 4 arquivos da skill e os espelhos da description.
+
+### Poka-yoke entra no fluxo operacional
+
+Gemba antes de opinar: `grep -rni poka` na skill → duas ocorrências, e as duas no caminho de
+**ensino** (`SKILL.md` L79, lista de vocabulário; `kaizen-conceitos.md` L36, o verbete). Zero nos
+princípios, nas três fases e nos templates. O corpo pedia como contramedida "teste que teria pegado"
+e "padronize em convenção/doc/CLAUDE.md" — teste e regra escrita; nunca "torne o erro impossível".
+
+5 Porquês, encurtados: o modelo não propunha poka-yoke porque o fluxo não pedia; não pedia porque,
+na 1.0.0, jidoka, 5 porquês, 5S e SDCA viraram **passos** e poka-yoke ficou **verbete**; ninguém
+notou porque a ausência falha em silêncio — plano e log saem "corretos" sem ele. Causa raiz: não
+havia, no fluxo, um ponto onde a pergunta "dá para tornar esse erro impossível ou óbvio?" fosse
+feita, nem sensor que mostrasse a ausência.
+
+Contramedida em seis hunks curtos, sem caps:
+
+- **Princípio 6 (SDCA)** ganha a escada de padronização: poka-yoke (tipo, validador na borda,
+  lint, hook, gate de CI, script que recusa) > template ou script > convenção escrita — e o porquê:
+  regra escrita depende de alguém lembrar. Aponta para o verbete em vez de duplicá-lo.
+- **Fase 1, caça de desperdícios:** "passo que só funciona se alguém lembrar de fazer X — e que um
+  poka-yoke dispensaria?"
+- **Fase 2, Check explícito:** sonda nova só merece confiança depois de vermelha num caso sabotado
+  e verde num caso bom.
+- **Fase 3, bugs:** padronizar **começando** pelo poka-yoke, nomeando o mecanismo; regra escrita só
+  quando nenhum couber, e o registro diz por quê.
+- **`templates.md`, 5 Porquês:** o campo Contramedida pede o poka-yoke — ou o motivo de não haver.
+- **`desperdicios.md`, #7 Defeitos:** "qual poka-yoke teria impedido este defeito?"
+
+Verificado por sonda A/B antes de aplicar (3 cenários, 1.1.0 × nova, subagentes com contexto
+limpo): 14/14 asserções passam nas duas versões — sem regressão — e a diferença aparece onde a
+1.1.0 fechava com regra escrita. Planejar uma feature: 0 → 4 menções, o Act vira uma tabela de
+poka-yokes. Apagar uma branch: 1 → 4, o Act vira escada (auto-delete na plataforma > `fetch.prune`
+> script sabotado > regra por último). Custo: +5 % de tokens.
+
+### Auditoria de prompt — o que mudou e o que ficou
+
+A skill é a mais limpa do marketplace em todos os sinais do guia (zero caps, zero `STEP n`, zero
+datas/tickets/modelos). Três achados de confiança média aplicados: a **description** passou de 9
+para 8 gatilhos (pares `kaizen log/retrospectiva` e `desperdício/dívida técnica`), ganhou
+`poka-yoke` como capacidade e gatilho, e perdeu "respeitando as convenções do repo" (é
+comportamento, coberto pela seção própria; não é gatilho) — 483 chars, agora entre aspas como o
+`CLAUDE.md` pede; `ANTES` em caps virou `antes` (a razão já estava na frase seguinte); a pergunta
+do desperdício #1 trocou "cotação" por "usuário" — vazamento do projeto `sales_quote`, onde a skill
+nasceu. De brinde, "Caçe" → "Cace".
+
+Ficou de propósito (keep list do guia): o script exato das ações irreversíveis, a redundância
+funcional do "Padronizado em" em três arquivos (os textos concordam), os exemplos ilustrativos, e o
+negrito de abertura dos itens — estrutura, não ênfase.
+
 ## [1.1.0] — 2026-08-07
 
 Uso real da skill numa sessão de revisão + limpeza de repositório expôs quatro lacunas.

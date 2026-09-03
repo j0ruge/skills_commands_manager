@@ -87,7 +87,7 @@ Registre dentro da entrada do kaizen log ou no corpo da correção do bug.
 3. Por quê? <resposta>
 4. Por quê? <resposta — pare antes se chegar à causa de processo>
 5. Por quê? <causa raiz de processo>
-- **Contramedida:** <mudança pequena que ataca a causa raiz>
+- **Contramedida:** <poka-yoke que torna o erro impossível ou óbvio — tipo, validador, lint, hook, gate de CI — ou, se for só regra escrita, por que nenhum poka-yoke coube>
 - **Teste que teria pegado:** <teste adicionado>
 ```
 

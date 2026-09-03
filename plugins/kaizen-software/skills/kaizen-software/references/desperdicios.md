@@ -4,13 +4,13 @@ No Kaizen/Lean, desperdício é tudo que consome esforço sem gerar valor para q
 
 | # | Desperdício | No software | Perguntas para detectar |
 |---|---|---|---|
-| 1 | **Superprodução** | Funcionalidades que ninguém pediu; generalização prematura; documentação que ninguém lê | "Quem pediu isso? Qual cotação/cliente real precisa disso hoje?" |
+| 1 | **Superprodução** | Funcionalidades que ninguém pediu; generalização prematura; documentação que ninguém lê | "Quem pediu isso? Qual usuário/cliente real precisa disso hoje?" |
 | 2 | **Espera** | Build lento, CI demorado, aguardar aprovação/feedback, ambiente que demora a subir | "Onde o trabalho fica parado esperando algo ou alguém?" |
 | 3 | **Transporte** | Passagem de bastão entre pessoas/sistemas: retrabalho de comunicação, dados re-digitados, integrações frágeis entre módulos | "Quantas mãos/sistemas essa informação atravessa até virar valor?" |
 | 4 | **Superprocessamento** | Over-engineering: abstração além do necessário, otimização sem medição, camadas que só repassam chamadas | "A solução é mais complexa que o problema?" |
 | 5 | **Estoque** | Código escrito e não integrado (branches longas), backlog gigante, features pela metade, dívida técnica acumulada | "O que está 'pronto mas parado'? O que foi começado e nunca terminou?" |
 | 6 | **Movimentação** | Troca de contexto constante, reuniões que não decidem nada, procurar informação espalhada | "Quanto tempo se perde alternando tarefas ou caçando informação?" |
-| 7 | **Defeitos** | Bugs em produção, retrabalho, correção sem teste (que reabre o bug), suporte apagando incêndio | "Quanto do esforço do time é refazer o que já foi feito?" |
+| 7 | **Defeitos** | Bugs em produção, retrabalho, correção sem teste (que reabre o bug), suporte apagando incêndio | "Quanto do esforço do time é refazer o que já foi feito? Qual poka-yoke teria impedido este defeito?" |
 
 ## Mura e Muri — os irmãos do Muda
 

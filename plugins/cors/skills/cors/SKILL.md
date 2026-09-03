@@ -1,8 +1,8 @@
 ---
 name: cors
 metadata:
-  version: 1.0.0
-description: "Diagnostica e configura CORS — o erro que mente sobre a causa. Decide qual portao barrou (CORS x CSP connect-src x mixed content, identicos no JS), le a mensagem literal do Chrome, e da a receita por stack (nginx, Express, Django, Spring, FastAPI, CDN). Preflight, credenciais, Vary: Origin e as misconfigs que viram vulnerabilidade. Triggers — CORS, Access-Control-Allow-Origin, preflight, blocked by CORS policy, cross-origin, OPTIONS 401, no-cors, erro de CORS."
+  version: 1.0.1
+description: "Diagnostica e configura CORS — o erro que mente sobre a causa. Decide qual portão barrou (CORS x CSP connect-src x mixed content, idênticos no JS), lê a mensagem literal do Chrome, e dá a receita por stack (nginx, Express, Django, Spring, FastAPI, CDN). Preflight, credenciais, Vary: Origin e as misconfigs que viram vulnerabilidade. Triggers — CORS, Access-Control-Allow-Origin, preflight, blocked by CORS policy, cross-origin, OPTIONS 401, no-cors, erro de CORS."
 ---
 
 # CORS — diagnóstico, configuração e as armadilhas

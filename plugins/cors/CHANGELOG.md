@@ -2,6 +2,20 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-03 — Prompt audit — [1.0.1]
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Corpo limpo fora de um hunk.
+
+- `references/diagnostico.md`, "Caso medido (28/08/2026)": três hostnames internos de staging
+  (`api.dsr/erp/estimates.jrcbrasil.net`), a mensagem literal do app de origem e "parser de PDF"
+  num plugin distribuído. O exemplo é load-bearing (as strings literais do Chrome, o `401` que
+  ainda é "vivo", as duas lições), então vira `exemplo.com` — vocabulário que a skill já usa — sem
+  a data.
+- Description: os acentos que faltavam (`portão`, `idênticos`, `lê`, `dá`) — o auditor mediu que
+  foi descuido, não decisão (a mesma string carrega `—`, o valor é aspeado, outras descriptions em
+  PT têm acento). Espelhada nos 3 lugares.
+- `SKILL.md` ganha `metadata.version`.
+
 ## 2026-08-28 — Skill nova — [1.0.0]
 
 **O quê:** skill dedicada a diagnosticar e configurar CORS. `SKILL.md` com a triagem de um minuto e

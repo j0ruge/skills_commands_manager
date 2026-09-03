@@ -13,31 +13,32 @@ Isso inverte o instinto de debug. O reflexo — "vou confirmar pelo curl se a AP
 produz uma evidência verdadeira e irrelevante, e ela costuma ser lida como "a API está boa, então o
 problema é o front". Meça o que o browser mede.
 
-### Caso medido (28/08/2026)
+### Caso medido (hosts anonimizados)
 
 Um e2e apontava um front local (`http://localhost:3100`) para uma API de staging. Diagnóstico por
 curl, do lado de fora:
 
 ```
-https://api.dsr.jrcbrasil.net/health        -> 200
-https://api.erp.jrcbrasil.net               -> 200
-https://api.estimates.jrcbrasil.net         -> 401   (vivo, só exige auth)
+https://api.exemplo.com/health              -> 200
+https://api2.exemplo.com                    -> 200
+https://api3.exemplo.com                    -> 401   (vivo, só exige auth)
 ```
 
-Três serviços de pé. E o app, na tela, dizia **"Serviço indisponível — o serviço principal de
-relatórios está indisponível"**, abortando antes de qualquer requisição real. O `checkHealth()` da
-aplicação chamava `fetch`, caía no `catch`, e traduzia a exceção para "fora do ar". Do console:
+Três serviços de pé. E o app, na tela, dizia **"Serviço indisponível"**, abortando antes de
+qualquer requisição real. O `checkHealth()` da aplicação chamava `fetch`, caía no `catch`, e
+traduzia a exceção para "fora do ar". Do console:
 
 ```
-Access to fetch at 'https://api.dsr.jrcbrasil.net/health' from origin 'http://localhost:3100'
+Access to fetch at 'https://api.exemplo.com/health' from origin 'http://localhost:3100'
   has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present…
-Access to fetch at 'https://api.erp.jrcbrasil.net/health' from origin 'http://localhost:3100'
+Access to fetch at 'https://api2.exemplo.com/health' from origin 'http://localhost:3100'
   has been blocked by CORS policy: The 'Access-Control-Allow-Origin' header has a value
-  'https://dsr.jrcbrasil.net' that is not equal to the supplied origin.
+  'https://app.exemplo.com' that is not equal to the supplied origin.
 ```
 
-A API tinha allowlist de **uma** origem. Não havia bug de rede, nem serviço fora do ar, nem falha do
-parser de PDF que a mensagem seguinte acusava. **Duas lições que generalizam:**
+A API tinha allowlist de **uma** origem. Não havia bug de rede nem serviço fora do ar — e o
+subsistema que a mensagem seguinte do app culpava não tinha relação nenhuma. **Duas lições que
+generalizam:**
 
 1. O `catch` do app é onde a informação morre. Quase todo cliente HTTP embrulha o erro de CORS num
    "falha de rede" ou "serviço indisponível" — o nome do subsistema na mensagem é uma **suposição do

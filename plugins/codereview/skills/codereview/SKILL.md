@@ -1,7 +1,7 @@
 ---
 name: codereview
 metadata:
-  version: 1.13.0
+  version: 1.14.0
 description: "Pre-PR review with severity grading and tiered model routing. Detects TOCTOU races, accessibility gaps, hardcoded secrets, docs/OpenAPI drift, contract drift in tests, and dead code via a parallel whole-repo sweep (unused exports, orphaned files, unreachable code). Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, code health."
 ---
 
@@ -18,7 +18,7 @@ Read the user input before proceeding (if not empty). Valid inputs:
 - File path or glob: review only matching changed files
 - Key-value overrides: `baseDir=app/ fileExtensions=ts,js` (see `references/configuration.md`)
 
-Read `references/configuration.md` for default values and override syntax.
+Defaults are `baseDir=src/`, `fileExtensions=ts,tsx`, `frameworkPatterns=react`, tests `**/*.{test,spec}.{ts,tsx}` and `**/test/**`, UI_LIB `src/components/ui/**`, `prisma/**`, `**/generated/**`, CONFIG `*.config.*`, `tsconfig*`, `.env*`, `package.json`. Read `references/configuration.md` only when `$ARGUMENTS` carries `key=value` overrides or the stack is not TypeScript/React — it holds the override syntax and the presets (Python, Vue, Node, .NET).
 
 ## Goal
 
@@ -39,6 +39,8 @@ This skill delegates the data-heavy per-file phase to cheaper agents and keeps j
 | C | Cross-file review, severity calibration, report | **Main model** | Judgment calls, cross-references, coherent report |
 
 **Threshold**: If the branch has ≤3 CODE files, skip model routing — run Phase B inline too. The agent overhead isn't worth it for small reviews.
+
+**The `model` field on every Agent call is what makes the routing real.** An Agent call without `model` inherits the main model, and the same per-file analysis is then billed at the main model's rates — 2.5× to 5× Sonnet's — for the same findings. Pass `model: "sonnet"` on every Phase B and B2 call, and read the model back in the report's Cost footprint line.
 
 ---
 
@@ -63,7 +65,7 @@ Regardless of failures, always produce a final report listing all files analyzed
 
 Every step here is mechanical — a fixed command with one right answer — so it runs inline in the main session, not in an agent. An agent in the middle only adds variation, latency and the chance of a silently dropped field, and the one field that must never be dropped is the secrets pre-scan: without its JSON the F-grade gate goes blind. The outputs are small (file names, stats, a one-line log), so keeping them in the main context costs little.
 
-Apply any `$ARGUMENTS` overrides (baseDir, fileExtensions, frameworkPatterns, etc.) before classifying, then run the commands as Bash calls, in parallel where independent, and keep the raw outputs:
+Apply any `$ARGUMENTS` overrides (baseDir, fileExtensions, frameworkPatterns, etc.) before classifying, then run the commands as Bash calls, in parallel where independent, and keep the raw outputs. Three Bash turns cover steps 1–8: (1) steps 1–3, with base-branch detection as a single fallback chain in one command; (2) step 4; (3) steps 5–8 as parallel calls in one message. Every extra orchestrator turn is a main-model round-trip over the whole session context, so batch what is independent instead of issuing one call per step:
 
 1. Verify git repo:  `git rev-parse --is-inside-work-tree`
 2. Detect base branch (try: origin HEAD symbolic-ref, then main, then master)
@@ -85,7 +87,7 @@ Classify each changed file:
 - DOCS: *.md, *.txt
 - STYLES: CSS/SCSS/LESS
 
-For each CODE file, check test coverage by probing candidate test file paths — same dir (`{Base}.test.{ext}`, `{Base}.spec.{ext}`), a `__tests__` sibling, then the project test root — and record it as WITH_TESTS / STALE_TESTS / NO_TESTS.
+For each CODE file, check test coverage by probing candidate test file paths — same dir (`{Base}.test.{ext}`, `{Base}.spec.{ext}`), a `__tests__` sibling, then the project test root — and record it as WITH_TESTS / STALE_TESTS / NO_TESTS. Probe all CODE files in one shell loop (one Bash call that prints `path|status` per file), not one call per file.
 
 Phase A hands Phases B and C: BASE_BRANCH, BRANCH_NAME, MERGE_BASE, DIFF_STAT, COMMIT_LOG, the FILES list (path, category, test_status), COUNTS per category, and SECRETS_PRESCAN.
 
@@ -99,55 +101,28 @@ If more than 15 CODE files, prioritize by change size (diff stat lines). Note de
 
 ### Phase B: Per-File Analysis (sonnet agents, parallel)
 
-For each CODE file (or group of 2-3 small files sharing imports), **spawn a sonnet agent** to analyze it. Launch all agents **in parallel**.
+For each CODE file (or group of 2-3 small files sharing imports), **spawn a sonnet agent** to analyze it. Launch all agents **in parallel**, in one message.
+
+The agent's instructions live in `{SKILL_DIR}/references/per-file-agent.md` and the agent reads them itself, so every agent gets the same contract and the orchestrator emits only the launch prompt below — placeholders filled, nothing added (no extra themes, no framing, no reproduction requests: a finding that needs reproducing comes back marked as such and is reproduced after the report), nothing removed. `model: "sonnet"` goes on every call.
 
 ```
 Agent(model: "sonnet", prompt: "
-You are performing a code review analysis on a single file. Your job is to apply
-detection passes and return structured findings — nothing else.
+Start with ONE batch of parallel tool calls: Read {SKILL_DIR}/references/per-file-agent.md,
+Read {SKILL_DIR}/references/detection-passes.md, run `git diff {MERGE_BASE}...HEAD -- {FILE_PATH}`,
+and Read {FILE_PATH}. Then follow per-file-agent.md exactly — it carries your instructions,
+scope and output format.
 
-## Context
 - Repository: {REPO}
 - Branch: {BRANCH_NAME} → {BASE_BRANCH}
+- Merge base: {MERGE_BASE}
 - Framework: {frameworkPatterns}
-- File: {FILE_PATH} (category: {CATEGORY})
+- File: {FILE_PATH} (category: {CATEGORY})   — one line per file in the group
 - Focus area: {FOCUS or 'full'}
-
-## Instructions
-1. Read the detection passes from: references/detection-passes.md
-2. Read the git diff for this file: git diff {MERGE_BASE}...HEAD -- {FILE_PATH}
-3. Read the current file content (full file for CODE, diff-only for UI_LIB)
-4. Apply ALL applicable detection passes (or only the focused subset if a focus area was specified)
-5. For UI_LIB files, only flag CRITICAL and HIGH issues
-6. **Pass 6.10 (Hardcoded Secrets) is ALWAYS on** — apply it to this file regardless of its category (CODE / TESTS / CONFIG / UI_LIB / STYLES) and regardless of the focus area. A hardcoded password in a test file is still a leak; GitGuardian does not distinguish, and neither do we. Never whitelist a secret finding to reduce noise.
-
-## Focus Area Mapping (if applicable)
-- security → 6.2 Security + 6.6 TOCTOU + 6.8 Data Integrity + 6.10 Secrets
-- performance → 6.3 Performance + 6.10 Secrets
-- types → 6.4 Type Safety + 6.10 Secrets
-- bugs → 6.1 Bug Detection + 6.6 TOCTOU + 6.10 Secrets
-- tests → test quality + 6.10 Secrets
-- docs → 6.5 Documentation Sync + 6.10 Secrets
-- a11y → 6.7 Accessibility + 6.10 Secrets
-- race-conditions → 6.6 TOCTOU + 6.10 Secrets
-- secrets → 6.10 Secrets only
-
-Note: pass 6.10 appears in every focus mapping — it is the one pass that is never optional. The user cannot afford to miss a leak just because they asked for a narrow review.
-
-## Output Format
-Return findings as a numbered list, one per issue:
-
-N. [SEVERITY] {category} — {file}:{line} — {title}
-   Description: {what the issue is, referencing actual code}
-   Suggestion: {concrete fix direction}
-
-If no issues found, return: 'No findings for {FILE_PATH}'
-
-Reference only line numbers you actually see in the diff or file content.
-If the code is clean, say so — a clean result is a valid outcome; don't invent findings.
-Note any imports from other changed files for cross-reference by the main model.
+- Skill dir: {SKILL_DIR}
 ")
 ```
+
+The agent returns a numbered findings list (`N. [SEVERITY] {category} — {file}:{line} — {title}`, with Description and Suggestion), or `No findings for {FILE_PATH}`, and ends with `Tool calls: … | Files read in full: …` and `END_OF_FILE_REVIEW`.
 
 **Grouping strategy**: Files that import from each other should be in the same agent when possible (max 3 files per agent). This helps catch intra-group issues without needing the main model.
 
@@ -159,80 +134,31 @@ Spawn **one dedicated agent** for pass 6.9 (Dead Code & Unused Symbols), launche
 
 **When to run it:**
 - **Full review** (empty `$ARGUMENTS`) → run it.
+- **Bucket B is opt-in.** The repo-wide pass over pre-existing dead code (tooling such as `knip`/`ts-prune`/`vulture`, capped) runs only on focus `dead-code` or with `sweep=full` in `$ARGUMENTS`; every other run gets Bucket A alone — what this PR introduced or orphaned. Bucket B was the expensive part of the sweep and none of it belongs to the PR under review; the report says in one line how to get it.
 - Focus `dead-code` → run it (and skip the per-file passes — this is the only analysis).
 - Focus `bugs` → run it (dead code often masks or accompanies bugs).
 - Narrow focuses (`security`, `a11y`, `types`, `performance`, `docs`, `tests`, `race-conditions`) → **skip it.** Unlike pass 6.10 (secrets), dead code is hygiene, not a gate — it is not always-on, and surfacing it during a focused security review is noise.
 - **≤3 CODE files** (model routing skipped) → run the sweep **inline in the main model** instead of spawning an agent.
 
-> **Output discipline** — the orchestrator sees only the agent's **final assistant message**; its grep/tool outputs are not propagated. The final message is the template below, filled in — not "done" or "scan complete".
+> **Output discipline** — the orchestrator sees only the agent's **final assistant message**; its grep/tool outputs are not propagated. The final message is the return template from `sweep-agent.md`, filled in — not "done" or "scan complete".
+
+Its instructions live in `{SKILL_DIR}/references/sweep-agent.md` (the two buckets, the guardrails, the return template ending in `END_OF_DEAD_CODE_SWEEP`); the launch prompt is the block below, placeholders filled.
 
 ```
 Agent(model: "sonnet", prompt: "
-You are performing a whole-repo DEAD CODE sweep for a pre-PR review. You RECOMMEND
-cleanup only — never modify or delete anything. All commands you run must be read-only.
+Start with ONE batch of parallel tool calls: Read {SKILL_DIR}/references/sweep-agent.md,
+Read {SKILL_DIR}/references/detection-passes.md (pass 6.9), and run `git diff {MERGE_BASE}...HEAD`.
+Then follow sweep-agent.md exactly — it carries the two buckets, the guardrails and the
+return template.
 
-## Context
 - Repository root: {REPO}
 - Branch: {BRANCH_NAME} → {BASE_BRANCH}
 - Merge base: {MERGE_BASE}
 - Framework: {frameworkPatterns}
 - Changed CODE/CONFIG files: {LIST_OF_CHANGED_FILES}
-
-## Instructions
-1. Read pass 6.9 from: references/detection-passes.md — apply its detection categories,
-   deepsearch method, opportunistic tooling, and (critically) the false-positive guardrails.
-2. Get the diff for context: git diff {MERGE_BASE}...HEAD
-3. Build two buckets:
-   - BUCKET A (introduced/orphaned by THIS PR): symbols/files the diff ADDED that nothing
-     references yet, and symbols/files the diff ORPHANED (last caller/import removed). For
-     each candidate, grep the WHOLE repo (excluding the defining file) for references —
-     including non-code files (HTML/JSX templates, JSON/YAML config, SQL, route manifests,
-     DI registration, .env). Zero refs + not public-API + not framework/dynamically-wired
-     → flag.
-   - BUCKET B (pre-existing, opportunistic): if any dead-code tooling is runnable
-     (npx knip / npx ts-prune / npx depcheck / vulture / ruff / dotnet build warnings /
-     deadcode / staticcheck), run it READ-ONLY and collect repo-wide dead code NOT touched
-     by this PR. CAP this bucket at ~10 highest-impact entries + a total count. If no
-     tooling is available, say so and leave Bucket B with only what the grep deepsearch
-     surfaced.
-4. Apply the guardrails before flagging anything: public API surface, framework/dynamic
-   wiring (routes, DI, decorators, reflection, dynamic import, string-keyed registries,
-   ORM entities, serialization, test discovery), references in non-code files, barrels/
-   re-exports, test-only utilities, conditional compilation, just-added scaffolding,
-   over-export (no external importer BUT used within its own file or in an exported symbol's
-   signature → NOT dead; in-file-only plumbing → drop `export`; part of an exported
-   type-surface/API → keep `export` and mark `@public`/`@internal`, never delete — dropping
-   `export` on a type used by an exported type can break `tsc -b`/declaration emit with
-   "uses private name"; see detection-passes.md §6.9), and regenerable scaffolding under generatedDirs (shadcn `components/ui/**`,
-   `**/generated/**` → Bucket B, Low confidence, capped — never an actionable app finding).
-   Each finding gets a Confidence (High/Medium/Low) reflecting how many guardrails it cleared.
-5. Severity: MEDIUM only for diff-orphaned items or whole orphaned files; LOW for everything
-   else. NEVER CRITICAL/HIGH. This pass never blocks the PR.
-
-## RETURN TEMPLATE — your final message must be in this exact shape
-
-TOOLING_AVAILABLE: <comma-separated tools you ran, or 'none — grep deepsearch only'>
-
-BUCKET_A (introduced/orphaned by this PR):
-- symbol_or_file: <name>
-  kind: unused-export | orphaned-file | unreachable | unused-import | unused-local | unused-dependency | diff-orphaned
-  location: <path>:<line>
-  severity: MEDIUM | LOW
-  confidence: High | Medium | Low
-  recommendation: <one-line cleanup>
-- ... (or 'none')
-
-BUCKET_B (pre-existing, capped):
-- symbol_or_file: <name>
-  kind: <...>
-  location: <path>:<line>
-  severity: LOW
-  confidence: <...>
-  recommendation: <one-line cleanup>
-- ... (or 'none')
-TOTAL_PREEXISTING: <N>   (full count before the cap, if a tool reported more)
-
-END_OF_DEAD_CODE_SWEEP
+- Focus area: {FOCUS or 'full'}
+- Sweep: {full | pr}   — `full` only when `$ARGUMENTS` carries `sweep=full`
+- Skill dir: {SKILL_DIR}
 ")
 ```
 
@@ -242,7 +168,7 @@ If the agent under-reports (response missing `END_OF_DEAD_CODE_SWEEP`, or a bare
 
 After all sonnet agents return, the main model:
 
-1. **Collects all findings** from sonnet agents into a unified list
+1. **Collects all findings** from sonnet agents into a unified list. A per-file message without its `END_OF_FILE_REVIEW` line is partial: keep what it reports and mark the file `partially analyzed` in the report
 2. **Merges the Phase A secrets pre-scan with pass-6.10 findings from the per-file agents.**
    - The Phase A `secrets_prescan.findings` is the **authoritative** source — every entry is real (regex matched + exception filter applied) and goes directly into the Secrets Detection table.
    - Per-file sonnet pass-6.10 findings are **supplemental** — they may catch context-aware nuances the regex missed (e.g., a custom DSL where the keyword is non-standard). For each sonnet finding NOT already in `secrets_prescan` (dedup by `{file, line, kind}`), add it to the table only if:
@@ -268,10 +194,10 @@ After all sonnet agents return, the main model:
    - Prepend a BLOCKED banner to the report (see report template).
    - Add an entry under "Must Fix (CRITICAL)" per file with the remediation block from detection-passes.md pass 6.10.
    - If `secrets_prescan.errors` is non-empty (script crashed, ggshield timed out), also surface a warning to the user — the gate may have under-reported.
-9. **Merge dead-code findings** — fold the Phase B2 Dead Code Sweep output (Bucket A = introduced/orphaned by this PR; Bucket B = pre-existing, capped) into the report. Calibration rules:
+9. **Merge dead-code findings** — fold the Phase B2 Dead Code Sweep output (Bucket A = introduced/orphaned by this PR; Bucket B = pre-existing, capped — present only on `dead-code` focus or `sweep=full`) into the report. Calibration rules:
    - Dead code is **MEDIUM/LOW only** — never promote to HIGH/CRITICAL, and it **never** affects the secrets gate or forces grade F.
    - Honor the agent's per-finding **Confidence**: drop or footnote Low-confidence items that the guardrails couldn't clear (e.g. an unreferenced library export — external consumers are invisible to repo grep).
-   - Keep Bucket B a **capped summary** labeled "pre-existing (not introduced by this PR)" so it doesn't drown the PR-relevant Bucket A findings.
+   - Keep Bucket B a **capped summary** labeled "pre-existing (not introduced by this PR)" so it doesn't drown the PR-relevant Bucket A findings. When the sweep reports `BUCKET_B: skipped`, render the one-line note from the template instead of a table.
    - If the sweep was skipped (narrow focus) or under-reported, note that in the Dead Code section rather than omitting it.
 10. **Produce the final report** — read `references/report-template.md` and output the structured Markdown report with:
    - BLOCKED banner (only if step 8 triggered)
@@ -281,11 +207,12 @@ After all sonnet agents return, the main model:
    - Bug/Security/Performance/Types summary
    - Test coverage table
    - Documentation sync table
-   - **🧹 Dead Code & Cleanup section** (when the sweep ran — Bucket A primary, Bucket B as a capped pre-existing summary; dead-code findings also feed Recommended Actions → Consider Fixing and the Code Quality grade rationale)
+   - **🧹 Dead Code & Cleanup section** (when the sweep ran — Bucket A primary, Bucket B as a capped pre-existing summary when it was on; dead-code findings also feed Recommended Actions → Consider Fixing and the Code Quality grade rationale)
    - **Overall Grade table** (always present — see below)
    - Recommended actions (always present, even when empty — show "_None._" under each bucket)
+   - **Cost footprint** line (always present, the last line of the report — the shape is in the template)
 
-**The report ends with the Overall Grade table followed by the Recommended Actions block, in every run.** They are the summary the human reads first to triage; a report without them cannot be acted on, however good the findings above it are. Render both in full even when there is little to say: with zero findings, every row gets grade `A` and rationale `clean` or `—`; in a focus-area run every row is still present, and the non-analyzed ones get grade `—` with rationale `Not analyzed (focused review on {area})`; when the context budget is tight, keep the table and use terse one-word rationales (`clean`, `3 HIGH`, `n/a`) rather than collapsing it into prose. `references/report-template.md` carries the exact shape of both sections, and of the `### 🛑 Secrets Detection` section from step 8.
+**The report ends with the Overall Grade table, the Recommended Actions block and the one-line Cost footprint, in every run.** They are the summary the human reads first to triage; a report without them cannot be acted on, however good the findings above it are. Render both in full even when there is little to say: with zero findings, every row gets grade `A` and rationale `clean` or `—`; in a focus-area run every row is still present, and the non-analyzed ones get grade `—` with rationale `Not analyzed (focused review on {area})`; when the context budget is tight, keep the table and use terse one-word rationales (`clean`, `3 HIGH`, `n/a`) rather than collapsing it into prose. `references/report-template.md` carries the exact shape of both sections, and of the `### 🛑 Secrets Detection` section from step 8.
 
 ### Special Cases
 
@@ -307,6 +234,7 @@ After all sonnet agents return, the main model:
 - **Prioritize by change size** — files with more changes get more thorough analysis
 - **Cap analysis scope** — maximum 15 full file reads across all sonnet agents
 - **Skip routing for small PRs** — ≤3 CODE files → everything in main model
+- **Measure, don't guess** — the report's last line says how many agents ran, on which model, how many tool calls each made and whether the sweep ran. Compare it with `/cost` (or the harness's per-session cost log) before and after any change to this skill; a change without that pair of numbers is a guess
 
 ### Analysis Integrity
 

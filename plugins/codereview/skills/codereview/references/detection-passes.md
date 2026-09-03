@@ -265,7 +265,7 @@ Apply this sub-pass whenever the diff modifies an exported constant of the form 
 
 Race conditions occur when code checks a state and then acts on it in separate operations, allowing another process/request to change the state in between.
 
-Read `references/toctou-patterns.md` for the full pattern catalog with code examples. Apply these heuristics:
+Read `{SKILL_DIR}/references/toctou-patterns.md` for the full pattern catalog with code examples — only when the file has check-then-act shapes (a read gating a write on a database row, file, cache entry or token); otherwise the heuristics below are enough. Apply these heuristics:
 
 **Universal (all languages/frameworks):**
 
@@ -317,7 +317,7 @@ Dead code is the inverse of a bug: it doesn't break anything, it just *accumulat
 - **Bucket A — introduced or orphaned by THIS PR (primary, always reported).** Dead code the diff *created* or *exposed*. This is the part that belongs to the PR under review and is the most actionable:
   - **Newly-added-but-unused**: a symbol (function/class/const/export/file) added in this diff that nothing references yet.
   - **Diff-orphaned**: the diff removed the last caller/import of an existing symbol, or deleted the last importer of a file, leaving it dead. The PR *caused* this — it's a loose end the author should resolve before merge.
-- **Bucket B — pre-existing (secondary, capped summary).** Dead code that already existed and this PR didn't touch, surfaced opportunistically by repo tooling. Label it **"pre-existing (not introduced by this PR)"** and **cap it** (e.g. top ~10 by impact + a total count) so it never drowns the PR-relevant findings. This is the "keep the project healthy" signal — useful, but it must not turn every small PR into a repo-wide audit dump.
+- **Bucket B — pre-existing (secondary, capped summary; opt-in — `dead-code` focus or `sweep=full`).** Dead code that already existed and this PR didn't touch, surfaced opportunistically by repo tooling. Label it **"pre-existing (not introduced by this PR)"** and **cap it** (e.g. top ~10 by impact + a total count) so it never drowns the PR-relevant findings. This is the "keep the project healthy" signal — useful, but it must not turn every small PR into a repo-wide audit dump.
 
 **Detection categories** (apply to both buckets where relevant):
 

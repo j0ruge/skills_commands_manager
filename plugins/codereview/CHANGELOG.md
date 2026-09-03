@@ -2,6 +2,65 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.19.0] — 2026-09-03
+
+Otimização de custo (`/claude-api` → `cost-optimization`, Steps 0–4) da skill `codereview`, **medida**
+em 16 sessões REVIEW do pipeline `sdd_agents` (14/08–01/09) que invocaram `/codereview:codereview`
+(Opus 5 como orquestrador, Sonnet 5 nos agentes). Relatório completo, simulador e sensores ficaram
+fora do repo; aqui vai o que mudou e por quê.
+
+### `codereview` 1.14.0
+
+**O que foi medido.** Uma invocação custava $11–16, 46–65% da sessão REVIEW ($24,40 em média).
+Os agentes da Fase B respondiam por $10,33 (42%): $2,5 por agente, 22–65 turnos cada (média ≈ 45)
+contra ~6 no desenho. O custo era cache-read acumulado (2,7–7 M tokens por agente), não o tamanho
+das references: **1 de 66 agentes leu `detection-passes.md`** (caminho relativo — o agente não achava
+e seguia explorando livre); **16 de 16 sessões parafrasearam o prompt de lançamento** (o bloco de
+45 linhas virava "adversarial review", "sabotage pass", com sandboxes de repro em `/tmp`); em
+**6 de 16 sessões `model:` foi omitido** e os agentes rodaram no modelo principal a 1,6× a tarifa.
+O sweep (B2) seguia o mesmo formato: 63–66 turnos de grep um a um. Pelo desenho, a mesma revisão
+custaria ≈ $2,7 — o gap é o número de turnos, não o prompt.
+
+- **Contrato dos agentes em arquivo** (`references/per-file-agent.md`, `references/sweep-agent.md`):
+  o agente lê as próprias instruções por caminho absoluto (`{SKILL_DIR}/references/…`); o
+  orquestrador emite só o prompt de lançamento de ~12 linhas, "nada a mais, nada a menos" — o que
+  ele não escreve, não reescreve. As instruções mandam: um lote de leituras no primeiro turno
+  (references + diff + arquivo); escopo = o diff e o arquivo (sem sandbox de repro, sem rodar a
+  suíte, sem varrer o repo — achado que precisa de reprodução volta marcado `needs reproduction`);
+  arquivo > ~600 linhas lido por hunks ±40 mais o bloco de imports; `toctou-patterns.md` só com
+  check-then-act; "planeje ~10 tool calls". Trailer `Tool calls | Files read in full` +
+  `END_OF_FILE_REVIEW`; no sweep, `TOOL_CALLS:` antes de `END_OF_DEAD_CODE_SWEEP`.
+- **`model: "sonnet"` como poka-yoke:** parágrafo no roteamento diz o que acontece sem o campo
+  (a mesma análise a 2,5–5× a tarifa) e o footprint devolve o modelo que de fato rodou.
+- **Bucket B do sweep opt-in:** a varredura repo-wide de código morto pré-existente (tooling
+  `knip`/`ts-prune`/`vulture`…) só roda com foco `dead-code` ou `sweep=full`; a revisão completa fica
+  com o Bucket A (o que este PR introduziu ou orfanou). Nos três sweeps medidos, o Bucket B era
+  30–40% de $3,1–3,5 e nada dele pertencia ao PR em revisão. Sem o bucket, o relatório traz uma
+  linha dizendo como obtê-lo. O prompt de lançamento passa a levar `Focus area` e `Sweep` (antes
+  o agente não tinha como saber o foco); chave `sweep` documentada em `configuration.md`.
+- **Fase A em três turnos:** passos 1–3 num comando (fallback de branch base em cadeia), passo 4,
+  passos 5–8 em paralelo; probe de cobertura de testes num único loop de shell. Defaults inline no
+  SKILL.md; `configuration.md` só com override `key=value` ou stack ≠ TS/React.
+- **Cost footprint:** última linha de todo relatório —
+  `_Cost footprint: N per-file agents (model), sweep …, M files read in full, agent tool calls
+  min–max, orchestrator Bash calls K._` — alimentada pelos trailers. `END_OF_FILE_REVIEW` ausente ⇒
+  arquivo `partially analyzed`. "Measure, don't guess" entra nas Context Efficiency Rules.
+- `detection-passes.md` 6.6: `toctou-patterns.md` por caminho absoluto e só com check-then-act.
+
+**Fora desta versão, por decisão:** Haiku nos agentes e `effort: low` (trade-offs sem eval de
+achados para julgar — e `effort` só entra por definição de agente, que o plugin não distribui);
+agrupar 5 arquivos por agente e subir o threshold inline (refutado: move a análise para o modelo
+principal a tarifa maior); sweep inteiro opt-in (perderia o Bucket A).
+
+**Como verificar (keep/revert):** turnos por agente < 15 e todos os agentes lendo as references
+no stream do pipeline; custo dos agentes caindo ≥ 30% **sem** sumir CRITICAL/HIGH entre o relatório
+antigo e o novo do mesmo diff. Se um CRITICAL/HIGH sumir, reverter primeiro só a frase "Plan on
+roughly ten tool calls" em `per-file-agent.md` e medir de novo.
+
+### `coderabbit_pr` 3.6.0
+
+Inalterada.
+
 ## [1.18.0] — 2026-09-03
 
 Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1) nas duas skills do plugin.

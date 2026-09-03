@@ -141,7 +141,7 @@ Render this section when the **Dead Code Sweep (Phase B2 / pass 6.9)** ran — i
 | src/hooks/useOldFlow.ts | orphaned-file | src/hooks/useOldFlow.ts | PR | Medium | File imported nowhere after this change — remove or import |
 | `legacyParse` | unused-export | src/parser/legacy.ts:12 | pre-existing | Low | No internal refs (verify external consumers before deleting) |
 
-- **Origin** is either `PR` (Bucket A — introduced or orphaned by this diff; **primary**, list all) or `pre-existing` (Bucket B — surfaced by repo tooling, **not** touched by this PR; show a **capped** summary of ~10 highest-impact + a total count).
+- **Origin** is either `PR` (Bucket A — introduced or orphaned by this diff; **primary**, list all) or `pre-existing` (Bucket B — surfaced by repo tooling, **not** touched by this PR; show a **capped** summary of ~10 highest-impact + a total count). Bucket B is opt-in — `dead-code` focus or `sweep=full`; when the sweep reports it skipped, render one line under the table instead: `_Pre-existing dead code not scanned — run with dead-code focus (or sweep=full) for the repo-wide pass._`
 - **Confidence** reflects the false-positive guardrails (public API, framework/dynamic wiring, non-code references, barrels, test-only, conditional compilation). Footnote or drop Low-confidence items rather than asserting deletion.
 - If the sweep ran and found nothing: `**Status**: clean — no dead code detected.` If tooling was unavailable: note `Tooling: none — grep deepsearch only` so the user knows coverage was reduced.
 
@@ -199,6 +199,18 @@ Rate each criterion A through F:
 
 - Brief summary of improvements, grouped by theme
 - If none: `_None._`
+
+---
+
+### Cost footprint
+
+The last line of every report — one line, so cost can be compared across runs without opening logs:
+
+```markdown
+_Cost footprint: {N} per-file agents ({model}), sweep {yes/no} ({model} | inline | skipped), {M} files read in full, agent tool calls {min}–{max}, orchestrator Bash calls {K}._
+```
+
+The counts come from the agents' trailer lines (`Tool calls: … | Files read in full: …` on per-file agents, `TOOL_CALLS:` on the sweep) and from the orchestrator's own Phase A. Pair it with `/cost` before and after the run to measure a change to this skill.
 
 ---
 

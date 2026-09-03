@@ -1,8 +1,8 @@
 ---
 name: codereview
 metadata:
-  version: 1.12.0
-description: "Pre-PR review with severity grading and model routing (haiku/sonnet/opus). Detects TOCTOU races, accessibility gaps, hardcoded secrets, docs/OpenAPI drift, contract drift in tests, and dead code via a parallel whole-repo sweep (unused exports, orphaned files, unreachable code). Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, code health."
+  version: 1.13.0
+description: "Pre-PR review with severity grading and tiered model routing. Detects TOCTOU races, accessibility gaps, hardcoded secrets, docs/OpenAPI drift, contract drift in tests, and dead code via a parallel whole-repo sweep (unused exports, orphaned files, unreachable code). Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, code health."
 ---
 
 ## User Input
@@ -11,7 +11,7 @@ description: "Pre-PR review with severity grading and model routing (haiku/sonne
 $ARGUMENTS
 ```
 
-You **MUST** consider the user input before proceeding (if not empty). Valid inputs:
+Read the user input before proceeding (if not empty). Valid inputs:
 
 - Empty: full review of all changed files
 - Focus area: `security`, `performance`, `types`, `bugs`, `tests`, `docs`, `a11y`, `race-conditions`, `dead-code`
@@ -30,23 +30,21 @@ This skill is **stack-agnostic**. Defaults target TypeScript/React but all value
 
 ## Model Routing Strategy
 
-This skill delegates work to cheaper models for data-heavy phases, keeping the main model (opus) for judgment and the final report.
+This skill delegates the data-heavy per-file phase to cheaper agents and keeps judgment and the final report in the main model — whichever model the session is running.
 
-| Phase | Task | Model | Why |
-|-------|------|-------|-----|
-| A | Git context, file classification, test mapping | **haiku** | Pure CLI + pattern matching |
-| B | Per-file analysis (detection passes) | **sonnet** | Pattern matching on code — intelligence without deep reasoning |
-| C | Cross-file review, severity calibration, report | **Main (opus)** | Judgment calls, cross-references, coherent report |
+| Phase | Task | Runs in | Why |
+|-------|------|---------|-----|
+| A | Git context, file classification, test mapping, secrets pre-scan | **inline** (main session) | Fixed commands with one right answer — nothing to delegate |
+| B | Per-file analysis (detection passes) | **sonnet** agents, in parallel | Pattern matching on code — intelligence without deep reasoning |
+| C | Cross-file review, severity calibration, report | **Main model** | Judgment calls, cross-references, coherent report |
 
-**Threshold**: If the branch has ≤3 CODE files, skip model routing — process everything in the main model. The agent overhead isn't worth it for small reviews.
+**Threshold**: If the branch has ≤3 CODE files, skip model routing — run Phase B inline too. The agent overhead isn't worth it for small reviews.
 
 ---
 
 ## Operating Constraints
 
-**STRICTLY READ-ONLY**: Do **not** modify, create, or delete any files. Do **not** run destructive commands. Output ONLY a structured analysis report in the conversation.
-
-**No Code Rewrites**: This skill identifies issues and suggests fixes in the report — it does NOT apply them.
+**Read-only.** This skill identifies issues and suggests fixes in the report; it does not apply them. Don't modify, create, or delete files, and don't run destructive commands — everything it runs (git, grep, the secrets script, dead-code tooling) is a pure read. The only output is the structured report in the conversation.
 
 ## Error Handling
 
@@ -61,40 +59,24 @@ Regardless of failures, always produce a final report listing all files analyzed
 
 ## Execution Phases
 
-### Phase A: Git Context & File Classification + Secrets Pre-Scan (haiku agent)
+### Phase A: Git Context, File Classification & Secrets Pre-Scan (inline, main session)
 
-**Spawn a haiku agent** to gather all git context, classify files, AND run the deterministic secrets pre-scan.
+Every step here is mechanical — a fixed command with one right answer — so it runs inline in the main session, not in an agent. An agent in the middle only adds variation, latency and the chance of a silently dropped field, and the one field that must never be dropped is the secrets pre-scan: without its JSON the F-grade gate goes blind. The outputs are small (file names, stats, a one-line log), so keeping them in the main context costs little.
 
-> **Output discipline — read this carefully before writing the prompt.**
-> The orchestrator only sees the agent's **final assistant message**. Tool-call
-> outputs (bash, git, scripts) are visible to the agent **but not propagated to
-> the caller**. If the agent ends with "done", "results above", or any other
-> meta-statement instead of the raw data, the orchestrator gets nothing — and
-> the secrets gate silently degrades because `secrets_prescan` never arrives.
->
-> This has happened in practice with shorter / busier agent runs: the agent
-> performs all 8 steps via tool calls, but the final message is a status
-> summary instead of the data. To prevent that, the prompt below uses a
-> **literal return template** the agent fills in, and pairs it with an
-> orchestrator-side fallback (below the prompt).
+Apply any `$ARGUMENTS` overrides (baseDir, fileExtensions, frameworkPatterns, etc.) before classifying, then run the commands as Bash calls, in parallel where independent, and keep the raw outputs:
 
-```text
-Agent(model: "haiku", prompt: "
-Run these git commands and return the results VERBATIM in the template at
-the bottom. Tool outputs you produce are NOT visible to the caller — only
-your final assistant message is. Therefore your final message MUST contain
-the raw command outputs filled into the template. Do NOT summarize. Do NOT
-say 'done' or 'results above'. Paste the actual bytes.
-
-1. Verify git repo:  git rev-parse --is-inside-work-tree
+1. Verify git repo:  `git rev-parse --is-inside-work-tree`
 2. Detect base branch (try: origin HEAD symbolic-ref, then main, then master)
-3. Get current branch: git rev-parse --abbrev-ref HEAD
-4. Find merge base:  git merge-base {BASE_BRANCH} HEAD
-5. List changed files: git diff {MERGE_BASE}...HEAD --name-only
-6. Diff stats:       git diff {MERGE_BASE}...HEAD --stat
-7. Commit log:       git log {MERGE_BASE}..HEAD --oneline --no-decorate
+3. Current branch: `git rev-parse --abbrev-ref HEAD`
+4. Merge base:  `git merge-base {BASE_BRANCH} HEAD`
+5. Changed files: `git diff {MERGE_BASE}...HEAD --name-only`
+6. Diff stats:  `git diff {MERGE_BASE}...HEAD --stat`
+7. Commit log:  `git log {MERGE_BASE}..HEAD --oneline --no-decorate`
+8. Secrets pre-scan — runs on every review, whatever its size or focus:
+   `git diff {MERGE_BASE}...HEAD --unified=0 | bash {SKILL_DIR}/scripts/scan_secrets.sh`
+   where `{SKILL_DIR}` is the absolute path of the directory containing this SKILL.md. The script applies the regex catalog from pass 6.10, plus ggshield/gitleaks when they are on PATH, and prints JSON: `{findings:[...], scanners:[...], errors:[...]}`. Keep that JSON verbatim as `SECRETS_PRESCAN` — Phase C consumes it as the authoritative source for the Secrets Detection table and the F-grade gate. If the script crashes or prints anything other than JSON, the scan did not run: warn the user and re-run it. An absent payload is never "scan returned clean".
 
-Then classify each changed file into categories:
+Classify each changed file:
 - EXCLUDED: lock files, node_modules, dist, build, .next, min files, binaries, .claude/
 - CODE: source files matching {fileExtensions} in {baseDir}, excluding tests and generated
 - UI_LIB: files in {generatedDirs}
@@ -103,78 +85,11 @@ Then classify each changed file into categories:
 - DOCS: *.md, *.txt
 - STYLES: CSS/SCSS/LESS
 
-For each CODE file, check test coverage by probing candidate test file paths:
-1. Same dir: {Base}.test.{ext}, {Base}.spec.{ext}
-2. __tests__ sibling
-3. Project test root
-Report each as: WITH_TESTS / STALE_TESTS / NO_TESTS
+For each CODE file, check test coverage by probing candidate test file paths — same dir (`{Base}.test.{ext}`, `{Base}.spec.{ext}`), a `__tests__` sibling, then the project test root — and record it as WITH_TESTS / STALE_TESTS / NO_TESTS.
 
-8. **Run the deterministic secrets pre-scan** — MANDATORY, runs even on small PRs:
-     git diff {MERGE_BASE}...HEAD --unified=0 | bash {SKILL_DIR}/scripts/scan_secrets.sh
-   Where {SKILL_DIR} is the absolute path to this skill (the directory containing SKILL.md).
-   The script applies the canonical regex catalog from pass 6.10, plus ggshield/gitleaks
-   if available on PATH. Output is JSON: {findings:[...], scanners:[...], errors:[...]}.
-   Capture the raw JSON verbatim under SECRETS_PRESCAN below.
-   Do NOT filter, paraphrase, or 'improve' the JSON — Phase C consumes it as the
-   AUTHORITATIVE source for the Secrets Detection table and the F-grade gate.
+Phase A hands Phases B and C: BASE_BRANCH, BRANCH_NAME, MERGE_BASE, DIFF_STAT, COMMIT_LOG, the FILES list (path, category, test_status), COUNTS per category, and SECRETS_PRESCAN.
 
-## RETURN TEMPLATE — paste your final message in this exact shape
-
-BASE_BRANCH: <name>
-BRANCH_NAME: <name>
-MERGE_BASE:  <sha>
-
-DIFF_STAT:
-<paste full `git diff --stat` output here>
-
-COMMIT_LOG:
-<paste full `git log ... --oneline` output here>
-
-FILES:
-- path: <relative path>
-  category: CODE | UI_LIB | TESTS | CONFIG | DOCS | STYLES | EXCLUDED
-  test_status: WITH_TESTS | STALE_TESTS | NO_TESTS    (only for CODE)
-- ...
-
-COUNTS:
-  CODE: N
-  UI_LIB: N
-  TESTS: N
-  CONFIG: N
-  DOCS: N
-  STYLES: N
-  EXCLUDED: N
-
-SECRETS_PRESCAN:
-<paste the raw JSON output of scan_secrets.sh here, verbatim, including the
-braces; if the script crashed, paste {\"findings\":[],\"scanners\":[],\"errors\":[\"<message>\"]}>
-
-END_OF_PHASE_A_REPORT
-")
-```
-
-Pass any `$ARGUMENTS` overrides (baseDir, fileExtensions, frameworkPatterns, etc.) to the agent.
-
-**Orchestrator-side fallback (MANDATORY):** Before consuming the agent's
-response, validate that it actually contains the data. If **any** of the
-following is true, the agent under-reported and the orchestrator MUST
-re-execute the data-gathering steps itself in the main session:
-
-- The response is shorter than ~500 characters.
-- The response does not contain the literal string `SECRETS_PRESCAN:`.
-- The response does not contain `END_OF_PHASE_A_REPORT`.
-- The response is a status sentence ("done", "complete", "results above",
-  "structured results returned", etc.) without the template fields.
-
-In any of those cases, run the eight steps in the main session as Bash
-calls (in parallel where independent), capture the outputs directly, and
-pipe the diff through `scan_secrets.sh` yourself. **Never** skip the
-secrets pre-scan because the agent forgot to include it — the F-grade
-gate depends on a real JSON payload existing, and an absent payload must
-be treated as "scan did not run" (warn the user and re-run), not as
-"scan returned clean".
-
-**Why a deterministic script instead of LLM-simulated regex**: pass 6.10 listed regex patterns and Phase B sonnet agents were asked to "apply" them, but LLMs are not regex engines — substring-match shapes like `initialPassword: 'foo'` (where `password` appears as a suffix of `initialPassword`) are easy to miss. The script in `scripts/scan_secrets.py` runs real Python `re` against the unified diff, applies the exception list (env lookups, placeholders, `.env.example` files) deterministically, and integrates `ggshield`/`gitleaks` if installed. Phase C still merges in the per-file sonnet findings from pass 6.10 as supplemental, but the script's output is the authoritative gate.
+**Why the secrets scan is a script**: LLMs are not regex engines — substring-match shapes like `initialPassword: 'foo'` (where `password` appears as a suffix of `initialPassword`) are easy to miss when a model applies a pattern by eye. `scripts/scan_secrets.py` runs real Python `re` against the unified diff, applies the exception list (env lookups, placeholders, `.env.example` files) deterministically, and integrates `ggshield`/`gitleaks` if installed. Phase C still merges the per-file agents' pass-6.10 findings as supplemental, but the script's output is the authoritative gate.
 
 The pre-scan exists because CI-side scanners like GitGuardian will block the push — we want to surface the same findings locally *before* the secret lands on a remote branch.
 
@@ -228,15 +143,15 @@ N. [SEVERITY] {category} — {file}:{line} — {title}
 
 If no issues found, return: 'No findings for {FILE_PATH}'
 
-Important: ONLY reference line numbers you actually see in the diff or file content.
-Do NOT invent findings — if the code is clean, say so.
+Reference only line numbers you actually see in the diff or file content.
+If the code is clean, say so — a clean result is a valid outcome; don't invent findings.
 Note any imports from other changed files for cross-reference by the main model.
 ")
 ```
 
-**Grouping strategy**: Files that import from each other should be in the same agent when possible (max 3 files per agent). This helps catch intra-group issues without needing opus.
+**Grouping strategy**: Files that import from each other should be in the same agent when possible (max 3 files per agent). This helps catch intra-group issues without needing the main model.
 
-For **TOCTOU/race condition** analysis that spans multiple files (e.g., service reads from DB, controller calls service), the sonnet agent flags the single-file pattern and notes "cross-file verification needed". Opus handles the cross-file judgment in Phase C.
+For **TOCTOU/race condition** analysis that spans multiple files (e.g., service reads from DB, controller calls service), the sonnet agent flags the single-file pattern and notes "cross-file verification needed". Phase C handles the cross-file judgment.
 
 ### Phase B2: Dead Code Sweep (sonnet agent, parallel)
 
@@ -249,7 +164,7 @@ Spawn **one dedicated agent** for pass 6.9 (Dead Code & Unused Symbols), launche
 - Narrow focuses (`security`, `a11y`, `types`, `performance`, `docs`, `tests`, `race-conditions`) → **skip it.** Unlike pass 6.10 (secrets), dead code is hygiene, not a gate — it is not always-on, and surfacing it during a focused security review is noise.
 - **≤3 CODE files** (model routing skipped) → run the sweep **inline in the main model** instead of spawning an agent.
 
-> **Output discipline** — same rule as Phase A/B: the orchestrator sees only the agent's **final assistant message**. Its grep/tool outputs are not propagated. The final message MUST contain the structured findings filled into the template below — not "done" or "scan complete".
+> **Output discipline** — the orchestrator sees only the agent's **final assistant message**; its grep/tool outputs are not propagated. The final message is the template below, filled in — not "done" or "scan complete".
 
 ```
 Agent(model: "sonnet", prompt: "
@@ -323,7 +238,7 @@ END_OF_DEAD_CODE_SWEEP
 
 If the agent under-reports (response missing `END_OF_DEAD_CODE_SWEEP`, or a bare status sentence), the orchestrator re-runs the grep deepsearch inline in the main session for the changed files — but unlike the secrets gate, an absent dead-code result is **non-blocking**: note "dead-code sweep incomplete" in the report and proceed.
 
-### Phase C: Cross-File Review & Final Report (main model — opus)
+### Phase C: Cross-File Review & Final Report (main model)
 
 After all sonnet agents return, the main model:
 
@@ -335,13 +250,13 @@ After all sonnet agents return, the main model:
      b) it matches one of the pass 6.10 categories or is clearly equivalent.
      Otherwise drop it as low-signal LLM speculation.
    - Dedup remaining entries by `{file, line, kind}`; on collision, keep the higher severity and prefer `source=ggshield` > `gitleaks` > `regex` > `sonnet` for provenance.
-3. **Cross-file analysis** — checks that only opus can do:
+3. **Cross-file analysis** — checks that need the whole picture, so only the main model can do them:
    - Race conditions spanning multiple files (e.g., check in controller, act in service)
    - Schema consistency across related endpoints
    - Import chain coherence (types match between producer and consumer)
    - If cross-file issues are found, add them to the findings list
 4. **Severity recalibration** — review each finding's severity:
-   - Sonnet may over-flag memoization issues (React.memo, useCallback) — downgrade per the rules in detection-passes.md
+   - Per-file agents may over-flag memoization issues (React.memo, useCallback) — downgrade per the rules in detection-passes.md
    - Ambiguous TOCTOU patterns in single-user contexts — downgrade to LOW
    - Patterns that are actually project conventions (check CLAUDE.md) — remove or downgrade
    - **Pass 6.10 (Secrets) findings are NEVER downgraded to MEDIUM/LOW and NEVER removed.** The only allowed recalibration is CRITICAL ↔ HIGH per the test-file nuance in detection-passes.md (inline test literals are HIGH; prod code is CRITICAL; env-var lookups are not flagged at all).
@@ -367,19 +282,10 @@ After all sonnet agents return, the main model:
    - Test coverage table
    - Documentation sync table
    - **🧹 Dead Code & Cleanup section** (when the sweep ran — Bucket A primary, Bucket B as a capped pre-existing summary; dead-code findings also feed Recommended Actions → Consider Fixing and the Code Quality grade rationale)
-   - **Overall Grade table** (ALWAYS present; see "Mandatory final sections" below)
-   - Recommended actions (ALWAYS present, even when empty — show "_None._" under each bucket)
+   - **Overall Grade table** (always present — see below)
+   - Recommended actions (always present, even when empty — show "_None._" under each bucket)
 
-**Mandatory final sections — must NEVER be omitted, truncated, or replaced by prose:**
-
-The report MUST end with the **Overall Grade table** followed by the **Recommended Actions** block. These two sections are the user-facing summary — without them, the rest of the report is unactionable. Common failure modes to defend against:
-
-1. **Token pressure**: when context is tight, the model may "summarize in prose" instead of rendering the full grade table. Forbidden — even under tight context, emit the table with terse one-word rationales (`"clean"`, `"3 HIGH"`, `"n/a"`).
-2. **Zero-findings happy path**: when no findings exist, the model may skip straight to "looks good, grade A" without the table. Forbidden — render every row, fill grade column with `A` and rationale `—` or `clean`.
-3. **Focus-area run**: when `$ARGUMENTS` specified a focus area, the model may render only the focused row. Forbidden — render every row; non-analyzed rows get grade `—` with rationale `Not analyzed (focused review on {area})`.
-4. **Long-running review with many findings**: when the Findings table is large, the model may stop after listing findings. Forbidden — the grade table is the entry point the human reads first; without it the report cannot be triaged.
-
-Before finishing the response, self-check that the response contains both `### Overall Grade` and `### Recommended Actions` headers exactly once each. If either is missing, append it before returning. Same self-check applies to the `### 🛑 Secrets Detection` section already covered in step 8.
+**The report ends with the Overall Grade table followed by the Recommended Actions block, in every run.** They are the summary the human reads first to triage; a report without them cannot be acted on, however good the findings above it are. Render both in full even when there is little to say: with zero findings, every row gets grade `A` and rationale `clean` or `—`; in a focus-area run every row is still present, and the non-analyzed ones get grade `—` with rationale `Not analyzed (focused review on {area})`; when the context budget is tight, keep the table and use terse one-word rationales (`clean`, `3 HIGH`, `n/a`) rather than collapsing it into prose. `references/report-template.md` carries the exact shape of both sections, and of the `### 🛑 Secrets Detection` section from step 8.
 
 ### Special Cases
 
@@ -395,18 +301,18 @@ Before finishing the response, self-check that the response contains both `### O
 
 ### Context Efficiency
 
-- **Haiku handles git operations** — raw command output stays in haiku context, not opus
-- **Sonnet handles file reading** — file content and diffs stay in sonnet context, not opus
-- **Opus sees only findings** — structured summaries, not raw code
+- **Phase A runs inline** — its outputs are small (file names, stats, a one-line log) and Phase C needs them anyway
+- **Per-file agents handle file reading** — file content and diffs stay in the agents' context, not the main model's
+- **The main model sees only findings** — structured summaries, not raw code
 - **Prioritize by change size** — files with more changes get more thorough analysis
 - **Cap analysis scope** — maximum 15 full file reads across all sonnet agents
 - **Skip routing for small PRs** — ≤3 CODE files → everything in main model
 
 ### Analysis Integrity
 
-- **NEVER modify files** — this is strictly read-only analysis
-- **NEVER hallucinate line numbers** — only reference lines actually read from the diff or file
-- **NEVER invent findings** — if the code is clean, say so. A clean report is a valid outcome.
+- **Read-only** — the review changes nothing; it reports
+- **Line numbers come from the diff or file actually read** — a line the reader can't find discredits the whole report
+- **A clean report is a valid outcome** — if the code is clean, say so rather than inventing findings
 - **Be fair to generated code** — UI_LIB files get reduced scrutiny (except pass 6.10, which always runs)
 - **Never whitelist a secret finding to reduce noise** — treat test-file passwords the same as production ones; GitGuardian does. The cost of a false-positive re-read is far less than the cost of a leaked credential.
 - **Acknowledge context limits** — if a sonnet agent couldn't fully analyze a file, note it

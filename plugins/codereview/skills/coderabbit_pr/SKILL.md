@@ -1,7 +1,7 @@
 ---
 name: coderabbit_pr
 metadata:
-  version: 3.5.1
+  version: 3.6.0
 description: Resolves AI review comments on a GitHub PR — auto-detects CodeRabbit, Copilot, Gemini, Codex; creates per-reviewer checklists, verifies findings against current code (with byte-exact inspection when reviewers cite invisible/control characters), applies fixes, runs regression tests, resolves GitHub conversations, then cleans up its own checklist files. Triggers — coderabbit, copilot review, gemini review, codex review, fix PR review.
 ---
 
@@ -32,27 +32,27 @@ This skill is **project-agnostic** and **reviewer-agnostic** — it works with a
 
 ## Model Routing Strategy
 
-This skill uses different model tiers to optimize token usage. The orchestrating model (you) stays in control and delegates mechanical work to cheaper models via Agent subagents.
+This skill runs its mechanical phases inline and delegates only where a second model adds something. The orchestrating model (you) stays in control; large parsing jobs and batches of code edits go to a cheaper model via Agent subagents.
 
 | Phase | Task | Model | Why |
 |-------|------|-------|-----|
 | 1.1 | Repo/branch/PR context | **Run inline** | Fixed commands with a single correct answer |
 | 1.2 | Detect which reviewers commented | **Run inline** | An API projection, not a judgment call |
 | 1.3 | Fetch comments (extraction) | **Run inline** | Fixed `--jq` projection — see 1.3 |
-| 1.3 | Structure findings (interpretation) | **sonnet**, only if large | Pattern matching over prose; delegate only past the size threshold |
+| 1.3 | Structure findings (interpretation) | **Cheaper model**, only if large | Pattern matching over prose; delegate only past the size threshold |
 | 2 | Create checklist file | Main model | Quick write from structured data |
-| 3 | Analyze each comment (verdict) | **Main model (opus)** | Critical judgment: is the issue real? Does the spec support it? |
-| 3 | Apply code fixes | **sonnet** | Mechanical code edits based on opus verdict |
+| 3 | Analyze each comment (verdict) | **Main model** | Critical judgment: is the issue real? Does the spec support it? |
+| 3 | Apply code fixes | **Cheaper model** | Mechanical code edits based on the main model's verdict |
 | 4 | Run tests | Main model | Simple command execution |
 | 5 | Resolve GitHub threads | **Run inline** | GraphQL mutations + a count that must reach zero |
 | 6 | Clean up checklist files | **Run inline** | Deleting known paths |
 
-**How to delegate** (for the rows that still delegate): use the `Agent` tool with the `model` parameter:
+**How to delegate** (the two rows marked "Cheaper model"): use the `Agent` tool with its `model` parameter set to a cheaper tier than the one you are running on, e.g.:
 ```
 Agent({ model: "sonnet", prompt: "..." })  // for parsing/fixing
 ```
 
-**Why so much of this is inline now.** Fetching comments and resolving threads are mechanical: the commands have one correct answer, and a subagent in the middle can only add variance, latency, and silent omission. A run that skips a thread or drops a comment looks identical to a clean run — the failure is invisible. Determinism here isn't about saving tokens, it's about being able to trust the result. Delegation stays where a model genuinely adds something: reading prose findings (1.3, above the size threshold), judging correctness (3), and editing code (3.2).
+**Why most of this runs inline.** Fetching comments and resolving threads are mechanical: the commands have one correct answer, and a subagent in the middle can only add variance, latency, and silent omission. A run that skips a thread or drops a comment looks identical to a clean run — the failure is invisible. Determinism here isn't about saving tokens, it's about being able to trust the result. Delegation stays where a model genuinely adds something: reading prose findings (1.3, above the size threshold), judging correctness (3), and editing code (3.2).
 
 **When NOT to delegate anything**: if the PR has fewer than 5 total comments across all reviewers, process everything in the main model.
 
@@ -139,9 +139,9 @@ Match the returned logins against the reviewer registry in `references/reviewer-
 | Login | Reviewer |
 |-------|----------|
 | `coderabbitai[bot]` / `coderabbitai` | CodeRabbit |
-| `copilot-pull-request-reviewer` | Copilot |
+| `copilot-pull-request-reviewer[bot]` (review object) / `Copilot` (its inline comments) | Copilot |
 | `gemini-code-assist[bot]` | Gemini |
-| `github-codex[bot]` / `codex-reviewer[bot]` | Codex |
+| `chatgpt-codex-connector[bot]` | Codex |
 
 If `--reviewer` flag was passed, filter to only that reviewer.
 
@@ -180,7 +180,7 @@ into a subagent and hoping the summary is faithful.
 
 **Interpretation — delegate only when the output is genuinely big.** If the projected text
 is large (roughly >1500 lines, or 3+ reviewers each with a long review body), hand *that
-text* to a sonnet agent per reviewer, in parallel. Otherwise structure it yourself; for the
+text* to a cheaper-model agent per reviewer, in parallel. Otherwise structure it yourself; for the
 typical PR the projection is already short and a round trip buys nothing.
 
 Whoever does it, produce a **structured numbered list** with these fields per finding:
@@ -268,9 +268,9 @@ For reviewers **with findings**:
 
 ### Phase 3: Verify and Fix Each Comment
 
-Process ALL checklist items across ALL reviewer files. Group items by file to minimize reads — a single file may have findings from multiple reviewers.
+Process every checklist item across all reviewer files. Group items by file to minimize reads — a single file may have findings from multiple reviewers.
 
-#### 3.1 Analysis (Main Model — Opus)
+#### 3.1 Analysis (Main Model)
 
 For each item (or group of items in the same file):
 
@@ -309,19 +309,12 @@ For each item (or group of items in the same file):
 After the main model decides which items need fixes:
 
 - **5 or fewer fixes**: Apply them directly in the main model (the overhead of spawning agents isn't worth it).
-- **More than 5 fixes**: **Spawn sonnet agents** to apply fixes in parallel, grouped by file. Each agent receives:
+- **More than 5 fixes**: **spawn cheaper-model agents** to apply fixes in parallel, grouped by file. Each agent receives:
   - The file path
   - The list of fixes to apply (with exact old_string → new_string or clear descriptions)
   - Instructions to NOT make any changes beyond what's specified
 
-#### 3.3 Efficiency
-
-- When multiple comments reference the same file, read it once and process all together
-- Use parallel tool calls to read independent files simultaneously
-- For large files (>500 lines), read only the relevant section
-- Cross-reference items across reviewers: if CodeRabbit and Copilot flag the same line, verify once and update both checklists
-
-#### 3.4 Update Checklists
+#### 3.3 Update Checklists
 
 After each item (or batch), update the corresponding reviewer's checklist file. Mark the checkbox and add the status line.
 
@@ -340,7 +333,7 @@ by construction yet arrives looking like this run caused it — the exact confus
 
 #### 4.0 Capture Pre-Fix Baseline
 
-**Run the project's test command BEFORE applying any review fixes.** Save the pass/fail counts and the list of failing test names. This is your **baseline** of pre-existing latent failures.
+**Run the project's test command before applying any review fixes — in practice at the start of Phase 3.2, once the verdicts say something will change.** The step lives here because it pairs with the comparison in 4.2, not because it runs after Phase 3. Save the pass/fail counts and the list of failing test names. This is your **baseline** of pre-existing latent failures.
 
 Why this matters: when CI is broken by an early-step failure (lint syntax error, missing config, broken `npm exec`), GitHub never reaches the test step — so failing tests in the test step are invisible until the early step is fixed. After your fixes unblock CI, those latent failures **appear as if they were caused by your edits**, but they were always there.
 
@@ -384,7 +377,7 @@ Execute the test command after applying fixes. Compare against the Phase 4.0 bas
 
 **Do not silence failing tests** (e.g., `it.skip`, `if: false` on the workflow step, `continue-on-error: true`) to make CI green. Document and defer.
 
-**Cascade-aware rerun**: if your fixes uncovered new failures (the "new failures" branch above), consider rerunning the baseline AGAIN after addressing them — fail-fast cascades can have more than 2 levels (bug 1 masks bug 2 masks bug 3). The second bug surfaced is not necessarily the last; sibling cicd skill v2.5.0 documents a real 3-level cascade in PR #6 of `validade_bateria_estoque`. After each layer of fixes, capture a fresh baseline before declaring victory.
+**Cascade-aware rerun**: if your fixes uncovered new failures (the "new failures" branch above), rerun the baseline after addressing them — fail-fast cascades can have more than 2 levels (bug 1 masks bug 2 masks bug 3), and the second bug surfaced is not necessarily the last. After each layer of fixes, capture a fresh baseline before declaring victory.
 
 #### 4.3 Update Final Status
 
@@ -463,7 +456,7 @@ Update each checklist with:
 ### Phase 6: Clean Up the Checklist Files
 
 The `{reviewer}-review.md` files are scratch space for this run, not deliverables. Left
-behind, they rot: a checklist from PR #7 still sitting in the tree weeks later gets read
+behind, they rot: a checklist from an earlier PR still sitting in the tree weeks later gets read
 by the next run's cross-reviewer check (Phase 3.1 step 4) as though it described the
 current PR, and it clutters `git status` for everyone else.
 
@@ -510,7 +503,7 @@ file it came from is gone.
 
 ### Fidelity
 
-- **Address every comment**: Every item across all reviewer files must end with `[x]` and a justification. Never skip or ignore.
+- **Address every comment**: every item across all reviewer files ends with `[x]` and a justification; Phase 5.3's `unresolved: 0` is the check.
 - **Respect original intent**: Follow the reviewer's suggestion unless it is demonstrably wrong or contradicts project specs. Explain alternative approaches.
 - **Verify against specs**: When a reviewer questions a design decision, check the project's specs, data models, and documentation before deciding. AI reviewers don't have full project context — many "issues" are by-design choices.
 - **Preserve code style**: Match the existing project's coding conventions.
@@ -532,7 +525,7 @@ file it came from is gone.
 
 - **Run the mechanical phases inline** — reviewer detection (1.2), comment extraction (1.3), thread resolution (5), cleanup (6). Fixed commands with one correct answer; a subagent here only adds variance and the chance of an omission nobody notices.
 - **Project with `--jq` instead of absorbing raw JSON** — filtering to the fields you need beats handing 30-50KB to a subagent and trusting the summary, and it costs less.
-- **Delegate parsing** to sonnet agents only above the 1.3 size threshold — they absorb long review bodies and return structured lists.
-- **Keep analysis in opus** — judgment calls about code correctness need the strongest model.
-- **Delegate mechanical fixes** to sonnet agents when there are many (>5) fixes to apply.
+- **Delegate parsing** to cheaper-model agents only above the 1.3 size threshold — they absorb long review bodies and return structured lists.
+- **Keep analysis in the main model** — judgment calls about code correctness need the strongest model in the session, which is the orchestrator, not a delegate.
+- **Delegate mechanical fixes** to cheaper-model agents when there are many (>5) fixes to apply.
 - **Skip agent routing entirely** for small PRs (<5 comments) — the overhead isn't worth it.

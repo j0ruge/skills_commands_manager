@@ -2,6 +2,42 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.18.0] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1) nas duas skills do plugin.
+Relatórios completos ficaram fora do repo; aqui vai o que mudou e por quê.
+
+### `codereview` 1.13.0
+
+- **Fase A roda inline.** Os sete comandos `git`, a classificação de arquivos e o pré-scan de
+  secrets são um plano determinístico — cada passo tem uma resposta certa — executado por um agente
+  haiku. O agente era a causa do incidente da 1.12.0 (campo `SECRETS_PRESCAN` que não voltava), e as
+  36 linhas de ênfase, template de retorno e fallback tratavam o sintoma. A sonda do auditor mediu
+  variação entre runs no mesmo arquivo. Agora os comandos rodam na sessão principal; as saídas são
+  pequenas e a Fase C precisava delas de qualquer jeito. A `coderabbit_pr` já tinha feito essa
+  migração na 1.17.0. Fase B (sonnet, paralelo) e Fase C (modelo principal) inalteradas.
+- **Ênfase:** 28 de 32 linhas em caps voltaram ao tom normal; as 4 que ficam têm a razão ao lado.
+  O bloco "Mandatory final sections" (4× "Forbidden", escrito contra Opus 4.x) virou um parágrafo
+  que diz o que renderizar e por quê — o modelo-alvo segue uma instrução única.
+- **Modelo fixo em prosa:** "opus" era citado 8× como o modelo principal; agora "the main model —
+  whichever model the session is running". A description troca `(haiku/sonnet/opus)` por
+  "tiered model routing" (489 → 476 chars, idêntica nos 3 lugares).
+- `detection-passes.md`: a narrativa do incidente `@sales-quote`/`FORMA_PAGAMENTO` (projeto de
+  origem) vira a forma geral do defeito; referências ao "haiku agent" saem.
+
+### `coderabbit_pr` 3.6.0
+
+- **Registry de reviewers corrigido por medição** (`gh api users/` e os 25 PRs mais recentes):
+  `copilot-pull-request-reviewer` é a organização, não o bot — o review object vem de
+  `copilot-pull-request-reviewer[bot]` e os inline sob um segundo login, `Copilot`, que ninguém
+  listava; os dois logins do Codex não existiam (404) — o que existe é `chatgpt-codex-connector[bot]`.
+- Frases relativas à versão anterior ("inline **now**", "rows that **still** delegate") e
+  arqueologia de PR (`PR #6 de validade_bateria_estoque`, `PR #7`) saem; a regra fica.
+- "opus"/"sonnet" fixos viram "main model"/"cheaper model" (o exemplo `model: "sonnet"` fica).
+- O baseline de testes (4.0) diz onde de fato roda: no início da 3.2, quando os vereditos indicam
+  que algo vai mudar — as duas sondas cegas do auditor travaram exatamente nesse ponto.
+- "Address every comment… Never skip" ganha o sensor: `unresolved: 0` da fase 5.3.
+
 ## [1.17.2] — 2026-08-26
 
 Higiene de `description`, sem mudança de comportamento: o texto tinha **686 chars**,

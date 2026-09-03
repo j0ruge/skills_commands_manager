@@ -7,9 +7,9 @@ Maps AI review bots to their GitHub login, comment structure, and output file na
 | Reviewer | GitHub Login(s) | Output File | Comment Style |
 |----------|----------------|-------------|---------------|
 | CodeRabbit | `coderabbitai[bot]`, `coderabbitai` | `coderabbit-review.md` | Inline + review body with `<details>` blocks |
-| GitHub Copilot | `copilot-pull-request-reviewer` | `copilot-review.md` | Inline comments only |
+| GitHub Copilot | `copilot-pull-request-reviewer[bot]` (review object), `Copilot` (its inline comments) | `copilot-review.md` | Review body + inline comments, under two logins |
 | Gemini Code Assist | `gemini-code-assist[bot]` | `gemini-review.md` | Inline + review body summary |
-| Codex | `github-codex[bot]`, `codex-reviewer[bot]` | `codex-review.md` | Inline comments only |
+| Codex | `chatgpt-codex-connector[bot]` | `codex-review.md` | Inline comments only |
 
 ## Comment Structures by Reviewer
 
@@ -28,9 +28,9 @@ Posts in **two places**:
 
 **Metadata to discard**: walkthrough summaries, "Actionable comments posted" headers, paused review notices, `<!-- fingerprinting:... -->` blocks
 
-### GitHub Copilot (`copilot-pull-request-reviewer`)
+### GitHub Copilot (`copilot-pull-request-reviewer[bot]` / `Copilot`)
 
-Posts **inline review comments only** — no review body summary.
+Posts in **two places, under two logins**: the review object on `/reviews` is authored by `copilot-pull-request-reviewer[bot]` and may carry a body; the inline comments on `/comments` that belong to that review are authored by `Copilot`. Both logins are this reviewer — matching only one of them files half the findings under an unknown reviewer.
 
 - Comments are plain text with markdown formatting
 - Severity is typically not explicitly marked — default to MEDIUM
@@ -47,7 +47,7 @@ Posts in **two places**:
 - Severity markers: `critical`, `high`, `medium`, `low` (text-based, case-insensitive)
 - Suggestions in standard markdown code blocks
 
-### Codex (`github-codex[bot]`, `codex-reviewer[bot]`)
+### Codex (`chatgpt-codex-connector[bot]`)
 
 Posts **inline comments** — similar to Copilot style.
 

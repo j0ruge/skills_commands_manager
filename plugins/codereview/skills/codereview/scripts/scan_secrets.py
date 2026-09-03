@@ -4,7 +4,7 @@ scan_secrets.py — varredura determinística de secrets contra um unified diff.
 
 Implementa o catálogo de pass 6.10 ("Hardcoded Secrets Detection") da skill
 codereview como código real (não como prosa para LLM simular). Saída JSON em
-stdout consumível pelo haiku agent em Phase A.
+stdout consumível pela Phase A.
 
 Uso:
     git diff <base>...HEAD --unified=0 | python3 scan_secrets.py

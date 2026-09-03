@@ -21,8 +21,9 @@ para não se perder. Complementa os `CHANGELOG.md` de cada plugin — eles conta
   yokoten, andon e Ishikawa no fluxo (sonda A/B: 14/14 sem regressão; menções a poka-yoke
   0→4 e 1→4 nos cenários em que a antiga fechava com regra escrita); `codereview` 1.19.0 com
   contrato dos agentes em arquivo, prompt de lançamento curto, `model` como poka-yoke, Bucket B
-  opt-in e linha *Cost footprint* — **custo pós-mudança ainda não medido** (plano: 2 rodadas
-  REVIEW na mesma missão, ≈ $40; ver "O que aprendemos").
+  opt-in e linha *Cost footprint* — medido em duas invocações headless sobre o mesmo diff:
+  **$6,62 e $5,92 por revisão** (agentes $0,58–1,61 cada, 3–20 turnos, 8 de 8 leram as references)
+  contra $11–16 e ≈45 turnos por agente no baseline; ver item (h).
 - **Causa raiz (5 porquês abaixo):** sem eval nem sensor, a única evidência de que uma linha da
   skill "funciona" é o incidente que a gerou — ninguém tem base para removê-la, então só se
   acrescenta.
@@ -102,10 +103,17 @@ dele; sinais já medidos: 8 linhas com datas, 5 com IDs de issue, e-mail pessoal
   prompt: era **turnos por agente** (~45 contra ~6 no desenho) — cache-read cresce com o
   quadrado dos turnos. Caminho relativo nas instruções + orquestrador que parafraseia o bloco
   `Agent(...)` = agente explorando livre.
-- **`sdd retry` retenta a fase corrente da missão**, não uma fase nomeada: na missão do baseline
-  (`20260901-o-revisor-so-acha`, já em PR) re-medir REVIEW é `sdd run --phase REVIEW`, que por
-  desenho ignora o teto de rodadas. O comando faz checkout da branch da missão no
-  `sdd_agents` — rodar só com a árvore limpa e sem trabalho em outra branch.
+- **O desenho "mesma missão, 2 rodadas" nunca ia medir nada:** `sdd retry` retenta a fase corrente
+  (PR), a missão do baseline já estava mesclada em `main` (diff vazio → nenhum agente) e o seu revisor
+  deixou de invocar o skill a partir da r3. A sessão forçada (`sdd run --phase REVIEW`, que ignora o
+  teto de rodadas por desenho) fez checkout da branch da missão na árvore do usuário e commitou duas
+  notas de intervenção — desfeitas por ele em um minuto. O que mediu foi `claude -p
+  "/codereview:codereview"` num worktree destacado e, quando essa branch também foi mesclada, num
+  clone descartável com `main` fixado no merge-base antigo: zero contato com o checkout de quem
+  trabalha no repo em paralelo.
+- **Job longo em Bash de fundo com timeout morre no prazo, com o grupo de processos inteiro**
+  ($4,70 de sessão perdida): `setsid nohup … &` + Monitor. E um Monitor cujo comando contém o literal
+  que ele procura com `pgrep -f` casa consigo mesmo e nunca sai.
 - **Bucket B do sweep sem foco no prompt de lançamento é regra sem sensor**: o agente não tinha
   como saber o foco; o prompt agora leva `Focus area` e `Sweep`.
 
@@ -125,10 +133,13 @@ dele; sinais já medidos: 8 linhas com datas, 5 com IDs de issue, e-mail pessoal
   reproduzir só CRITICAL/HIGH; `CLAUDE.md` + `.claude/rules` do DSR com ≈ 110 KB — cada
   subagente paga ≈ 28k tokens de prefixo.
 - (g) `ticket`: auditar com o brief assim que o usuário commitar a edição em andamento.
-- (h) Medição da 1.19.0 (aprovada, ≈ $40): 2 rodadas `sdd run --phase REVIEW` na missão do
-  baseline (r1 = $17,92, sessão `2762a593`; r4, a última, = $6,83); ler `pipeline.log`,
-  `analisa_agentes.py` e o *Cost footprint*; manter L1/L4 se o custo dos agentes cair ≥ 30%
-  **sem** sumir CRITICAL/HIGH — senão reverter primeiro só "Plan on roughly ten tool calls".
+- (h) Medição da 1.19.0 — **feita** (2026-09-03, ≈ $18 dos ≈ $40 aprovados; $4,70 deles numa sessão do
+  runner morta pelo timeout do próprio agente): duas invocações headless sobre o mesmo diff de 18
+  arquivos — $6,62 e $5,92 por revisão; agentes $0,58–1,61 (3–20 turnos) contra $2,0 (≈45 turnos);
+  sweep $0,62–0,69 (6–8 turnos) contra $3,1–3,5 (63–66); references lidas por 8 de 8 agentes; nenhum
+  CRITICAL/HIGH; os dois relatórios convergem no mesmo achado principal. **L1–L5 ficam.** Tabela no
+  CHANGELOG do `codereview` (1.19.0); streams e relatórios em
+  `~/.claude/handoff/prompt-audit-2026-09-03/prompt-audit/work/codereview-custo/medicao-1.19.0/`.
 
 ---
 

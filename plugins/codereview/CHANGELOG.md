@@ -57,6 +57,29 @@ no stream do pipeline; custo dos agentes caindo ≥ 30% **sem** sumir CRITICAL/H
 antigo e o novo do mesmo diff. Se um CRITICAL/HIGH sumir, reverter primeiro só a frase "Plan on
 roughly ten tool calls" em `per-file-agent.md` e medir de novo.
 
+**Medido depois da publicação (2026-09-03).** Duas invocações headless de `/codereview:codereview`
+(`claude -p`, orquestrador Opus 5) sobre o **mesmo diff real** de 18 arquivos (6 de código, `bin/sdd` com
+6,6k linhas) no `sdd_agents`, lidas pelo stream com o mesmo sensor do baseline:
+
+| | Baseline (16 sessões, 1.17.x) | Run A | Run B |
+|---|---|---|---|
+| Custo da revisão (ledger) | $11–16 só o codereview | **$6,62** (Opus $3,07 + Sonnet $3,55) | **$5,92** (Opus $2,64 + Sonnet $3,29) |
+| Agente por arquivo | $2,0 (Sonnet), ≈45 turnos, 30–90 tool calls | $0,58 / $0,76 / $1,61 — 3 / 9 / 20 turnos — 13 / 13 / 28 tool calls | $0,73 / $0,83 / $0,87 — 7 / 12 / 11 turnos — 20 / 26 / 15 tool calls |
+| Sweep | $3,1–3,5, 63–66 turnos | $0,62, 6 turnos | $0,69, 8 turnos |
+| Leu as references | 1 de 66 agentes | 4 de 4 | 4 de 4 |
+| Modelo que rodou | Opus em 6 de 16 sessões | Sonnet 4/4 | Sonnet 4/4 |
+| Trailer + sentinela | — | 4/4 | 4/4 |
+| Relógio | 20–33 min por sessão | 13 min | 11 min |
+
+Achados: nenhum CRITICAL/HIGH nas duas; as duas convergem no mesmo achado principal (fail-open do glob
+`0|0.*` no teto de orçamento) e em dois secundários; cada uma achou 1–2 MEDIUM que a outra não achou —
+variância normal entre runs. O Bucket B saiu como a linha "não varrido" e o Cost footprint fechou os dois
+relatórios. **Veredito: L1–L5 ficam** (custo por agente −50–60%, turnos < 15 em 7 dos 8 agentes,
+references lidas por todos). O que a medição **não** cobre: o diff não tinha revisão anterior à 1.19.0,
+então "nenhum CRITICAL/HIGH sumiu" fica sem teste; a missão do baseline (`20260901-o-revisor-so-acha`) já
+estava mesclada e o seu revisor deixou de invocar o skill a partir da r3 — a comparação é por agente, não
+por missão.
+
 ### `coderabbit_pr` 3.6.0
 
 Inalterada.

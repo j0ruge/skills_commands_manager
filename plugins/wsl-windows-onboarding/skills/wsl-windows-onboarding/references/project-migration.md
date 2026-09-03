@@ -15,10 +15,12 @@ So we rsync the working tree, keeping `.git` (history) and `.env` (config), and 
 
 ## Resolve the real source path first
 
-The Windows username, the WSL username, and whatever the user typed can all differ — don't hardcode `<you>`. Discover the actual folder before copying anything:
+The Windows username, the WSL username, and whatever the user typed can all differ — don't hardcode `<you>`, and don't assume the layout: `source\repos` is only Visual Studio's default, and projects may live in `Projects`, `dev`, `repos`, or on another drive (`/mnt/d/...`). Ask the user where they are, then confirm the path exists before rsync:
 
 ```bash
-ls -d /mnt/c/Users/*/source/repos    # find the real path; confirm it exists before rsync
+ls /mnt/c/Users/                                                  # which Windows profile
+ls -d /mnt/c/Users/*/source/repos /mnt/c/Users/*/repos \
+      /mnt/c/Users/*/Projects /mnt/c/Users/*/dev 2>/dev/null       # common layouts; the real one may be elsewhere
 ```
 
 ## The copy
@@ -194,7 +196,7 @@ git add --renormalize .
 git commit -m "chore: normalize line endings to LF after WSL migration"
 ```
 
-**If you only want to commit a NEW thing right now and not the 150-file line-ending churn:** stage only your specific paths, and make those specific files LF first so their staged diff is just your real change, not the whole-file CRLF flip:
+**If you only want to commit a NEW thing right now and not the whole-tree line-ending churn:** stage only your specific paths, and make those specific files LF first so their staged diff is just your real change, not the whole-file CRLF flip:
 
 ```bash
 # normalize ONLY the files you're about to commit to LF
@@ -203,7 +205,7 @@ git add path/to/new_or_edited_file
 git diff --cached --stat        # verify the diff is scoped to your change, not the whole tree
 ```
 
-The wider CRLF cleanup is a real decision for the repo owner — surface it, don't sweep 150 files into an unrelated commit.
+The wider CRLF cleanup is a real decision for the repo owner — surface it, don't sweep the whole tree's CRLF churn into an unrelated commit.
 
 ## Pushing a migrated repo from WSL
 

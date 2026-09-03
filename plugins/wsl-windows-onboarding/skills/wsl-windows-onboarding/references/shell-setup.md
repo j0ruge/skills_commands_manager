@@ -30,7 +30,7 @@ chsh -s "$(command -v zsh)"        # run as the user, or: sudo chsh -s /usr/bin/
 - Standard `chsh` requires the target shell to be listed in **`/etc/shells`** (the `zsh` apt package adds it). If `chsh` rejects the shell, check that file.
 - Alternative without touching the login shell: set the **Windows Terminal profile** `commandline` to `wsl.exe -d Ubuntu -- zsh`.
 
-## 3. CRITICAL — your bash config does NOT carry over to zsh
+## 3. Your bash config does not carry over to zsh
 
 This is the step that silently breaks things. **zsh does not read `~/.bashrc`** — it reads `~/.zshrc` (plus `~/.zshenv`/`~/.zprofile`). Anything you put in `~/.bashrc` during onboarding is invisible to zsh. In particular:
 

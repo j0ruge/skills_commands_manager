@@ -35,8 +35,8 @@ If `wsl -l -v` shows only `docker-desktop` (or nothing), you need a real distro:
 wsl --install Ubuntu      # installs the latest Ubuntu LTS
 ```
 
-**Name trap:** on current WSL, `wsl --list --online` only lists the *generic* name
-`Ubuntu`. Passing a versioned name like `wsl --install Ubuntu-24.04` fails with
+**Name trap:** use a name exactly as `wsl --list --online` prints it. Some WSL builds
+list only the *generic* `Ubuntu`; there, `wsl --install Ubuntu-24.04` fails with
 `WSL_E_DISTRO_NOT_FOUND` — use the bare `Ubuntu` (it resolves to the latest LTS).
 If WSL itself is missing too, `wsl --install` with no argument installs WSL2 +
 Ubuntu; reboot when asked.

@@ -1,5 +1,21 @@
 # Changelog — `wsl-windows-onboarding`
 
+## [0.4.2] — 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Zero usuário/host/projeto do autor no corpo — a arqueologia já estava no CHANGELOG.
+
+- `project-migration.md`: o comando de descoberta do caminho-fonte só encontrava
+  `source\repos` (default do Visual Studio, layout do autor) logo depois de dizer "discover the
+  actual folder" — agora lista o perfil e os layouts comuns e manda perguntar ao usuário; "150
+  files" (contagem do repo do autor) → "whole-tree".
+- `wsl-setup.md` + `SKILL.md`: "on current WSL, `wsl --list --online` only lists `Ubuntu`" era
+  afirmação sem data sobre um comportamento que muda — vira "use o nome exatamente como a lista
+  imprime", robusto nos dois estados.
+- `shell-setup.md`: "CRITICAL —" no título → normal; `SKILL.md`: "built from a real migration" e
+  "each one, skipped, caused a real problem" viram a regra sem a proveniência.
+- Description mantida ("Knows the traps from a real migration" é gatilho legítimo). `SKILL.md`
+  ganha `metadata.version`.
+
 ## [0.4.1] — 2026-08-26
 
 Higiene de `description`, sem mudança de comportamento: o texto tinha **871 chars**,

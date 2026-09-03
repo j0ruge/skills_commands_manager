@@ -1,13 +1,13 @@
 ---
 name: wsl-windows-onboarding
 metadata:
-  version: 0.4.1
+  version: 0.4.2
 description: "End-to-end onboarding of a Windows machine to WSL2 — enable WSL, install rtk, migrate dev projects off C:\\ into the Linux filesystem with rsync that keeps .git/.env and validates before deleting. Knows the traps from a real migration: rtk missing from PATH, /mnt/c slowness, the whole git tree reading as modified (CRLF/filemode). Triggers — migrate projects to WSL, set up WSL for development, install rtk on Windows, slow WSL builds, resume an interrupted migration."
 ---
 
 # WSL Windows Onboarding — diagnose WSL · install rtk · migrate projects
 
-This skill takes a Windows developer from "I have a Windows box (probably with Docker)" to "my projects run fast inside WSL2 and rtk is installed." It is built from a real migration and bakes in the traps that cost time the first time around.
+This skill takes a Windows developer from "I have a Windows box (probably with Docker)" to "my projects run fast inside WSL2 and rtk is installed." It bakes in the traps that cost the most time on a first migration.
 
 It covers four phases that usually run in sequence, but each is independently useful:
 
@@ -27,7 +27,7 @@ Use it whenever the user wants any of these, even if they don't name "WSL":
 
 ## Non-negotiable safety principles
 
-These exist because each one, skipped, caused a real problem:
+Each one, skipped, fails silently or irreversibly:
 
 - **Copy → validate → only then delete.** The deletion of the Windows source is the one irreversible step. Never delete before the copy is validated. When the user says "move," still copy first; delete last, after confirmation. See `references/project-migration.md`.
 - **Never exclude `.git`.** It carries history and any uncommitted work. Excluding it to "save space" silently destroys the repo's value.
@@ -42,7 +42,7 @@ Key things to get right (full detail in `references/wsl-setup.md`):
 
 - **Docker users almost always already have WSL2** — check `wsl -l -v` and `wsl --version` before installing anything.
 - The **`docker-desktop` distro is Docker's backend, not your workspace.** Work inside the real distro (e.g. `Ubuntu`). Picking `docker-desktop` is a classic mistake.
-- **If there's no real distro, install one** with `wsl --install Ubuntu` (the bare name — `Ubuntu-24.04` fails with `WSL_E_DISTRO_NOT_FOUND` on current WSL). The first-run user prompt (OOBE) needs a real terminal; when scripting, register non-interactively and create a **non-root user with sudo**, set as default via `/etc/wsl.conf [user] default`. Full recipe in `references/wsl-setup.md`.
+- **If there's no real distro, install one** with `wsl --install Ubuntu` — use a name exactly as `wsl --list --online` prints it; a versioned name that isn't listed (e.g. `Ubuntu-24.04` on builds that only list the generic `Ubuntu`) fails with `WSL_E_DISTRO_NOT_FOUND`. The first-run user prompt (OOBE) needs a real terminal; when scripting, register non-interactively and create a **non-root user with sudo**, set as default via `/etc/wsl.conf [user] default`. Full recipe in `references/wsl-setup.md`.
 - Your Windows files are at `/mnt/c/...`, but working there is **slow** (cross-filesystem). The payoff of this whole skill is moving projects onto the Linux filesystem (`~`).
 
 ## Phase 2 — Install rtk

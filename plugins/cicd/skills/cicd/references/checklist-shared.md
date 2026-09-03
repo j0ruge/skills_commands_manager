@@ -19,10 +19,13 @@ Shared sections between backend and frontend for new environment configuration.
 
 ```bash
 mkdir -p /opt/actions-runner && cd /opt/actions-runner
-curl -o actions-runner-linux-x64-2.321.0.tar.gz -L \
-  https://github.com/actions/runner/releases/download/v2.321.0/actions-runner-linux-x64-2.321.0.tar.gz
-tar xzf actions-runner-linux-x64-2.321.0.tar.gz
-./config.sh --url https://github.com/JRC-Brasil --token <ORG_TOKEN> --labels <staging|production>
+# Always the current release: GitHub refuses jobs from a deprecated runner binary
+# (`self-hosted-runner-docker.md` §8), so a pinned version here rots into a runner that never picks up work.
+VER=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r '.tag_name' | tr -d v)
+curl -o actions-runner-linux-x64-${VER}.tar.gz -L \
+  https://github.com/actions/runner/releases/download/v${VER}/actions-runner-linux-x64-${VER}.tar.gz
+tar xzf actions-runner-linux-x64-${VER}.tar.gz
+./config.sh --url https://github.com/<ORG> --token <ORG_TOKEN> --labels <staging|production>
 sudo ./svc.sh install && sudo ./svc.sh start
 ```
 
@@ -34,7 +37,7 @@ sudo ./svc.sh install && sudo ./svc.sh start
 - [ ] `GITHUB_TOKEN` has `packages: write` permission in the workflow
 - [ ] Correct image tags: `staging` for develop, `v*` + `latest` for production
 
-Verify at: `github.com/orgs/JRC-Brasil/packages`
+Verify at: `github.com/orgs/<ORG>/packages`
 
 ---
 

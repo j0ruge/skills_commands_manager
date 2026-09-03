@@ -110,10 +110,10 @@ em paralelo, senão o merge redescobre cada armadilha uma por vez.
 
 Rollout: **staging primeiro**, observar um deploy real, só então produção.
 
-### (b) `paths-ignore` — inclusive em `pull_request`
+### (b) `paths-ignore` — no `push`, onde ele paga
 
-A lição 57 cobre `on.push.paths-ignore` para não redeployar em commit de documentação. O mesmo vale
-para o **CI de PR**, que costuma ser esquecido:
+A lição 57 cobre `on.push.paths-ignore` para não redeployar em commit de documentação. O filtro
+também existe em `pull_request`, mas com outra semântica — e é ela que decide onde ele paga:
 
 ```yaml
 on:
@@ -125,8 +125,8 @@ on:
     paths-ignore: ['**/*.md', 'docs/**', 'specs/**', '.claude/**']
 ```
 
-🔴 **A economia em `pull_request` é bem menor do que parece — e esta reference já disse o
-contrário.** O filtro tem semânticas diferentes por evento:
+🔴 **A economia em `pull_request` é bem menor do que parece.** O filtro tem semânticas
+diferentes por evento:
 
 | Evento | O que o filtro avalia |
 | ------ | --------------------- |
@@ -152,14 +152,14 @@ push casam com a lista — com nenhum arquivo, a condição é **vacuamente verd
 dispara. Nada falha, nada fica vermelho: o `gh run list` continua mostrando os runs antigos, e o
 silêncio se parece exatamente com "deploy ok".
 
-Medido em 01/09/2026, num frontend cujo `cd-staging.yml` acabara de migrar de `branches: [develop]`
-para `branches: [staging]`. A branch foi criada com `git push origin origin/develop:refs/heads/staging`,
-o merge estava correto, o runner self-hosted estava **online** — e nenhum run apareceu.
+Reproduz num `cd-staging.yml` que acabou de migrar de `branches: [develop]` para `branches: [staging]`:
+a branch criada com `git push origin origin/develop:refs/heads/staging`, merge correto, runner
+self-hosted **online** — e nenhum run aparece.
 
 Dois agravantes que fecham a saída:
 
 - **Commit vazio não resolve.** `git commit --allow-empty` também não altera arquivo, então cai na
-  mesma condição. É o reflexo natural (lição 8) e aqui ele não funciona.
+  mesma condição.
 - **A [documentação oficial do GitHub][gh-events] não cobre o caso.** Ela documenta o filtro para
   pushes comuns e o *fail-open* de pushes gigantes, mas não diz o que acontece quando o diff é
   vazio. Não adianta procurar: confirme empiricamente com `gh run list --workflow=<wf> -L 3`.

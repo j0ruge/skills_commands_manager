@@ -14,13 +14,13 @@ Frontend-specific troubleshooting scenarios. For shared infrastructure scenarios
 
 ```bash
 # Check if dist/ has content
-docker exec service_report_web ls -la /usr/share/nginx/html/
+docker exec <web-container> ls -la /usr/share/nginx/html/
 
 # Check if index.html references the correct assets
-docker exec service_report_web cat /usr/share/nginx/html/index.html
+docker exec <web-container> cat /usr/share/nginx/html/index.html
 
 # Check if VITE_* are embedded
-docker exec service_report_web sh -c "grep -r 'VITE_' /usr/share/nginx/html/assets/*.js | head -5"
+docker exec <web-container> sh -c "grep -r 'VITE_' /usr/share/nginx/html/assets/*.js | head -5"
 ```
 
 **Common causes:**
@@ -39,7 +39,7 @@ docker exec service_report_web sh -c "grep -r 'VITE_' /usr/share/nginx/html/asse
 **Diagnosis:**
 
 ```bash
-docker exec service_report_web sh -c "grep -o 'https://[^\"]*jrcbrasil[^\"]*' /usr/share/nginx/html/assets/*.js | sort -u"
+docker exec <web-container> sh -c "grep -o 'https://[^\"]*<your-domain>[^\"]*' /usr/share/nginx/html/assets/*.js | sort -u"
 ```
 
 **Cause:** VITE_API_URL points to the wrong environment (staging vs production) or does not include the `https://` protocol.
@@ -54,7 +54,7 @@ docker exec service_report_web sh -c "grep -o 'https://[^\"]*jrcbrasil[^\"]*' /u
 
 **Cause:** nginx does not have `try_files $uri $uri/ /index.html` configured.
 
-**Solution:** Check `infra/dsr_web/nginx.conf`:
+**Solution:** Check the nginx config the Dockerfile copies (e.g. `infra/<web>/nginx.conf`):
 
 ```nginx
 location / {
@@ -87,11 +87,11 @@ grep -n 'treeshake\|manualChunks\|moduleSideEffects' vite.config.ts
 **Diagnosis:**
 
 ```bash
-docker inspect service_report_web --format '{{json .State.Health}}' | jq .
+docker inspect <web-container> --format '{{json .State.Health}}' | jq .
 # Test with explicit IPv4
-docker exec service_report_web wget -qO- http://127.0.0.1:80/index.html | head -5
+docker exec <web-container> wget -qO- http://127.0.0.1:80/index.html | head -5
 # Compare with localhost (may fail)
-docker exec service_report_web wget -qO- http://localhost:80/index.html | head -5
+docker exec <web-container> wget -qO- http://localhost:80/index.html | head -5
 ```
 
 **Cause:** On Alpine images, `localhost` can resolve to `::1` (IPv6). If nginx only listens on IPv4, the healthcheck fails.
@@ -140,7 +140,7 @@ export default defineConfig({
 **Diagnosis:**
 
 ```bash
-docker exec service_report_web ls -la /usr/share/nginx/html/
+docker exec <web-container> ls -la /usr/share/nginx/html/
 ```
 
 **Solution:** Verify that `npm run build` generates `dist/` in the Dockerfile and that the `COPY --from=build` is correct.
@@ -287,20 +287,20 @@ Pipeline failed?
 
 ```bash
 # Container status
-docker ps --filter name=service_report_web
+docker ps --filter name=<web-container>
 
 # Container logs
-docker logs service_report_web --tail 50
+docker logs <web-container> --tail 50
 
 # Check the image used
-docker inspect service_report_web --format '{{.Config.Image}}'
+docker inspect <web-container> --format '{{.Config.Image}}'
 
 # Check healthcheck
-docker inspect service_report_web --format '{{json .State.Health}}' | jq .
+docker inspect <web-container> --format '{{json .State.Health}}' | jq .
 
 # Test nginx (use 127.0.0.1, not localhost)
-docker exec service_report_web wget -qO- http://127.0.0.1:80/index.html | head -5
+docker exec <web-container> wget -qO- http://127.0.0.1:80/index.html | head -5
 
 # Check embedded VITE_* in JS
-docker exec service_report_web sh -c "grep -r 'jrcbrasil' /usr/share/nginx/html/assets/*.js | head -5"
+docker exec <web-container> sh -c "grep -r '<your-domain>' /usr/share/nginx/html/assets/*.js | head -5"
 ```

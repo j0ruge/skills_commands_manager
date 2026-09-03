@@ -2,6 +2,28 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-03 — Prompt audit: nomes de um projeto viram placeholders, lições alinhadas à semântica do paths-ignore — bump 2.25.0 → [2.26.0]
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Nenhuma lição muda de conteúdo técnico — muda o que a skill diz a um modelo que revisa
+um repositório que não é o de origem.
+
+- **Nomes de um projeto apresentados como regra geral** (Grupo 2 do guia): `api.dsr`,
+  `service_report_web`, `infra/dsr_web/…`, `ghcr.io/jrc-brasil/digital_service_report_frontend`,
+  `JRC-Brasil/validade_bateria_estoque`, `orgs/JRC-Brasil/packages` viram placeholders
+  (`<web-container>`, `infra/<web>/`, `<org>/<repo>`) nos checklists, no troubleshooting e no
+  runbook do runner.
+- **Versão fixa do runner** (`2.321.0`) no checklist: o GitHub recusa jobs de binário deprecado
+  (§8 do runbook), então a versão fixa apodrece num runner que nunca pega trabalho — passa a
+  resolver a release atual pela API, com a razão ao lado.
+- **Frases relativas à versão anterior do próprio texto** ("esta reference já disse o contrário",
+  "a versão anterior desta lista rankeava", "o ranking de risco desta lição estava errado",
+  "medido em 01/09/2026") saem; a regra fica escrita como se sempre tivesse sido assim.
+- **Semântica do `paths-ignore` alinhada** nas lições 8, 57, 68 e 81 e nos dois blocos de trigger:
+  em `pull_request` o filtro avalia o diff inteiro do PR, então só pula PR 100% documentação — a
+  alavanca real está no `push`; `git commit --allow-empty` não dispara workflow com `paths-ignore`.
+- Description: 9 → 8 gatilhos (`rollback/backup gate`), idêntica nos 3 lugares. `SKILL.md` ganha
+  `metadata.version`.
+
 ## 2026-09-01 — O push que não altera arquivo nenhum: a branch de ambiente que nasce sem deploy — bump 2.24.0 → [2.25.0]
 
 **O quê:** `ci-cost-minutes.md` §3b ganha a subseção *"O outro lado da moeda"* + lição **81** + 1 linha na Quick Troubleshooting.

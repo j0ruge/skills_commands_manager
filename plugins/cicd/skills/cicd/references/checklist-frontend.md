@@ -33,12 +33,12 @@ For shared sections (runner, GHCR, DNS/SSL, base networking), see `checklist-sha
 - [ ] `npm run build` (tsc + vite build)
 - [ ] Runtime stage: `nginx:alpine`
 - [ ] `COPY --from=build /app/dist /usr/share/nginx/html`
-- [ ] `COPY infra/dsr_web/nginx.conf /etc/nginx/nginx.conf`
+- [ ] `COPY infra/<web>/nginx.conf /etc/nginx/nginx.conf` (path varies by project)
 
 ## 3. Docker Compose (staging/production)
 
-- [ ] `image: ghcr.io/jrc-brasil/digital_service_report_frontend:${IMAGE_TAG}`
-- [ ] `container_name: service_report_web`
+- [ ] `image: ghcr.io/<org>/<image>:${IMAGE_TAG}` (owner lowercase — lesson 55)
+- [ ] `container_name: <web-container>`
 - [ ] No `ports:` (nginx-proxy routes internally)
 - [ ] No `env_file:` (VITE_* are already in the JS)
 - [ ] No `VIRTUAL_PORT` (nginx = port 80 = default)

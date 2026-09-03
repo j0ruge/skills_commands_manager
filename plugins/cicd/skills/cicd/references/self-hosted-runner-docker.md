@@ -72,7 +72,7 @@ runner:
   environment:
     RUNNER_NAME: jrc-prod-01
     LABELS: production,self-hosted,linux,x64    # ← LABELS, não RUNNER_LABELS
-    REPO_URL: https://github.com/JRC-Brasil/<repo>
+    REPO_URL: https://github.com/<org>/<repo>
     RUNNER_TOKEN: ${RUNNER_REGISTRATION_TOKEN}
     EPHEMERAL: "true"
 ```
@@ -180,7 +180,7 @@ Funciona idêntico no destino e fica mais simples.
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO=JRC-Brasil/validade_bateria_estoque
+REPO=<org>/<repo>
 TOK=$(gh api -X POST "/repos/${REPO}/actions/runners/registration-token" --jq '.token')
 
 # Atualiza .env atomicamente (sed in-place falha se a linha tem leading space —
@@ -237,7 +237,7 @@ Ambos passos são necessários: a próxima execução do CD step "Gerar .env de 
 **Fix**: deletar o runner antigo via API antes de re-registrar.
 
 ```bash
-REPO=JRC-Brasil/validade_bateria_estoque
+REPO=<org>/<repo>
 RUNNER_NAME=jrc-prod-01
 
 EXISTING=$(gh api "/repos/${REPO}/actions/runners" \
@@ -357,7 +357,7 @@ runner:
   environment:
     RUNNER_NAME: jrc-prod-01
     LABELS: production,self-hosted,linux,x64       # NÃO RUNNER_LABELS
-    REPO_URL: https://github.com/JRC-Brasil/<repo>
+    REPO_URL: https://github.com/<org>/<repo>
     RUNNER_TOKEN: ${RUNNER_REGISTRATION_TOKEN}
     EPHEMERAL: "true"
 
@@ -370,7 +370,7 @@ volumes:
 Quando algo deu errado e você precisa re-registrar do zero:
 
 ```bash
-REPO=JRC-Brasil/<repo>
+REPO=<org>/<repo>
 RUNNER_NAME=jrc-prod-01
 COMPOSE=infra/docker/docker-compose.prod.yml
 
@@ -440,7 +440,7 @@ docker logs --tail 30 gh-runner 2>&1 | grep -E 'Http response|Not Found|expired|
 **Recovery sem perder o slot do CD em curso** — sequência de **3 passos coordenados**:
 
 ```bash
-REPO=JRC-Brasil/<repo>
+REPO=<org>/<repo>
 COMPOSE_HOST=/tmp/cd-bootstrap/docker     # diretório de bring-up no host
 PROJECT=<seu-compose-project>             # ex.: jrc-prod, deve bater com o do CD
 
@@ -516,8 +516,8 @@ Após (c), o próximo `docker compose up -d` do CD vê o runner **com labels cor
 Mantém o `runner` no compose do produto (não precisa centralizá-lo); só troca a
 credencial de *registration token* (expira ~1h) por um **PAT**, que a imagem
 `myoung34` usa para gerar um registration token FRESCO a cada start. O JIT
-ephemeral passa a re-registrar limpo e o §7 deixa de acontecer. Provado no
-staging do `sales_quote` (2026-06): `docker restart` re-registra sem 404.
+ephemeral passa a re-registrar limpo e o §7 deixa de acontecer. Prova da cura:
+`docker restart` re-registra sem 404.
 
 **1. Criar o PAT — `gh` NÃO cunha PAT.** Não existe endpoint de API/CLI para
 criar Personal Access Token (clássico ou fine-grained); só a **web UI**

@@ -17,10 +17,9 @@ nada disso. O YAML não muda, e mesmo assim o job quebra.
 
 ## O pré-voo, na ordem de risco medida
 
-A versão anterior desta lista rankeava "service containers exigem Docker no runner" como o ponto de
-falha mais provável. **Medido numa migração real: passou de primeira** — `Initialize containers`
-subiu o Postgres e o healthcheck ficou `healthy` sem nenhum ajuste. O que quebrou foi outra coisa,
-três vezes seguidas.
+"Service containers exigem Docker no runner" parece o ponto de falha mais provável e **costuma
+passar de primeira** — `Initialize containers` sobe o Postgres e o healthcheck fica `healthy` sem
+nenhum ajuste. O que quebra é outra coisa, e é isso que a ordem abaixo reflete.
 
 | # | Verificar | Sintoma se faltar |
 | - | --------- | ----------------- |

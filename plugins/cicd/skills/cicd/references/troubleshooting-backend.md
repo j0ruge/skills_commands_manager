@@ -129,8 +129,8 @@ Or fix the reported errors in the config files (empty blocks, `node:` protocol, 
 **Diagnosis:**
 
 ```bash
-docker exec nginx-proxy cat /etc/nginx/conf.d/default.conf | grep -A 10 "api.dsr"
-docker exec service_report_api sh -c "wget -qO- http://localhost:3003/health || curl -s http://localhost:3003"
+docker exec nginx-proxy cat /etc/nginx/conf.d/default.conf | grep -A 10 "<api-host>"
+docker exec <api-container> sh -c "wget -qO- http://localhost:3003/health || curl -s http://localhost:3003"
 ```
 
 **Fix:** Add `VIRTUAL_PORT: '${API_PORT}'` in the `environment` section of `docker-compose.yml`.
@@ -187,7 +187,7 @@ docker run --rm -e DB_URL=<url> --network <network> \
 ## Monorepo npm workspaces — armadilhas de build/runtime na imagem
 
 Três problemas que só aparecem quando o backend vive num monorepo com workspaces
-`@scope/shared-*` (descobertos no `sales_quote`, 2026-06-12).
+`@scope/shared-*`.
 
 ### `ERR_MODULE_NOT_FOUND` / `ERR_UNKNOWN_FILE_EXTENSION` ao rodar `node dist/index.js`
 

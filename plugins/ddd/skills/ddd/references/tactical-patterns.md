@@ -270,7 +270,7 @@ class Tenant extends Entity {
 }
 
 // Uso:
-user = tenant.registerUser("joruge", "s3cr3t", "j@jrc.com");
+user = tenant.registerUser("alice", "s3cr3t", "alice@example.com");
 ```
 
 Vantagens:

@@ -282,7 +282,7 @@ Resposta inclui links pra próximas ações possíveis:
 
 Via `Accept`/`Content-Type` com media types próprios do domínio:
 ```
-Accept: application/vnd.jrc.battery.v2+json
+Accept: application/vnd.acme.battery.v2+json
 ```
 
 Ver `context-mapping.md` → seção Notification Pattern.

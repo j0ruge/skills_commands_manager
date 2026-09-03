@@ -2,6 +2,21 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [0.4.2] - 2026-09-03
+
+Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. O `SKILL.md` operacional estava limpo nos sinais de regex (0 caps da lista, 0 tickets,
+0 modelos); o que a sondagem achou foi outra coisa.
+
+- **E-mail e handle do autor** (`"joruge"`, `"j@jrc.com"`) num exemplo de código distribuído →
+  `alice@example.com`. Marca `JRC` / `vnd.jrc.*` nos exemplos → `Acme` / `vnd.acme.*` (a skill se
+  declara agnóstica e é distribuída).
+- **"Deliberadamente fora de escopo (v0.4.0)"** era um diff entre versões que o modelo nunca viu
+  ("além das exclusões de v0.3.0…") e já estava desatualizado (skill em 0.4.1): vira uma lista
+  única. "práticas 2024-2026" → "contemporâneas (pós-Evans/Vernon)".
+- O template de subagente pedia "limite de palavras" (teto numérico de saída, Grupo 1b/1f do
+  guia): vira orientação qualitativa. 3 caps (`NÃO`, `APENAS`) → normal.
+- `SKILL.md` ganha `metadata.version`.
+
 ## [0.4.1] - 2026-05-06
 
 ### Changed

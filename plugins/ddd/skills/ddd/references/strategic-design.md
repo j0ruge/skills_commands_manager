@@ -138,7 +138,7 @@ Explicitamente fora: o que outros sistemas fazem que este não fará. Evita expa
 ### Exemplo curto (fictício)
 
 ```markdown
-# Battery Lifecycle Management — JRC
+# Battery Lifecycle Management — Acme Naval
 
 ## O problema
 Técnicos marítimos precisam saber, a qualquer momento, quais baterias de segurança

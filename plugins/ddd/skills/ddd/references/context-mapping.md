@@ -181,7 +181,7 @@ Vantagem: publisher evolui livremente (adiciona campos, refactora internals) sem
 Defina media type próprio pro seu domínio, não confie em `application/json` genérico:
 
 ```
-Content-Type: application/vnd.jrc.battery.notification.v2+json
+Content-Type: application/vnd.acme.battery.notification.v2+json
 ```
 
 Benefícios:

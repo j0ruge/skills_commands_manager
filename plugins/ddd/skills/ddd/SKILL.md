@@ -1,7 +1,7 @@
 ---
 name: ddd
 metadata:
-  version: 0.4.1
+  version: 0.4.2
 description: Domain-Driven Design toolkit — analyzes codebases for DDD violations, guides strategic design (event storming, context mapping), generates legacy→DDD migration specs. Language-agnostic. Synthesizes Evans + Vernon + modular-monolith practice. Triggers — DDD, bounded context, aggregate, event storming, hexagonal, legacy migration, architecture review.
 ---
 
@@ -29,7 +29,7 @@ Você é um consultor DDD. O time é composto de engenheiros que podem ou não t
 **Princípios não-negociáveis:**
 1. **Agnóstico de stack.** Nenhuma recomendação deve depender de Java/C#/Node. Heurísticas são sobre *sinais observáveis* no código (acoplamento, nomes, estrutura de transação), não sobre frameworks.
 2. **Cite a fonte.** Ao afirmar algo ("aggregates devem ser pequenos"), cite livro + seção (`[IDDD cap.10]`, `[Distilled cap.5]`, `[Evans Reference: Aggregate]`). Se for prática contemporânea pós-livros, cite a fonte web ou diga "prática comunitária pós-2020".
-3. **Progressive disclosure.** Não carregue conhecimento que não vai usar. Use a tabela de roteamento abaixo para decidir quais `references/*.md` ler. O SKILL.md sozinho NÃO contém o conhecimento técnico — ele **roteia**.
+3. **Progressive disclosure.** Não carregue conhecimento que não vai usar. Use a tabela de roteamento abaixo para decidir quais `references/*.md` ler. O SKILL.md sozinho não contém o conhecimento técnico — ele **roteia**.
 4. **Fan-out quando útil.** Se a tarefa envolve analisar múltiplos arquivos, múltiplos bounded contexts candidatos, ou múltiplos temas paralelos, **spawne subagentes** (seção "Padrão de fan-out" abaixo) e consolide os relatórios. Não tente ler tudo sequencialmente no seu contexto.
 5. **Modelagem segue o negócio, não o contrário.** Se o usuário não tem clareza sobre o domínio, comece por event storming, não por aggregates. DDD tático em cima de strategic design frágil é tempo perdido.
 6. **Recomende refatoração incremental.** Nunca sugira "reescrever tudo para DDD". Bubble contexts, strangler fig, ACL pra isolar legacy. `references/legacy-migration.md`.
@@ -111,7 +111,7 @@ A decisão vem no começo do modo Spec — pergunte ao usuário ou escolha confo
   - padrões de integração entre contextos, notification pattern, **wire formats, temporal coupling, RPC vs async** → `context-mapping.md`
   - hexagonal, modular monolith, microservices, DIP, ports/adapters, REST → `architecture-styles.md`
   - strangler, bubble context, migração → `legacy-migration.md`
-  - distributed monolith, práticas 2024-2026 → `modern-practices.md`
+  - distributed monolith, práticas contemporâneas (pós-Evans/Vernon) → `modern-practices.md`
   - event storming (3 sabores, remoto), **domain message flow modelling** → `event-storming.md`
   - **bounded context canvas (template, seções, quando preencher)** → `bounded-context-canvas.md`
   - **DDD Crew Starter Process (6 fases, cadência)** → `ddd-crew-process.md`
@@ -142,7 +142,7 @@ Ao spawnar um subagente (use `Agent` tool com `subagent_type: "Explore"` para an
 ```
 Você é um subagente DDD especialista em <TÓPICO>. Contexto: <1-2 frases da situação do usuário>.
 
-Leia APENAS estas referências (não carregue outras):
+Leia apenas estas referências (não carregue outras):
 - <path absoluto para reference 1>
 - <path absoluto para reference 2>
 
@@ -154,7 +154,7 @@ Restrições:
 - Citar fonte em cada afirmação (livro + seção)
 - Zero fabricação; se faltar evidência, dizer "evidência insuficiente"
 
-Formato de saída: <markdown estruturado, seções específicas, limite de palavras>
+Formato de saída: <markdown estruturado, seções específicas; extensão: só o que a consolidação precisa>
 
 Retorne direto na resposta. Não grave arquivos.
 ```
@@ -280,14 +280,16 @@ Ao citar livros, use exatamente estes nomes curtos:
 
 Para sinalizar prática contemporânea sem base nos livros, escreva `[prática pós-2020]` seguido da fonte quando possível.
 
-### Deliberadamente fora de escopo (v0.4.0)
+### Fora de escopo
 
-Além das exclusões de v0.3.0 (Large-Scale Structure patterns, SaaSOvation narrativo, analogias didáticas exaustivas), v0.4.0 também mantém fora:
+A skill não cobre:
 
-- **Wardley Maps** e **DDD em linguagens puramente funcionais** (Haskell/Elm) — não centrais a nenhum dos 4 livros-fonte; NICE-TO-HAVE descartado após re-auditoria.
+- **Wardley Maps** e **DDD em linguagens puramente funcionais** (Haskell/Elm) — não centrais a nenhum dos 4 livros-fonte.
 - **Detalhes de ORM (N+1, lazy proxies)** — é tema de stack, não de DDD puro.
 - **Service Locator vs DI debate** — arquitetura geral; fora do foco da skill.
 - **Hiring e team composition** — tema RH, não modelagem.
+- **Large-Scale Structure patterns** (System Metaphor, Responsibility Layers, Knowledge Level, Pluggable Component Architecture) — só o verbete em `references/glossary.md`; raros na prática moderna.
+- **Estudo de caso SaaSOvation (Vernon) e analogias didáticas exaustivas** — a skill é referência agnóstica, não tutorial.
 
 ---
 
@@ -305,7 +307,7 @@ Além das exclusões de v0.3.0 (Large-Scale Structure patterns, SaaSOvation narr
 
 1. Leia esta SKILL.md (você já leu).
 2. Identifique o modo.
-3. Carregue APENAS as referências do modo.
+3. Carregue apenas as referências do modo.
 4. Se precisar de definição canônica pontual, consulte `references/glossary.md` (rápido, é um lookup).
 5. Execute, spawnando subagentes quando o fan-out compensar.
 6. Consolide e entregue no template do modo.

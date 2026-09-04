@@ -1,5 +1,66 @@
 # Changelog — ticket
 
+## [1.4.0] — 2026-09-03
+
+Duas frentes: três lições **medidas** numa sessão real de 2026-09-02 (abriu 4 cartões
+RS-850…RS-853, criou vínculos de bloqueio e comentou num quinto — o detalhe está em
+`skills/ticket/CHANGELOG.md`) e o prompt audit da skill contra o modelo atual
+(`/claude-api prompt-audit`, alvo Claude Fable 5.1), a última da rodada de 16 skills do
+marketplace. Relatório e diff do audit ficaram fora do repo; aqui vai o quê e o porquê.
+
+### Added
+
+- **Vínculos entre issues (`references/workflow.md §Vínculos entre issues`).** Não havia nada
+  sobre `issueLink`, e o campo só existe via REST. O detalhe que morde: em
+  `POST /rest/api/3/issueLink` **quem executa o verbo `outward` é o `inwardIssue`** — ler o
+  payload da esquerda para a direita monta o oposto do que se queria, e o Jira aceita os
+  dois sentidos sem erro. Entram os tipos de link do site, o exemplo na direção certa, a
+  releitura de conferência **pela issue-alvo** (mesma disciplina de sprint/story points) e
+  a remoção de link errado, um id por chamada (a lista inteira numa URL devolve `HTTP 000`,
+  que parece falha de rede).
+- **Checagem de estrutura do ADF junto com a de marks (`references/templates.md §Antes de
+  postar`).** A varredura da 1.3.0 só olhava `marks`; um helper de lista que repassa strings
+  direto para `content` gera `{"type":"paragraph","content":["texto"]}`, sem mark nenhuma, e
+  a varredura passava **limpa** — o Jira devolvia o mesmo 400 mudo. Agora todo item de
+  `content` tem de ser nó com `type`, o relatório traz o caminho (`root.paragraph.content[1]`)
+  e a receita é normalizar string→nó na entrada do helper.
+- **Registrar cartão sem começar o trabalho (`SKILL.md §Registrar cartão SEM começar`).** O
+  sub-fluxo B assumia que criar issue é o primeiro passo de programar (branch + "Em
+  andamento"). Defeito de QA/code review registrado para o time priorizar não é isso: a
+  branch nasce vazia e o status mente. A seção diz quando pular branch e transição
+  (sprint, pontos, `fixVersion` e releitura continuam), e as Regras distinguem "abrir para
+  já começar" de "registrar para priorizar".
+
+### Changed — prompt audit
+
+- **PII fora do corpo.** O e-mail pessoal e o nome de uma pessoa serviam de "prova" da
+  regra `--assignee "@me"` em `SKILL.md` e `workflow.md`; a regra e o sintoma
+  (`✗ Failure … trace id`) ficam, a identidade sai.
+- **Changelog fora do workflow.** O blockquote "Correção de 2026-08-07: esta skill
+  afirmava…" era um diff contra uma versão do prompt que o modelo nunca viu; fica só a
+  instrução viva ("entre com a saída do comando").
+- **Tabela de sensores alinhada.** `workflow.md §Sprint e Story Points` ainda listava
+  `sprint list-workitems` como forma de conferir — o comando que a 1.2.0 tirou do papel de
+  sensor por paginar. A célula aponta para o JQL `sprint in openSprints()`.
+- **Arqueologia vira regra.** Treze trechos "medido no SQ-74 (2026-08-07) e de novo no
+  SQ-107…" perderam ticket, projeto e história; ficou a regra com o mecanismo da falha e,
+  onde havia, um único carimbo de verificação. As falhas são das ferramentas (`acli` sai 0,
+  paginação, 400 mudo, `fixVersion` cego), não do modelo — por isso nenhuma regra saiu.
+- **Tom normal nas Regras**: `SEMPRE`/`NUNCA`/`DEVE` em cinco linhas viram frase plana com a
+  razão ao lado (o modelo atual sobre-aplica ênfase em caps).
+- **`yarn lint` deixa de ser regra** numa skill multi-projeto ("rodar o lint do projeto, o
+  mesmo que o CI roda"); `/usr/bin/acli` vira `acli`; fraseado migratório ("elimina o
+  ritual", "segundo plano agora", "caminho antigo") reescrito como estado presente; nota do
+  template de descrição corrigida (no sub-fluxo B a descrição vai em ADF, não texto puro);
+  typo que invertia uma instrução ("não cheque" → "não chute").
+- **Description 498 → 456 chars, 10 → 8 gatilhos** (saem `/ticket`, que é invocação por
+  slash, e `open`, genérico demais). Estava a 2 chars do cap de 500 que derruba o gatilho em
+  silêncio, e crescia a cada retrofit.
+
+Registrados sem mudança: `~/.hermes/.env` ×4 como fonte das credenciais REST (convenção da
+equipe; falha alto se faltar), "(Passo 04.1)"/"(Passo 05)", o trecho JS de detecção da
+branch, e a leitura das duas references em todo comando.
+
 ## [1.3.0] — 2026-08-26
 
 A skill já mandava montar ADF por script e já avisava que malformado é recusado

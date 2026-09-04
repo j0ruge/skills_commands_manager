@@ -1,17 +1,17 @@
 ---
 name: ticket
-description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git — create issues/sub-issues and branches, close with an auto-generated summary. Per-repo config via `.jira-project`; discovers project-specific transitions instead of assuming. Creates issues already in the active sprint, with story points and fixVersion, then reads each field back with the sensor that can actually see it. Triggers — ticket, /ticket, open, Jira, criar issue, fechar ticket, sprint, story points, fixVersion, acli."
+description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git — create issues/sub-issues and branches, close with an auto-generated summary. Per-repo config via `.jira-project`; discovers project-specific transitions instead of assuming. New issues are born in the active sprint with story points and fixVersion, each read back by the sensor that can see it. Triggers — ticket, Jira, criar issue, fechar ticket, sprint, story points, fixVersion, acli."
 user_invocable: true
 argument_description: "Subcomando: start (open) | split | close | status"
 metadata:
-  version: 1.3.0
+  version: 1.4.0
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
 
 Gerencia o ciclo de vida de tickets Jira integrado com Git, seguindo o fluxo padronizado da JRC Brasil.
 
-**CLI:** `/usr/bin/acli` (Jira CLI — validado na v1.3.22; `--from-json` em
+**CLI:** `acli` (Jira CLI — validado na v1.3.22; `--from-json` em
 `workitem create` exige ≥ 1.3.2x, confirme com `acli --version`) + MCP
 `mcp__atlassian__*` quando disponível
 **Projeto Jira:** detectado dinamicamente — ver "Detecção de Projeto" abaixo
@@ -20,9 +20,9 @@ Gerencia o ciclo de vida de tickets Jira integrado com Git, seguindo o fluxo pad
 ## Referências
 
 Antes de executar qualquer comando, leia os arquivos de referência (caminhos
-relativos a esta skill — funcionam tanto instalada pelo marketplace quanto local):
+relativos a esta skill):
 
-- `references/workflow.md` — Workflow de status, transições, sprint/story points, gotchas do `acli`
+- `references/workflow.md` — Workflow de status, transições, sprint/story points, **vínculos entre issues (issue links)**, gotchas do `acli`
 - `references/templates.md` — Templates de descrição e fechamento
 
 ## Detecção de Projeto
@@ -124,9 +124,7 @@ Antes de tudo, analisar o argumento passado após `start`:
        ⚠️ **Use `@me`, não o e-mail.** O e-mail da sessão (`userEmail`) não é
        necessariamente a identidade da conta Jira — e quando não é, o `acli`
        responde `✗ Failure: ... can't be edited: unexpected error, trace id: …`,
-       que não nomeia o campo nem a causa. Medido duas vezes (2026-08-07 e
-       2026-08-24, projeto SQ), com `it@jrcbrasil.com` recusado e a conta real
-       sendo outra.
+       que não nomeia o campo nem a causa.
        Para atribuir a **outra pessoa**, o caminho é o accountId via REST:
        ```bash
        set -a; . ~/.hermes/.env; set +a
@@ -146,9 +144,8 @@ Antes de tudo, analisar o argumento passado após `start`:
      - Se sim:
        1. Descobrir a sprint ativa: `acli jira board list-sprints --id $BOARD --state active --json`
           — a ativa é a de `"state": "active"`. **Não descarte uma sprint pelo
-          `endDate` no passado**: times deixam a sprint correr além da data
-          planejada e ela continua `active` (o board 51 tinha, em ago/2026, a
-          sprint 405 ativa com `endDate` de fev/2026). Se a lista vier vazia, ver
+          `endDate` no passado**: times deixam a sprint correr meses além da data
+          planejada e ela continua `active`. Se a lista vier vazia, ver
           `references/workflow.md §Quando não aparece sprint ativa`.
        2. Extrair o `id` (pedir ao dev para escolher se houver mais de uma)
        3. Atribuir via MCP: `mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customfield_10020": SPRINT_ID })`
@@ -192,10 +189,9 @@ Antes de tudo, analisar o argumento passado após `start`:
    ```
 
    ⚠️ **Não use `sprint list-workitems` como sensor.** Ele pagina (~30 itens) e o
-   cartão recém-criado costuma cair fora da primeira página — seguir a skill ao pé
-   da letra produz exatamente o alarme falso que este passo existe para evitar
-   (*"a sprint não foi aplicada"* sobre um cartão que **está** na sprint). Medido
-   no SQ-74 (2026-08-07) e de novo no SQ-107 (2026-08-24).
+   cartão recém-criado costuma cair fora da primeira página — usá-lo produz
+   exatamente o alarme falso que este passo existe para evitar (*"a sprint não
+   foi aplicada"* sobre um cartão que **está** na sprint).
 
    ⚠️ **O exit code do `acli` não é sensor de nada.** Ele imprime `✗ Failure: …`
    e **sai 0** — cadeia `&&` e checagem de `$?` são decorativas aqui. O que diz a
@@ -259,9 +255,9 @@ Antes de tudo, analisar o argumento passado após `start`:
      projeto versione releases. Liste o que existe e proponha o próximo número,
      em vez de pedir do nada — ver §fixVersion em `references/workflow.md`, que
      traz o detalhe que morde: **`acli` e MCP são cegos nesse campo**, e a flag
-     `released` no Jira **não é sensor de release** (no SQ, a `0.7.1` seguia
-     marcada `unreleased` estando em produção desde 20/ago). Quem sabe se
-     lançou é o repo: `origin/main` + a versão no `package.json`.
+     `released` no Jira **não é sensor de release** (é metadado marcado à mão,
+     que atrasa em relação ao mundo). Quem sabe se lançou é o repo:
+     `origin/main` + a versão no `package.json`.
 
 2. **Descobrir a sprint ativa (antes de criar):**
 
@@ -304,16 +300,16 @@ Antes de tudo, analisar o argumento passado após `start`:
    - Omitir uma chave de `additionalAttributes` quando o dev não informou o valor
    - `description` aqui é **ADF**, não markdown (o `--from-json` não converte)
    - Capturar a key retornada (ex.: `RS-605` ou `SQ-32`)
-   - Se a versão do `acli` não tiver `--from-json`, cair para o caminho antigo
-     (`create` simples + `mcp__atlassian__editJiraIssue`) e avisar o dev que
-     sprint/score dependem do MCP autenticado
+   - Se a versão do `acli` não tiver `--from-json`, criar sem custom fields
+     (`create` simples) e gravá-los via `mcp__atlassian__editJiraIssue`,
+     avisando o dev que sprint/score dependem do MCP autenticado
 
    **Quando houver fixVersion, prefira o REST — ele faz tudo numa chamada.** O
    `--from-json` do `acli` não escreve `fixVersions`, então o caminho dele exige
    um segundo passo que só existe via REST de qualquer forma. `POST
    /rest/api/3/issue` aceita `fixVersions`, `customfield_10016` (pontos) e
    `customfield_10020` (sprint, **número puro**) juntos, com `description` em
-   ADF — uma chamada, um ponto de falha (medido no SQ-107, 2026-08-24):
+   ADF — uma chamada, um ponto de falha:
 
    ```bash
    set -a; . ~/.hermes/.env; set +a
@@ -372,17 +368,43 @@ Antes de tudo, analisar o argumento passado após `start`:
    🎯 Score: {story points ou "Nenhum"}
    ```
 
+### Registrar cartão SEM começar o trabalho
+
+O fluxo acima assume que criar a issue é o primeiro passo de programar: ele cria
+branch e transiciona para "Em andamento". Existe um caso comum em que isso está
+errado — **registrar trabalho que será agendado depois**: defeitos achados numa
+rodada de QA ou de code review, dívida técnica levantada de passagem, itens que
+saem de uma reunião.
+
+Nesse caso, **pule os passos de branch e de transição**. O cartão nasce em
+"Tarefas pendentes", que é onde quem planeja a sprint espera encontrá-lo. Criar
+uma branch por defeito registrado enche o repositório de branches vazias, e
+transicionar para "Em andamento" mente sobre o estado: ninguém está trabalhando
+nele ainda.
+
+O resto continua valendo — sprint, story points e `fixVersion` se aplicam
+igualmente, e a releitura de confirmação também. Se forem vários cartões de uma
+vez, o REST em lote é mais direto que o `acli` um a um (ver
+`references/workflow.md §fixVersion`), e vale ligá-los ao cartão que eles
+bloqueiam (ver `references/workflow.md §Vínculos entre issues`).
+
+Pergunte ao dev qual dos dois é o caso quando não estiver claro pelo pedido:
+"abrir para já começar" e "registrar para o time priorizar" produzem cartões
+diferentes.
+
 ### Regras
 
-- SEMPRE perguntar antes de criar — nunca criar issue sem confirmação do dev
-- SEMPRE verificar sprint — tanto para issues existentes quanto novas. Nunca pular sprint silenciosamente.
+- Pergunte antes de criar — a issue só nasce com confirmação do dev
+- **Distinga "começar" de "registrar"** — só o primeiro cria branch e transiciona
+  (ver a seção acima)
+- Verifique a sprint — tanto para issues existentes quanto novas; pular só com o dev sabendo
 - **Issue nova nasce dentro da sprint** (`create --from-json` com
   `additionalAttributes`), não criada-e-depois-editada. O caminho
   criar→editar depende do MCP autenticado; quando ele falha, o cartão fica no
   backlog e a falha passa despercebida.
 - **Releia depois de escrever** sprint/score e confirme antes de dizer que deu
   certo (sub-fluxo A step 6 / sub-fluxo B step 4)
-- Branch DEVE partir de `${BASE_BRANCH}` (detectado/declarado na "Detecção de Projeto" — **não** assumir `develop`)
+- A branch parte de `${BASE_BRANCH}` (detectado/declarado na "Detecção de Projeto" — **não** assumir `develop`)
 - Se `git status` mostrar mudanças não commitadas, avisar o dev antes de trocar de branch
 - Usar template de descrição de `references/templates.md` (apenas sub-fluxo B)
 
@@ -437,7 +459,7 @@ Antes de tudo, analisar o argumento passado após `start`:
 
 ### Regras
 
-- NUNCA criar branch para sub-issue
+- Não crie branch para sub-issue — os commits vão na branch da issue pai
 - Sub-issues usam tipo "Subtarefa" (PT-BR)
 - Perguntar se quer criar mais sub-issues (loop até o dev dizer que terminou)
 
@@ -482,10 +504,9 @@ Antes de tudo, analisar o argumento passado após `start`:
 5. **Comentar na issue — preferir MCP atlassian com markdown:**
 
    O MCP `mcp__atlassian__addCommentToJiraIssue` aceita markdown direto e converte
-   para ADF server-side. Isso elimina o ritual de montar ADF JSON manual + arquivo
-   temp + `acli --body-file` (que continua disponível como fallback). Validado em
-   prática 2026-05-20 — markdown multi-parágrafo, listas, tabelas, blocos de
-   código e bold/itálico renderizam idêntico ao ADF.
+   para ADF server-side (multi-parágrafo, listas, tabelas, blocos de código e
+   bold/itálico renderizam idêntico ao ADF — validado 2026-05-20). Sem ele, o
+   caminho é montar ADF JSON e postar via `acli --body-file`.
 
    ```text
    mcp__atlassian__addCommentToJiraIssue(
@@ -525,7 +546,8 @@ Antes de tudo, analisar o argumento passado após `start`:
      - Incluir arquivos untracked relevantes (perguntar ao dev)
      - Gerar mensagem de commit no padrão Conventional Commits (`fix:`, `feat:`, etc.)
      - Incluir a key da issue no body do commit (ex.: `${PROJECT}-XXX`)
-   - Após commitar, rodar `yarn lint` para verificar se o código passa no CI
+   - Após commitar, rodar o lint do projeto (o mesmo que o CI roda — ex.:
+     `yarn lint` num repo Node)
      - Se houver erros de lint, corrigir e commitar o fix antes de prosseguir
    - Se não houver mudanças, pular para o próximo passo
 
@@ -570,17 +592,16 @@ Antes de tudo, analisar o argumento passado após `start`:
 
 ### Regras
 
-- SEMPRE mostrar o resumo para o dev antes de postar
+- Mostre o resumo ao dev antes de postar
 - Verificar sub-issues antes de fechar — alertar se houver pendentes
 - Adaptar transições ao status atual (não tentar transicionar para um status em que já está)
 - Consultar `references/workflow.md` para a sequência correta de transições
 - **Formatação:** preferir MCP atlassian com `contentFormat: "markdown"` para
-  comentar no Jira — escreve uma vez o markdown e reaproveita no PR body. O
-  caminho `acli --body-file` com ADF JSON manual continua suportado como
-  fallback (consultar `references/templates.md §ADF (legado)`), mas é o
-  segundo plano agora.
+  comentar no Jira — escreve uma vez o markdown e reaproveita no PR body.
+  Fallback sem MCP: `acli --body-file` com ADF JSON (consultar
+  `references/templates.md §ADF (legado)`).
 - Antes de criar PR, verificar mudanças não commitadas com `git status`
-- Rodar `yarn lint` após commit e antes do push — corrigir erros antes de criar PR
+- Rodar o lint do projeto após commit e antes do push — corrigir erros antes de criar PR
 
 ---
 

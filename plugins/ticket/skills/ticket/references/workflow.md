@@ -47,7 +47,7 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Concluído"
    `"No allowed transitions found for given status"`.
 2. **Status/transições em PT-BR**, conforme configurado no projeto.
 3. **`acli --status` casa pelo NOME DO STATUS DE DESTINO, não da transição.**
-   Verificado 2026-05-29 (SQ-42/SQ-43, ambos partindo de "Em andamento"):
+   Verificado 2026-05-29 no SQ, partindo de "Em andamento":
    `acli --status "Concluído"` **funciona**; `acli --status "Itens concluídos"`
    (o *nome da transição* que leva a "Concluído", id `31`) **falha** com
    `No allowed transitions found for given status`. Bate com o help do `acli`
@@ -60,7 +60,7 @@ acli jira workitem transition --key "${PROJECT}-XXX" --status "Concluído"
 
 ## Branch base (`$BASE_BRANCH`)
 
-> ⚠️ **Detecte. Não cheque, e não confie na memória de outro projeto.** Cravar
+> ⚠️ **Detecte. Não chute, e não confie na memória de outro projeto.** Cravar
 > uma base errada faz a branch nascer do lugar errado e a PR ir para o alvo
 > errado — e o sintoma só aparece no merge, quando já custa.
 
@@ -79,12 +79,8 @@ Se `refs/remotes/origin/HEAD` não existir na cópia local, criar com
 |---|---|---|---|
 | `sales_quote` | SQ | **`develop`** | `develop → staging → main`; PRs vão para `develop` desde a feature 017 |
 
-> **Correção de 2026-08-07:** esta skill afirmava que "`sales_quote`/SQ usa
-> `main`". **Errado** — o default do repo é `develop`
-> (`origin/HEAD → origin/develop`), e é para lá que as PRs vão. A afirmação
-> vivia só no `SKILL.md`, sem nada aqui que a contradissesse; daí esta seção. Se
-> um repo novo entrar na tabela, entre com a **saída do comando**, não com o que
-> parece razoável.
+> Se um repo novo entrar na tabela, entre com a **saída do comando**, não com o
+> que parece razoável.
 
 ### Declarar em vez de redetectar
 
@@ -102,10 +98,10 @@ BASE_BRANCH=develop
 
 ## Gotchas do `acli`
 
-- **`acli` imprime `✗ Failure` e sai com exit 0.** Verificado três vezes
-  (2026-08-07 ×2, 2026-08-24). Consequência: cadeia `&&`, `set -e` e checagem de
-  `$?` são **decorativas** — quem automatiza em cima do exit code reporta sucesso
-  sobre falha silenciosa. O único sensor confiável é reler o campo.
+- **`acli` imprime `✗ Failure` e sai com exit 0** (verificado 2026-08-24).
+  Consequência: cadeia `&&`, `set -e` e checagem de `$?` são **decorativas** —
+  quem automatiza em cima do exit code reporta sucesso sobre falha silenciosa.
+  O único sensor confiável é reler o campo.
 - `--type` deve usar o nome em PT-BR conforme configurado no projeto
 - Transições fora da ordem retornam: `"No allowed transitions found"`
 - O comando `view` não aceita `--key`, passar o ID direto: `acli jira workitem view ${PROJECT}-XXX`
@@ -123,10 +119,10 @@ BASE_BRANCH=develop
   `acli jira workitem edit --key "${PROJECT}-XXX" --assignee "@me"` funciona; com
   e-mail o comando responde `✗ Failure: … can't be edited: unexpected error,
   trace id: …`, que não nomeia campo nem causa. A razão é identidade: o
-  `userEmail` da sessão não é necessariamente a conta Jira (no SQ, sessão
-  `it@jrcbrasil.com`, conta `jorge.ferrari@…`). Para **outra pessoa**, accountId
-  via REST (`GET /rest/api/3/myself` ou `lookupJiraAccountId`) + `PUT
-  /rest/api/3/issue/<KEY>` com `{"fields":{"assignee":{"accountId":"…"}}}` → 204.
+  `userEmail` da sessão não é necessariamente a conta Jira. Para **outra
+  pessoa**, accountId via REST (`GET /rest/api/3/myself` ou
+  `lookupJiraAccountId`) + `PUT /rest/api/3/issue/<KEY>` com
+  `{"fields":{"assignee":{"accountId":"…"}}}` → 204.
   ⚠️ `lookupJiraAccountId` devolve **lista vazia** para e-mail errado, não erro.
 - `acli jira workitem create` retorna a key criada no output (ex.: `RS-605`, `SQ-32`)
 - Comentários: usar `comment create` (subcomando), não `comment` direto — `--body-file` para multiline
@@ -145,6 +141,73 @@ BASE_BRANCH=develop
 - Issue pai só fecha quando **todas** as sub-issues estiverem "Finished"
 - Listar sub-issues: `acli jira workitem search --jql "parent = ${PROJECT}-XXX"`
 
+## Vínculos entre issues (issue links)
+
+Um defeito que bloqueia uma release, um cartão que se relaciona a um épico: o
+vínculo é o que faz isso aparecer no board de quem planeja. Só existe via REST —
+o `acli` não cria nem lê links.
+
+```bash
+set -a; . ~/.hermes/.env; set +a
+J=https://jrcbrasil.atlassian.net/rest/api/3
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "$J/issueLinkType"   # nomes disponiveis
+```
+
+No site jrcbrasil: `Blocks` (`is blocked by` / `blocks`), `Relates`, `Duplicate`,
+`Cloners`, `Problem/Incident`, `Post-Incident Reviews`.
+
+### 🔴 A direção é invertida em relação à intuição
+
+**Quem executa o verbo `outward` é o `inwardIssue`.** Lendo o payload da esquerda
+para a direita você monta o oposto do que queria — e o Jira aceita os dois, então
+não há erro que denuncie.
+
+```bash
+# QUERO: "RS-850 blocks RS-844"  (o defeito bloqueia a release)
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -X POST -H 'Content-Type: application/json' \
+  -d '{"type":{"name":"Blocks"},
+       "inwardIssue":{"key":"RS-850"},
+       "outwardIssue":{"key":"RS-844"}}' "$J/issueLink"       # 201
+```
+
+Invertendo — `inwardIssue=RS-844` / `outwardIssue=RS-850` — o Jira grava
+**"RS-844 blocks RS-850"**, exatamente o contrário, e nada avisa (medido 2026-09-02).
+
+### Confira a direção relendo pelo lado do ALVO
+
+Mesma disciplina que a skill já exige para sprint e story points: escrever não é
+prova de ter gravado o que se queria. Aqui a releitura tem de ser feita **pela
+issue-alvo**, porque é o lado em que o erro fica visível:
+
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "$J/issue/RS-844?fields=issuelinks" | python3 -c "
+import json,sys
+for l in json.load(sys.stdin)['fields'].get('issuelinks') or []:
+    if 'outwardIssue' in l: print('RS-844', l['type']['outward'], l['outwardIssue']['key'])
+    else:                   print('RS-844', l['type']['inward'],  l['inwardIssue']['key'])"
+# esperado: RS-844 is blocked by RS-850
+```
+
+### Remover um link errado
+
+`DELETE /issueLink/<id>`, com o id vindo da releitura acima. **Itere um id por
+chamada** — passar a lista inteira de uma vez faz o `curl` montar uma URL só e
+devolver `HTTP 000`, o que parece falha de rede e não de uso:
+
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "$J/issue/RS-844?fields=issuelinks" | python3 -c "
+import json,sys
+for l in json.load(sys.stdin)['fields']['issuelinks']:
+    if 'outwardIssue' in l and l['outwardIssue']['key'] in ('RS-850',): print(l['id'])" > /tmp/links.txt
+while read -r id; do
+  [ -n "$id" ] && curl -s -o /dev/null -w "delete $id -> %{http_code}\n" \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" -X DELETE "$J/issueLink/$id"     # espera 204
+done < /tmp/links.txt
+```
+
+⚠️ Se você criou o link certo **antes** de apagar o errado, os dois coexistem e a
+issue mostra a relação nos dois sentidos. Conte os links depois de limpar.
+
 ## Sprint e Story Points
 
 Estes dois campos são a origem do sintoma mais comum da skill: **o cartão vai
@@ -157,7 +220,7 @@ confiabilidade, não por elegância.
 |---|---|---|
 | Issue **nova** | `acli jira workitem create --from-json` com `additionalAttributes` | ❌ não |
 | Issue **existente** | `mcp__atlassian__editJiraIssue` | ✅ sim |
-| Conferir o que gravou | `acli ... view --fields` / `acli jira sprint list-workitems` | ❌ não |
+| Conferir o que gravou | `acli ... view --fields` + JQL `sprint in openSprints()` (ver §Conferir que gravou) | ❌ não |
 
 ### Descobrir os IDs dos campos (não confie nos números)
 
@@ -184,10 +247,9 @@ Retorna as sprints ativas do board do projeto detectado (ex.: board `10` para
 RS, `51` para SQ). Extrair o `id`.
 
 > ⚠️ **A sprint ativa é a de `"state": "active"` — ponto.** Não a descarte
-> porque o `endDate` já passou: times deixam a sprint correr além da data
-> planejada sem fechá-la. Em ago/2026 o board 51 tinha a sprint `405`
-> (`endDate` de fev/2026) ainda `active`, e tratá-la como "vencida" é
-> exatamente o que faz o cartão cair no backlog.
+> porque o `endDate` já passou: times deixam a sprint correr meses além da data
+> planejada sem fechá-la, e tratá-la como "vencida" é exatamente o que faz o
+> cartão cair no backlog.
 
 #### Quando não aparece sprint ativa
 
@@ -265,8 +327,8 @@ mcp__atlassian__editJiraIssue(issueIdOrKey: "${PROJECT}-XXX", fields: { "customf
 ## fixVersion (rótulo de release)
 
 **Este é o campo com os piores sensores das ferramentas locais** — `acli` não
-escreve **nem lê**, e o MCP não confirma. Medido no SQ-83 (2026-08-10) e
-reconfirmado no SQ-107 (2026-08-24). Tudo aqui é REST.
+escreve **nem lê**, e o MCP não confirma (verificado 2026-08-24). Tudo aqui é
+REST.
 
 | Operação | Caminho | `acli`/MCP servem? |
 |---|---|---|
@@ -291,16 +353,15 @@ curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
 
 ### A flag `released` do Jira não diz se a versão foi lançada
 
-No SQ-107 o Jira listava `0.7.1` como `unreleased` — e a versão estava em
-produção desde 20/ago (`origin/main` continha o bump, e o `package.json` de lá
-dizia `0.7.1`). O campo é metadado que alguém precisa marcar à mão, então ele
-atrasa em relação ao mundo.
+O campo é metadado que alguém precisa marcar à mão, então ele atrasa em relação
+ao mundo: uma versão aparece `unreleased` semanas depois de estar em produção,
+com o bump já em `origin/main`.
 
 **Antes de afirmar ao dev que uma versão não foi lançada, confira o artefato:**
 
 ```bash
 git branch -r --contains <sha-do-bump>          # origin/main aparece?
-git show origin/main:package.json | grep version
+git show origin/main:package.json | grep version   # ou o arquivo de versão do projeto
 ```
 
 Se o repo diz que foi, corrija o Jira (`PUT /version/<ID>` com `released` e
@@ -317,10 +378,9 @@ acli jira workitem search --jql "key = ${PROJECT}-XXX AND sprint in openSprints(
 ```
 
 ⚠️ **`sprint list-workitems` é falso-negativo por paginação.** Ele lista ~30
-itens; cartão recém-criado cai fora da primeira página e "some". Medido no SQ-74
-(2026-08-07) e repetido no SQ-107 (2026-08-24) — nas duas vezes o cartão
-**estava** na sprint. Usar esse comando como sensor produz exatamente o alarme
-falso que a conferência existe para evitar.
+itens; cartão recém-criado cai fora da primeira página e "some" — estando na
+sprint. Usar esse comando como sensor produz exatamente o alarme falso que a
+conferência existe para evitar.
 
 Se o valor não bater com o pedido, reportar a falha explicitamente. Um "issue
 criada ✅" sem essa releitura é como o cartão some no backlog sem ninguém notar.

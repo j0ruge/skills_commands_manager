@@ -16,7 +16,7 @@ para não se perder. Complementa os `CHANGELOG.md` de cada plugin — eles conta
   `metadata.version` no `SKILL.md`; a `kaizen-software` ensinava poka-yoke no verbete mas fechava
   o fluxo com regra escrita; uma invocação de `/codereview` custava **$11–16** (46–65% de cada
   sessão REVIEW do pipeline `sdd_agents`, medido em 16 sessões).
-- **Depois:** 14 commits em `origin/main` (tabela abaixo), `validate-versions.py` verde em todos,
+- **Depois:** 15 commits em `origin/main` (tabela abaixo), `validate-versions.py` verde em todos,
   `metadata.version` em todos os SKILL.md tocados; `kaizen-software` 1.3.0 com poka-yoke,
   yokoten, andon e Ishikawa no fluxo (sonda A/B: 14/14 sem regressão; menções a poka-yoke
   0→4 e 1→4 nos cenários em que a antiga fechava com regra escrita); `codereview` 1.19.0 com
@@ -55,9 +55,10 @@ para não se perder. Complementa os `CHANGELOG.md` de cada plugin — eles conta
 | `174373f` | cors | 1.0.1 | hosts internos e data saem do caso medido; acentos na description |
 | `2dc4881` | wsl-windows-onboarding | 0.4.2 | descoberta de caminho sem assumir o layout do autor; "current WSL" robusto |
 | `6322d3b` | codereview | 1.19.0 | custo: contrato dos agentes em `references/`, prompt de ~12 linhas, `model: "sonnet"` como poka-yoke, Bucket B opt-in, Cost footprint |
+| `50e814c` | ticket | 1.4.0 | PII e nome fora do corpo, changelog fora do workflow, tabela de sensores alinhada ao JQL, 13 narrativas viram regra, caps em tom normal, description 498 → 456 chars / 8 gatilhos — junto com as 3 lições do dono (issue links, estrutura do ADF, registrar sem começar) |
 
-Fora do rollout: `ticket` (árvore com edição em andamento do usuário — auditar depois do commit
-dele; sinais já medidos: 8 linhas com datas, 5 com IDs de issue, e-mail pessoal no `SKILL.md`).
+`ticket` entrou por último (`50e814c`, 2026-09-03 à noite): auditada sobre a edição não commitada do dono, a
+pedido dele, e publicada junto com as três lições dele. Rodada das 16 skills fechada.
 
 ### 5 Porquês — por que as skills acumularam cruft
 - **Sintoma:** 16 de 16 skills com achados de confiança alta/média no prompt audit — ênfase em
@@ -132,7 +133,10 @@ dele; sinais já medidos: 8 linhas com datas, 5 com IDs de issue, e-mail pessoal
 - (f) Fora do repo: `sdd_agents/agents/sdd-reviewer.md` "Reproduce before you conclude" —
   reproduzir só CRITICAL/HIGH; `CLAUDE.md` + `.claude/rules` do DSR com ≈ 110 KB — cada
   subagente paga ≈ 28k tokens de prefixo.
-- (g) `ticket`: auditar com o brief assim que o usuário commitar a edição em andamento.
+- (g) `ticket` — **feita** (2026-09-03, `50e814c`, 1.4.0). O único tipo de achado que as outras 15 não tinham
+  mostrado: uma **tabela de referência contradizendo a regra que a substituiu** (`sprint list-workitems` ainda
+  listado como sensor, dois parágrafos depois de ser proibido) — duplicata que drifta é mais perigosa que
+  arqueologia, porque o modelo lê a forma mais compacta.
 - (h) Medição da 1.19.0 — **feita** (2026-09-03, ≈ $18 dos ≈ $40 aprovados; $4,70 deles numa sessão do
   runner morta pelo timeout do próprio agente): duas invocações headless sobre o mesmo diff de 18
   arquivos — $6,62 e $5,92 por revisão; agentes $0,58–1,61 (3–20 turnos) contra $2,0 (≈45 turnos);

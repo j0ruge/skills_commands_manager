@@ -1,0 +1,24 @@
+{
+  "name": "criar-prd",
+  "description": "Cria PRDs enxutos a partir de uma descrição de funcionalidade, com perguntas de clarificação, template padronizado e pesquisa web apenas quando necessária. Triggers — criar PRD, PRD, product requirements, requisitos de produto, especificação de produto, planejamento de feature.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "0.1.0",
+  "category": "development",
+  "keywords": [
+    "prd",
+    "product-requirements",
+    "requirements",
+    "feature-planning",
+    "produto",
+    "requisitos",
+    "template",
+    "clarification"
+  ],
+  "platforms": [
+    "claude-code",
+    "cursor"
+  ],
+  "commands": "./commands"
+}

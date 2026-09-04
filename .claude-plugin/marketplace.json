@@ -64,6 +64,90 @@
       ]
     },
     {
+      "name": "criar-prd",
+      "source": "./plugins/criar-prd",
+      "version": "0.1.0",
+      "description": "Cria PRDs enxutos a partir de uma descrição de funcionalidade, com perguntas de clarificação, template padronizado e pesquisa web apenas quando necessária. Triggers — criar PRD, PRD, product requirements, requisitos de produto, especificação de produto, planejamento de feature.",
+      "category": "development",
+      "keywords": [
+        "prd",
+        "product-requirements",
+        "requirements",
+        "feature-planning",
+        "produto",
+        "requisitos",
+        "template",
+        "clarification"
+      ],
+      "platforms": [
+        "claude-code",
+        "cursor"
+      ]
+    },
+    {
+      "name": "criar-techspec",
+      "source": "./plugins/criar-techspec",
+      "version": "0.1.0",
+      "description": "Cria Tech Spec objetiva a partir de PRD local, com exploração econômica do projeto e perguntas só quando houver bloqueio real. Triggers — criar tech spec, especificação técnica, desenho técnico, PRD para implementação, arquitetura de feature.",
+      "category": "architecture",
+      "keywords": [
+        "techspec",
+        "technical-spec",
+        "architecture",
+        "prd",
+        "implementation-design",
+        "feature-design",
+        "technical-planning",
+        "specification"
+      ],
+      "platforms": [
+        "claude-code",
+        "cursor"
+      ]
+    },
+    {
+      "name": "criar-task",
+      "source": "./plugins/criar-task",
+      "version": "0.1.0",
+      "description": "Cria tasks incrementais a partir de PRD e Tech Spec, com aprovação high-level antes de escrever arquivos. Triggers — criar task, quebrar PRD em tarefas, plano de implementação, task planning, tasks.md, subtarefas.",
+      "category": "development",
+      "keywords": [
+        "tasks",
+        "task-planning",
+        "implementation-plan",
+        "prd",
+        "techspec",
+        "subtasks",
+        "planning",
+        "tests"
+      ],
+      "platforms": [
+        "claude-code",
+        "cursor"
+      ]
+    },
+    {
+      "name": "executar-task",
+      "source": "./plugins/executar-task",
+      "version": "0.1.0",
+      "description": "Executa a próxima task planejada com leitura mínima, TDD, testes obrigatórios e marcação de conclusão só após validação. Triggers — executar task, implementar tarefa, próxima task, TDD, validar task, tasks.md.",
+      "category": "development",
+      "keywords": [
+        "task-execution",
+        "implementation",
+        "tdd",
+        "tests",
+        "validation",
+        "tasks",
+        "techspec",
+        "development-workflow"
+      ],
+      "platforms": [
+        "claude-code",
+        "cursor"
+      ]
+    },
+    {
       "name": "wsl-windows-onboarding",
       "source": "./plugins/wsl-windows-onboarding",
       "version": "0.4.2",

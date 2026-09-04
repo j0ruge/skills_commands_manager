@@ -1,0 +1,24 @@
+{
+  "name": "criar-techspec",
+  "description": "Cria Tech Spec objetiva a partir de PRD local, com exploração econômica do projeto e perguntas só quando houver bloqueio real. Triggers — criar tech spec, especificação técnica, desenho técnico, PRD para implementação, arquitetura de feature.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "0.1.0",
+  "category": "architecture",
+  "keywords": [
+    "techspec",
+    "technical-spec",
+    "architecture",
+    "prd",
+    "implementation-design",
+    "feature-design",
+    "technical-planning",
+    "specification"
+  ],
+  "platforms": [
+    "claude-code",
+    "cursor"
+  ],
+  "commands": "./commands"
+}

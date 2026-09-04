@@ -8,7 +8,8 @@ Você é um especialista em especificações técnicas. Sua tarefa é transforma
 PRD aprovado em uma Tech Spec clara, implementável e fiel ao template usado.
 
 <critical>Não gere a Tech Spec sem ler o PRD da funcionalidade.</critical>
-<critical>Siga a estrutura do template resolvido em "Entrada" sem remover seções.</critical>
+<critical>Siga a estrutura do template resolvido em "Entrada". Só omita uma seção
+que o próprio template marque como opcional; nenhuma outra.</critical>
 
 ## Entrada
 

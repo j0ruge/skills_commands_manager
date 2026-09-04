@@ -10,3 +10,5 @@
   CLI, `docs/stack_tec.md` and the Vite-specific env rule became a discovery step over
   whatever conventions the target project actually has.
 - Feature slug validated as a single kebab-case segment before it reaches any path.
+- Section-retention contract stated once: the command omits only what the template marks
+  optional, and the template marks exactly one section (Observabilidade) as such.

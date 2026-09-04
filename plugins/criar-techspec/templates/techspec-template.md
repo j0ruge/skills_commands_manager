@@ -44,10 +44,10 @@ Falhas previstas, como são detectadas, o que o usuário vê, o que é registrad
 - **E2E:** os fluxos que justificam o custo.
 - **Comando de validação esperado:** o comando de teste do projeto.
 
-## 9. Observabilidade
+## 9. Observabilidade — opcional
 
 Logs, métricas ou eventos que provam que a funcionalidade está funcionando em
-produção. Omita a seção se não se aplicar.
+produção. Esta é a única seção que pode ser omitida quando não se aplicar.
 
 ## 10. Dependências Técnicas
 

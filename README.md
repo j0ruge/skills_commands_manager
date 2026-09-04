@@ -4,7 +4,7 @@
 
 *Plugin marketplace for Claude Code and Cursor — CI/CD, code review, deployments, releases, and more.*
 
-[![Plugins](https://img.shields.io/badge/plugins-16-blue?style=flat-square)](#available-plugins)
+[![Plugins](https://img.shields.io/badge/plugins-21-blue?style=flat-square)](#available-plugins)
 [![Platform](https://img.shields.io/badge/platform-Claude%20Code%20%7C%20Cursor-blueviolet?style=flat-square)](https://code.claude.com)
 [![License](https://img.shields.io/badge/license-Proprietary-red?style=flat-square)](#)
 
@@ -23,10 +23,15 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 | **ansible-docker-backup-restore** | ✓ | ✓ | Skill — backup + restore of Dockerized services via Ansible, with a read-only backup-freshness check |
 | **cicd** | ✓ | ✓ | Skill — works on both platforms without changes |
 | **codereview** | ✓ | ✓ | Skills — adapted automatically by the installer |
+| **cors** | ✓ | ✓ | Skill — works on both platforms |
+| **criar-prd** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
+| **criar-task** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
+| **criar-techspec** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **ddd** | ✓ | ✓ | Skill — works on both platforms |
 | **deploy** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **dev-script** | ✓ | ✓ | Skill — generates `dev.sh` (bash) + `dev.ps1` (PowerShell) per project |
 | **dotnet-wpf** | ✓ | ✓ | Skills — works on both platforms |
+| **executar-task** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
 | **kaizen-software** | ✓ | ✓ | Skill — Kaizen (continuous improvement) methodology for planning, implementing and maintaining software, plus teaching material; verifies by artifact, not by the tool's label |
 | **pdf-generation** | ✓ | ✓ | Skill — PDF template design + library selection (pdfmake/pdf-lib/PDFKit/Puppeteer/@react-pdf), modular sections, visual verification |
 | **release** | ✓ | ✓ | Command (Claude Code) / Skill (Cursor) |
@@ -50,7 +55,7 @@ A curated dual-platform plugin marketplace for [Claude Code](https://code.claude
 Then install any plugin:
 
 ```bash
-/plugin install codereview    # or: ansible-docker-backup-restore, cicd, ddd, deploy, dev-script, dotnet-wpf, kaizen-software, pdf-generation, release, retrofit-skill, statusline, ticket, whisper-preprocess, wsl-windows-onboarding, zitadel-idp
+/plugin install codereview    # or: ansible-docker-backup-restore, cicd, cors, criar-prd, criar-task, criar-techspec, ddd, deploy, dev-script, dotnet-wpf, executar-task, kaizen-software, pdf-generation, release, retrofit-skill, statusline, ticket, whisper-preprocess, wsl-windows-onboarding, zitadel-idp
 ```
 
 > [!TIP]
@@ -97,6 +102,10 @@ The installer prompts for platform (Claude Code, Cursor, or Both) and where to p
 | **ansible-docker-backup-restore** | 1.3.2 | Development | Backup and restore of a Linux server's Docker services with Ansible. Restore half: the silent compose-project-name trap (wrong prefix ⇒ brand-new empty volume, containers up, no error), an 8-step anti-overwrite guard that never deletes before the replacement is on disk and verified, SQL-dump guards that count rows instead of trusting schema presence, and a reverse-proxy/TLS gate — a config directory that is a volume survives a disk swap while a sibling that is not one dies, leaving an orphan directive that takes down **every** HTTPS vhost on the host the moment a container claims the domain. Backup half: the four ways a nightly backup dies without a sound — `ignore_errors` + `no_log` on the same task, the same root cause on a task *without* `ignore_errors` (aborts the play, looks like slowness), `set -euo pipefail` meeting `tar` rc=1 on a live database datadir (alphabetical volume order makes it look intermittent), and a fixed path that stopped existing after a restore. Ships a read-only freshness check (gaps in the date sequence, one dump per database, undersized dumps, volume coverage, retention arithmetic vs real free space). **v1.1.0** adds the edges found bringing a sibling server that *never had a backup* online, with three stacked blockers: the SSH push path is a per-host prerequisite that can silently not exist (verify from *each* client, don't generalize) and must be granted least-privilege (a dedicated `rrsync -wo` key proven to open no shell, so the backup host can't become a lateral-movement pivot); a preflight that checks `docker ps` vs the inventory **both ways** (running-but-undeclared DB is dumped by no one and errors nowhere); bind mounts escape `docker volume ls` (DB dumps present gives false coverage while a bind-mounted datadir is missed); `delegate_to` on a shared `authorized_keys` from parallel hosts races (`throttle: 1`); and history rewrites can't scrub a weak password equal to a public identifier — only rotation can. **v1.2.0** adds the lessons from a service everyone believed restored for four days that was in fact broken in two places, both of which passed a green playbook: a restored MySQL datadir carries each user's **authentication plugin**, not just the password, so `caching_sha2_password` refuses old clients (`DBD::mysql`, older `mysqli`, old JDBC) with the entirely correct password — and the compose flag `--default-authentication-plugin` does *not* fix it, since it only governs users created after it; the failure shows in one client and not another (the PHP UI stayed up while the Perl agent endpoint was down for a week), so verify **every entry plane**, because the one still standing masks the one that fell; proof-of-content is promoted from advice to role contract (`verify_body_contains`, empty by default) after the very domain cited in the reference spent four more days serving the web server's default page; a log error pointing at teardown code (`rollback`, `finally`, a destructor) is usually the error handler failing on top of the real fault, which is typically **suppressed by default** — raise verbosity before theorizing, and revert it in the same script; and `lineinfile` whose `regexp` matches nothing silently **appends** the line at end of file, landing outside every config block, inert, and reports `changed`. **(NEW v1.3.0)** o achado veio de fora, num deploy de produção de outro produto no mesmo host: o container de backup do ERP e do IdP estava `unhealthy` desde 06/05/2026 e **nunca havia gerado um único dump** — três meses. **§1.1 tamanho é proxy fraco**: a skill parava na heurística `-size -1k` ("um dump que é só a mensagem de erro tem poucos bytes"), que pega o caso grosseiro e deixa passar o inverso — **um dump só com o schema é grande, bem formado e inútil para restaurar**; três perguntas em ordem de custo (`gzip -t`, contar blocos `COPY`, e **um registro conhecido**, a única que distingue "dump válido" de "dump DESTE banco"). **§1.2 o healthcheck de container de backup mede a coisa errada**: essas imagens observam a porta HTTP de status que elas próprias expõem, não o artefato, então o container fica genuinamente `healthy` enquanto o `pg_dump` falha todas as noites (no caso real, lista CSV em `POSTGRES_HOST`/`POSTGRES_USER`, onde o valor é literal → `pg_dump` autenticando com o usuário `erp,zitadel`; a imagem só faz fan-out de lista em `POSTGRES_DB`). **`provas-que-nao-mentem.md` §4b — a ausência de sinal também não prova nada**: o arquivo cobria só o gêmeo oposto (§1 "um 301 não prova nada", §4 "um 200 também pode mentir"), e vazio é produzido por dois mundos indistinguíveis — nada aconteceu, ou o instrumento nunca esteve vivo; cura é provocar um positivo que você mesmo causou. `check-backup-freshness.sh` ganha `gzip -t` e detecção de dump schema-only; Gate 2 ganha um passo. v1.3.2 prompt audit: an installation's user names (`erp,zitadel`) become placeholders in the silent-failure example (the probe showed the model repeating them on other hosts), and the "how this section aged" paragraph turns into the lesson itself; scripts and assets untouched |
 | **kaizen-software** | 1.3.0 | Development | Kaizen (continuous improvement) methodology for planning, implementing and maintaining software — and for teaching Kaizen to the team. Drives the three phases through PDCA (plan sliced into small verifiable increments, jidoka "stop the line" during implementation, 5 whys + 5S during maintenance) and keeps a `KAIZEN_LOG.md` as the team's institutional memory. **v1.0.0** initial packaging of the local skill: the description was rewritten to fit the `/skills` budget (the original ~1000-char one, opening with "use SEMPRE", risked being dropped silently — which disables the trigger it was trying to strengthen), and the Kaizen Log template gained the two subsections that real use proved most consulted — "Desperdícios evitados (cortes conscientes)" (a deliberate cut reads as an oversight six months later, and someone reopens a scope that was rejected for good reason) and "O que aprendemos" (the technical gotcha the next person would otherwise rediscover). Defers to repo conventions: where refactoring without an explicit request is forbidden, the boy-scout rule becomes a logged opportunity, not an edit **v1.1.0** names the idea that three separate findings in one real session turned out to share: `Rótulo ≠ artefato` — a tool's label describes the process, and the process can be fine while the thing that should exist does not (a backup container reporting `healthy` before it ever produced a dump; `PR MERGED` describing what the PR consumed, not what the branch holds now). The same defect showed up inside the log itself, so the `Padronizado em` field now has to be verified against the file it names — it is the one line that asserts something about the world outside the log. Poka-yoke gains its most common failure mode (a home-made probe that measures a proxy alarms falsely and teaches the operator to ignore it, so sabotage it on purpose and check both states), and phase 3 gains **Ações irreversíveis**: when an increment cannot be reverted, ordering does the work reversibility used to — slice so the reversible step runs first and surprises surface while they still cost a check **v1.2.0** poka-yoke enters the operational flow, not just the teaching glossary: a standardization ladder (error-proofing > template/script > written rule) in principle 6, the "which poka-yoke makes this error impossible?" question in phases 1–3 and in the 5-whys countermeasure field; plus a prompt audit against current models (description consolidated to 8 triggers, a caps word and a domain leak removed) **v1.3.0** seven more Kaizen concepts become operational steps instead of glossary entries: yokoten (spread the root cause fix to every neighbour), andon (stop visibly, never fix in silence), Ishikawa when the 5 whys branch, mura/muri in the waste hunt, a decision rule for kaikaku, the 8th waste (unused talent/knowledge) and gemba without a ticket |
 | **wsl-windows-onboarding** | 0.4.2 | Development | End-to-end onboarding of a Windows machine to WSL2 — diagnose/enable WSL, install **rtk** (`rtk-ai/rtk`), and safely migrate dev projects from `C:\…\repos` into the Linux filesystem. Built from a real migration and encodes the non-obvious gotchas: Docker users already have WSL2 and the **`docker-desktop` distro is NOT your workspace**; rtk is a **zero-dependency Rust binary** whose installer drops it in `~/.local/bin` but does **not** add it to PATH (the #1 "rtk not found" cause), and **one global install serves every project**; **`git clone` drops gitignored `.env`** so migration uses **rsync** (keep `.git` and `.env`, exclude only rebuildable dirs); `/mnt/c` is slow and `du` over it hangs (use `df`, run rsync in background); **validate by diffing file PATHS not counts** (a `.env` inside `node_modules/psl` is a harmless false positive); **copy → validate → delete**, with the irreversible delete last via PowerShell `Remove-Item`; and after migrating a repo `git status` may show the **whole tree modified with zero untracked files** — a CRLF/LF + filemode artifact (`autocrlf`, `0777` from `/mnt/c`), diagnosed with `git diff --ignore-cr-at-eol --stat` + `core.fileMode=false` and fixed by renormalization, not panic. Bundles `wsl-diagnose.sh` (read-only) and `migrate-repos.sh` (rsync + validation, never deletes). **v0.2.0** adds an optional Phase 4 shell setup (`references/shell-setup.md`, deep-research-validated): zsh + oh-my-zsh, default shell via `chsh` (`wsl.conf` can't set it), the **`~/.bashrc` config doesn't carry to `~/.zshrc`** trap (rtk PATH/aliases must be re-added; Ubuntu's empty `/etc/zsh/zprofile` makes the explicit export required), the Docker `_docker` completion warning fix, and **JetBrains Mono Nerd Font + ligatures** on Windows Terminal (`font.features { liga: 1 }`) v0.4.2 prompt audit: source-path discovery no longer assumes the author's `source\repos` layout, the "on current WSL" claim becomes "use the name exactly as `wsl --list --online` prints it", "150 files" becomes whole-tree, and a CRITICAL heading returns to normal register |
+| [**criar-prd**](#criar-prd) | 0.1.0 | Development | Cria PRDs enxutos a partir de uma descrição de funcionalidade, com até 5 perguntas de clarificação, template de PRD empacotado no plugin e pesquisa web só quando houver dependência externa ou informação atual. |
+| [**criar-techspec**](#criar-techspec) | 0.1.0 | Architecture | Cria Tech Specs objetivas a partir de um PRD local, lendo o template (do projeto ou o empacotado), as convenções do projeto e apenas os arquivos necessários para definir uma solução implementável. |
+| [**criar-task**](#criar-task) | 0.1.0 | Development | Transforma PRD e Tech Spec em tarefas incrementais, funcionais e testáveis, com aprovação high-level antes de escrever `tasks.md` e os arquivos individuais. |
+| [**executar-task**](#executar-task) | 0.1.0 | Development | Executa a próxima task planejada com leitura mínima, TDD quando viável, testes obrigatórios e marcação de conclusão somente depois da validação. |
 
 ---
 
@@ -276,6 +285,58 @@ Language-agnostic DDD toolkit that audits a codebase for tactical/strategic viol
 </details>
 
 <details>
+<summary><strong>criar-prd</strong> — Product Requirements Document</summary>
+
+Cria PRDs claros e acionáveis a partir de uma descrição de funcionalidade, mantendo foco no que será entregue e por quê.
+
+| Command | Description |
+|---------|-------------|
+| `/criar-prd:criar-prd <funcionalidade>` | Faz até 5 perguntas de clarificação, usa o template de PRD (do projeto, ou o empacotado no plugin) e salva `tasks/prd-[slug]/prd.md` |
+
+**Guardrails:** não pesquisa na web por padrão, limita o PRD a 2.000 palavras e evita decisões detalhadas de implementação.
+
+</details>
+
+<details>
+<summary><strong>criar-techspec</strong> — Technical Specification</summary>
+
+Transforma um PRD local aprovado em uma Tech Spec implementável, explorando só o necessário do projeto.
+
+| Command | Description |
+|---------|-------------|
+| `/criar-techspec:criar-techspec <slug>` | Lê `tasks/prd-[slug]/prd.md`, segue o template de Tech Spec (do projeto, ou o empacotado) e salva `tasks/prd-[slug]/techspec.md` |
+
+**Guardrails:** consulta as convenções do projeto quando existem, usa `rg` (e a ferramenta de grafo de impacto do projeto, se houver) e pergunta só quando houver bloqueio real.
+
+</details>
+
+<details>
+<summary><strong>criar-task</strong> — Task Planning</summary>
+
+Quebra PRD e Tech Spec em tarefas principais incrementais, funcionais e testáveis.
+
+| Command | Description |
+|---------|-------------|
+| `/criar-task:criar-task <slug>` | Propõe até 10 tarefas high-level, aguarda aprovação e então gera `tasks.md` + `N_task.md` |
+
+**Guardrails:** não implementa código, não altera arquivos fora da pasta da funcionalidade e exige testes planejados por tarefa.
+
+</details>
+
+<details>
+<summary><strong>executar-task</strong> — Task Execution</summary>
+
+Executa a próxima task planejada sem expandir escopo, usando TDD quando viável e validação antes de marcar conclusão.
+
+| Command | Description |
+|---------|-------------|
+| `/executar-task:executar-task <slug> [num]` | Seleciona a task indicada ou a primeira desbloqueada, implementa, valida e atualiza `tasks.md` |
+
+**Guardrails:** não marca conclusão sem testes relevantes passando, não faz refatoração oportunista e documenta mudanças relevantes.
+
+</details>
+
+<details>
 <summary><strong>retrofit-skill</strong> — Apply Session Lessons to a Skill</summary>
 
 Captures non-obvious lessons from the current session and applies them to a target skill, in one of two modes so the workflow matches where the skill lives.
@@ -413,10 +474,15 @@ Use este modo quando quiser utilizar comandos e skills diretamente no Claude Cod
 /plugin install ansible-docker-backup-restore
 /plugin install cicd
 /plugin install codereview
+/plugin install cors
+/plugin install criar-prd
+/plugin install criar-task
+/plugin install criar-techspec
 /plugin install ddd
 /plugin install deploy
 /plugin install dev-script
 /plugin install dotnet-wpf
+/plugin install executar-task
 /plugin install kaizen-software
 /plugin install pdf-generation
 /plugin install release

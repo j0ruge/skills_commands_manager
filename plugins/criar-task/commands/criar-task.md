@@ -1,5 +1,5 @@
 ---
-description: Cria tasks incrementais a partir de PRD e Tech Spec, com aprovação high-level antes de escrever arquivos.
+description: Cria tasks incrementais a partir de PRD e Tech Spec, com aprovação high-level antes de escrever arquivos. Triggers — criar task, quebrar PRD em tarefas, plano de implementação, task planning, tasks.md, subtarefas.
 metadata:
   version: 0.1.0
 ---
@@ -13,12 +13,17 @@ incrementais e testáveis, gastando o mínimo de contexto necessário.
 
 ## Entrada
 
-O usuário deve informar o slug da funcionalidade. Use o slug para localizar:
+O usuário deve informar o slug da funcionalidade — kebab-case de segmento único,
+casando com `^[a-z0-9]+(-[a-z0-9]+)*$`. Recuse antes de montar qualquer caminho um
+slug que contenha `/`, `\`, `..`, espaço ou caractere fora desse conjunto, e peça
+outro.
 
-- PRD: `tasks/prd-[slug]/prd.md`
-- Tech Spec: `tasks/prd-[slug]/techspec.md`
-- Saída resumida: `tasks/prd-[slug]/tasks.md`
-- Saídas individuais: `tasks/prd-[slug]/[num]_task.md`
+Com o slug validado, localize:
+
+- **PRD:** `tasks/prd-[slug]/prd.md`
+- **Tech Spec:** `tasks/prd-[slug]/techspec.md`
+- **Saída resumida:** `tasks/prd-[slug]/tasks.md`
+- **Saídas individuais:** `tasks/prd-[slug]/[num]_task.md`
 
 Se o slug não for informado, peça apenas essa informação e pare.
 Se `prd.md` ou `techspec.md` não existir, informe o caminho ausente e pare.
@@ -28,9 +33,10 @@ Se `prd.md` ou `techspec.md` não existir, informe o caminho ausente e pare.
 1. Leia primeiro os títulos, requisitos, critérios de aceite e decisões técnicas do PRD/Tech Spec.
 2. Leia seções completas apenas quando forem necessárias para decidir escopo, dependências ou testes.
 3. Não carregue arquivos de código-fonte para criar o plano, salvo quando PRD/Tech Spec apontarem um arquivo específico indispensável.
-4. Leia os templates somente após a aprovação high-level:
-   - `templates/tasks-template.md`
-   - `templates/task-template.md`
+4. Leia os templates somente após a aprovação high-level. Para cada um, use a
+   versão do projeto quando existir (`templates/tasks-template.md`,
+   `templates/task-template.md`); caso contrário use os empacotados em
+   `${CLAUDE_PLUGIN_ROOT}/templates/`.
 
 ## Fase 1 - Aprovação High-Level
 
@@ -59,9 +65,9 @@ Após apresentar a lista, pergunte se pode gerar os arquivos. Pare até receber 
 
 Depois da aprovação:
 
-1. Leia os templates indicados em `templates/`.
-2. Crie ou atualize `tasks.md` seguindo estritamente `templates/tasks-template.md`.
-3. Crie um arquivo por tarefa principal seguindo estritamente `templates/task-template.md`.
+1. Leia os dois templates resolvidos na "Leitura Econômica".
+2. Crie ou atualize `tasks.md` seguindo estritamente o template de lista.
+3. Crie um arquivo por tarefa principal seguindo estritamente o template de tarefa.
 4. Use numeração sequencial: `1_task.md`, `2_task.md`, etc.
 5. Em cada arquivo individual, inclua:
    - visão geral;

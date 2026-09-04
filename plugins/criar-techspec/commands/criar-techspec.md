@@ -1,41 +1,48 @@
 ---
-description: Cria Tech Spec objetiva a partir de PRD local, com exploração econômica do projeto e perguntas só quando houver bloqueio real.
+description: Cria Tech Spec objetiva a partir de PRD local, com exploração econômica do projeto e perguntas só quando houver bloqueio real. Triggers — criar tech spec, especificação técnica, desenho técnico, PRD para implementação, arquitetura de feature.
 metadata:
   version: 0.1.0
 ---
 
 Você é um especialista em especificações técnicas. Sua tarefa é transformar um
-PRD aprovado em uma Tech Spec clara, implementável e fiel ao template do projeto.
+PRD aprovado em uma Tech Spec clara, implementável e fiel ao template usado.
 
 <critical>Não gere a Tech Spec sem ler o PRD da funcionalidade.</critical>
-<critical>Siga a estrutura de `templates/techspec-template.md` sem remover seções.</critical>
+<critical>Siga a estrutura do template resolvido em "Entrada" sem remover seções.</critical>
 
 ## Entrada
 
-O usuário deve informar o slug da funcionalidade. Use o slug para localizar:
+O usuário deve informar o slug da funcionalidade — kebab-case de segmento único,
+casando com `^[a-z0-9]+(-[a-z0-9]+)*$`. Recuse antes de montar qualquer caminho um
+slug que contenha `/`, `\`, `..`, espaço ou caractere fora desse conjunto, e peça
+outro.
 
-- PRD: `tasks/prd-[slug]/prd.md`
-- Template: `templates/techspec-template.md`
-- Saída: `tasks/prd-[slug]/techspec.md`
+Com o slug validado, localize:
+
+- **PRD:** `tasks/prd-[slug]/prd.md`
+- **Template:** use `templates/techspec-template.md` do projeto quando existir;
+  caso contrário use o template empacotado em
+  `${CLAUDE_PLUGIN_ROOT}/templates/techspec-template.md`.
+- **Saída:** `tasks/prd-[slug]/techspec.md`
 
 Se o slug não for informado, peça apenas essa informação e pare.
-Se o PRD ou o template não existir, informe o caminho ausente e pare.
+Se o PRD não existir, informe o caminho ausente e pare — sem PRD não há Tech Spec.
 
 ## Leitura Econômica
 
 1. Leia o PRD completo.
 2. Leia o template da Tech Spec.
-3. Consulte `.agents/rules/codigo_padrao.md` sempre.
-4. Consulte regras específicas somente quando o PRD tocar o domínio delas:
-   - React: `.agents/rules/react.md`
-   - testes: `.agents/rules/testes.md`
-   - PDF: `.agents/rules/extracao_pdf.md`
-   - Electron ou IPC: `.agents/rules/electron_ipc.md`
-   - sync ou SQLite offline: `.agents/rules/sync_offline_sqlite.md`
+3. Consulte as convenções de código do projeto, quando existirem — procure na
+   ordem `CLAUDE.md`, `AGENTS.md`, `.agents/rules/`, `.cursor/rules/`,
+   `CONTRIBUTING.md`. Se nenhuma existir, siga os padrões visíveis no próprio
+   código e diga isso na Tech Spec.
+4. Dentro dessas convenções, leia apenas as que o PRD toca (a camada de UI, a de
+   testes, a de persistência, a de integração) em vez do conjunto inteiro.
 5. Use `rg` para localizar arquivos citados pelo PRD ou padrões existentes
    diretamente relacionados.
-6. Para perguntas estruturais de impacto, use `graphify explain` ou
-   `graphify affected` antes de abrir muitos arquivos.
+6. Se o projeto tiver uma ferramenta de grafo de impacto, use-a para responder
+   quem chama e quem depende antes de abrir muitos arquivos; sem ela, `rg` pelo
+   nome do símbolo cumpre o papel.
 7. Não faça web search por padrão. Pesquise fora do repositório apenas quando a
    Tech Spec depender de regra, biblioteca, API ou padrão que possa ter mudado.
 
@@ -101,13 +108,13 @@ Preencha `tasks/prd-[slug]/techspec.md` seguindo o template. A Tech Spec deve:
 ## Critérios de Qualidade
 
 - Escreva em português do Brasil.
-- Não use `process.env.*` para código client-side; cite `import.meta.env.VITE_*`
-  quando ambiente Vite for relevante.
+- Não exponha segredo em código que roda no cliente; use o mecanismo de
+  configuração do próprio projeto e diga qual é.
 - Não proponha refatoração fora do escopo do PRD.
 - Não invente comportamento ausente do PRD; marque como premissa.
 - Todo bloco de código Markdown deve informar a linguagem.
-- Se a solução alterar dependências, indique que `docs/stack_tec.md` deve ser
-  atualizado na implementação.
+- Se a solução alterar dependências, indique que o documento de stack do
+  projeto, quando houver, deve ser atualizado na implementação.
 
 ## Resposta Final
 

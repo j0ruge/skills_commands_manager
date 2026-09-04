@@ -1,5 +1,5 @@
 ---
-description: Cria PRDs enxutos a partir de uma descrição de funcionalidade, com perguntas de clarificação, template padronizado e pesquisa web apenas quando necessária.
+description: Cria PRDs enxutos a partir de uma descrição de funcionalidade, com perguntas de clarificação, template padronizado e pesquisa web apenas quando necessária. Triggers — criar PRD, PRD, product requirements, requisitos de produto, especificação de produto, planejamento de feature.
 metadata:
   version: 0.1.0
 ---
@@ -7,13 +7,17 @@ metadata:
 Você cria PRDs claros e acionáveis para produto e desenvolvimento.
 
 <critical>Antes de gerar o PRD, faça uma única rodada com até 5 perguntas de clarificação.</critical>
-<critical>Use exatamente a estrutura de `templates/prd-template.md`.</critical>
+<critical>Use exatamente a estrutura do template de PRD resolvido em "Entrada e Saída".</critical>
 
 ## Entrada e Saída
 
-- Template: `templates/prd-template.md`
-- Saída: `tasks/prd-[nome-funcionalidade]/prd.md`
-- Use slug em kebab-case para `[nome-funcionalidade]`.
+- **Slug:** kebab-case de segmento único, casando com `^[a-z0-9]+(-[a-z0-9]+)*$`.
+  Recuse antes de montar qualquer caminho um slug que contenha `/`, `\`, `..`,
+  espaço ou caractere fora desse conjunto, e peça outro.
+- **Template:** use `templates/prd-template.md` do projeto quando existir; caso
+  contrário use o template empacotado em
+  `${CLAUDE_PLUGIN_ROOT}/templates/prd-template.md`.
+- **Saída:** `tasks/prd-[slug]/prd.md`.
 
 ## Fluxo
 
@@ -24,7 +28,7 @@ Você cria PRDs claros e acionáveis para produto e desenvolvimento.
    - restrições e fora de escopo;
    - UX/acessibilidade quando relevante.
 
-2. Após as respostas, leia somente `templates/prd-template.md`, salvo se o usuário indicar documentos específicos.
+2. Após as respostas, leia somente o template de PRD resolvido acima, salvo se o usuário indicar documentos específicos.
 
 3. Pesquise na web somente se houver dependência de regra externa, legislação, mercado, API pública ou informação atual. Caso use pesquisa, cite brevemente o motivo.
 
@@ -34,7 +38,7 @@ Você cria PRDs claros e acionáveis para produto e desenvolvimento.
    - máximo de 2.000 palavras;
    - sem decisões de implementação detalhadas.
 
-5. Crie o diretório e salve em `tasks/prd-[nome-funcionalidade]/prd.md`.
+5. Crie o diretório e salve em `tasks/prd-[slug]/prd.md`.
 
 6. Responda com:
    - caminho final;
@@ -51,8 +55,9 @@ Você cria PRDs claros e acionáveis para produto e desenvolvimento.
 ## Checklist de Qualidade
 
 - [ ] Perguntas de clarificação feitas e respondidas
-- [ ] Template `templates/prd-template.md` seguido
+- [ ] Slug validado como kebab-case de segmento único
+- [ ] Template de PRD seguido (do projeto ou o empacotado)
 - [ ] Requisitos funcionais numerados incluídos
 - [ ] PRD com até 2.000 palavras
-- [ ] Arquivo salvo em `tasks/prd-[nome-funcionalidade]/prd.md`
+- [ ] Arquivo salvo em `tasks/prd-[slug]/prd.md`
 - [ ] Caminho final informado

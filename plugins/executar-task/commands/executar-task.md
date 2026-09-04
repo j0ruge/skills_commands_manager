@@ -1,5 +1,5 @@
 ---
-description: Executa a próxima task planejada com leitura mínima, TDD, testes obrigatórios e marcação de conclusão só após validação.
+description: Executa a próxima task planejada com leitura mínima, TDD, testes obrigatórios e marcação de conclusão só após validação. Triggers — executar task, implementar tarefa, próxima task, TDD, validar task, tasks.md.
 metadata:
   version: 0.1.0
 ---
@@ -13,7 +13,12 @@ expandir o escopo e sem pular validação.
 ## Entrada
 
 O usuário deve informar o slug da funcionalidade e, opcionalmente, o número da
-task. Use:
+task. O slug é kebab-case de segmento único, casando com
+`^[a-z0-9]+(-[a-z0-9]+)*$`; recuse antes de montar qualquer caminho um slug que
+contenha `/`, `\`, `..`, espaço ou caractere fora desse conjunto, e peça outro.
+O número da task, quando informado, precisa ser um inteiro.
+
+Com a entrada validada, use:
 
 - PRD: `tasks/prd-[slug]/prd.md`
 - Tech Spec: `tasks/prd-[slug]/techspec.md`
@@ -29,15 +34,15 @@ cujas dependências estejam concluídas.
 1. Leia `tasks.md` para localizar a task.
 2. Leia o arquivo individual da task escolhida.
 3. Leia `prd.md` e `techspec.md`, priorizando seções referenciadas pela task.
-4. Leia `.agents/rules/codigo_padrao.md` sempre que alterar código.
-5. Leia regras específicas somente quando a task tocar o domínio delas:
-   - React: `.agents/rules/react.md`
-   - testes: `.agents/rules/testes.md`
-   - PDF: `.agents/rules/extracao_pdf.md`
-   - Electron ou IPC: `.agents/rules/electron_ipc.md`
-   - sync ou SQLite offline: `.agents/rules/sync_offline_sqlite.md`
-6. Use `rg` para encontrar arquivos relevantes. Use `graphify` para impacto
-   estrutural quando precisar saber chamadores, importadores ou dependentes.
+4. Leia as convenções de código do projeto sempre que alterar código — procure
+   na ordem `CLAUDE.md`, `AGENTS.md`, `.agents/rules/`, `.cursor/rules/`,
+   `CONTRIBUTING.md`. Se nenhuma existir, siga os padrões visíveis no código ao
+   redor da mudança.
+5. Dentro dessas convenções, leia apenas as que a task toca, não o conjunto
+   inteiro.
+6. Use `rg` para encontrar arquivos relevantes. Se o projeto tiver uma
+   ferramenta de grafo de impacto, use-a para saber chamadores, importadores ou
+   dependentes antes de editar.
 7. Não use documentação externa por padrão. Consulte fonte externa apenas quando
    a implementação depender de API, biblioteca ou comportamento que possa ter
    mudado.
@@ -74,18 +79,20 @@ Quando viável:
 3. Rode o teste focado.
 4. Rode validação mais ampla proporcional ao risco.
 
-Todo código novo ou modificado deve ter JSDoc em português do Brasil, incluindo
-callbacks de teste.
+Documente o código novo ou modificado no formato que a linguagem do projeto usa
+(JSDoc, docstring, XML doc), seguindo o idioma e o estilo já praticados no
+arquivo.
 
 ### 4. Validar
 
-Execute os testes indicados pela task. Escolha comandos conforme o escopo:
+Execute os testes indicados pela task. Descubra o comando no próprio projeto em
+vez de assumir — o manifesto de build (`package.json`, `pyproject.toml`,
+`Cargo.toml`, `Makefile`, `*.csproj`), o CI, ou o README. Escolha o escopo
+conforme o risco:
 
-- `yarn test` para Vitest geral;
-- script específico do `package.json` quando a área tiver comando próprio;
-- `npx playwright test` para E2E web;
-- config própria de `e2e/electron/` para E2E desktop;
-- `yarn qa` quando a mudança tiver risco de lint ou estilo.
+- o teste focado da área alterada, primeiro;
+- a suíte da camada afetada (unidade, integração ou E2E) conforme a task exigir;
+- o gate de lint e formatação do projeto quando a mudança tiver risco de estilo.
 
 Se algum teste não puder ser executado, explique o motivo e não marque a task
 como concluída sem autorização explícita do usuário.
@@ -94,9 +101,9 @@ como concluída sem autorização explícita do usuário.
 
 Atualize documentação relevante junto com a mudança:
 
-- docstrings do código alterado;
-- nota em `docs/notas/notas_desenvolvimento_[id].md`;
-- `docs/stack_tec.md` se houver dependência nova;
+- a documentação inline do código alterado;
+- a nota ou changelog de desenvolvimento que o projeto mantiver;
+- o documento de stack ou de dependências, se houver dependência nova;
 - regras ou documentação operacional se o comportamento documentado mudar.
 
 ### 6. Marcar Conclusão
@@ -112,7 +119,7 @@ Depois da validação bem-sucedida:
 - Não implemente tarefas fora da task selecionada.
 - Não faça refatoração oportunista.
 - Não reverta mudanças do usuário.
-- Não use `process.env.*` em código client-side Vite.
+- Não exponha segredo em código que roda no cliente; use o mecanismo de configuração do próprio projeto.
 - Não use mensagens user-facing com formas como `item(ns)` ou `arquivo(s)`.
 - Todo bloco de código Markdown deve informar a linguagem.
 

@@ -62,6 +62,62 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_dir": "plugins/cors/skills/cors",
     },
     {
+        "plugin": "criar-prd",
+        "cursor_name": "criar-prd",
+        "display": "Criar PRD — Product Requirements Document a partir de uma descricao de funcionalidade",
+        "source_type": "command",
+        "source_file": "plugins/criar-prd/commands/criar-prd.md",
+        "cursor_description": (
+            "Create a lean Product Requirements Document from a feature description. "
+            "Asks up to 5 clarification questions, follows a packaged PRD template, and saves to "
+            "tasks/prd-<slug>/prd.md. Focuses on what and why, not implementation detail. "
+            "Use when the user asks to create a PRD, write product requirements, especificar um "
+            "produto, criar requisitos de produto, or plan a feature before technical design."
+        ),
+    },
+    {
+        "plugin": "criar-techspec",
+        "cursor_name": "criar-techspec",
+        "display": "Criar Tech Spec — especificacao tecnica implementavel a partir de um PRD local",
+        "source_type": "command",
+        "source_file": "plugins/criar-techspec/commands/criar-techspec.md",
+        "cursor_description": (
+            "Turn an approved PRD into an implementable technical specification. Reads "
+            "tasks/prd-<slug>/prd.md, explores only the parts of the project the PRD touches, and "
+            "saves tasks/prd-<slug>/techspec.md. Asks questions only on genuine blockers. "
+            "Use when the user asks to create a tech spec, especificacao tecnica, desenho tecnico, "
+            "technical design, or to turn a PRD into an implementation plan."
+        ),
+    },
+    {
+        "plugin": "criar-task",
+        "cursor_name": "criar-task",
+        "display": "Criar Task — quebrar PRD e Tech Spec em tarefas incrementais e testaveis",
+        "source_type": "command",
+        "source_file": "plugins/criar-task/commands/criar-task.md",
+        "cursor_description": (
+            "Break a PRD and Tech Spec into incremental, functional, testable tasks. Proposes up to "
+            "10 high-level tasks and waits for explicit approval before writing tasks.md and the "
+            "individual <n>_task.md files. Does not implement code. "
+            "Use when the user asks to create tasks, quebrar o PRD em tarefas, plan an "
+            "implementation, generate tasks.md, or split work into subtasks."
+        ),
+    },
+    {
+        "plugin": "executar-task",
+        "cursor_name": "executar-task",
+        "display": "Executar Task — implementar a proxima task planejada com TDD e validacao",
+        "source_type": "command",
+        "source_file": "plugins/executar-task/commands/executar-task.md",
+        "cursor_description": (
+            "Execute the next planned task without expanding scope. Reads tasks.md, picks the task "
+            "given or the first unblocked one, implements it with TDD when viable, runs the relevant "
+            "tests, and only then marks it complete. "
+            "Use when the user asks to execute a task, implementar a proxima tarefa, run the next "
+            "task, validate a task, or continue the implementation plan."
+        ),
+    },
+    {
         "plugin": "deploy",
         "cursor_name": "deploy-staging",
         "display": "Deploy Staging — merge branch to develop and trigger the CD Staging pipeline",

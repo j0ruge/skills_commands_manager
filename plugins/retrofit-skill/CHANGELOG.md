@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.2] — 2026-09-09
+
+### Fixed
+
+- **O cheque de confirmação assumia que todo plugin tem exatamente um
+  `SKILL.md`, com o nome do plugin.** Lia
+  `plugins/<nome>/skills/<nome>/SKILL.md` direto, e dois casos reais do
+  marketplace quebram isso. Um plugin **só de comandos** — o próprio
+  `retrofit-skill` — não tem `skills/`, e o bloco estourava em
+  `FileNotFoundError`: um cheque que não roda é pior que um que reprova, porque
+  o erro se lê como problema de ambiente e não como resultado. E um plugin
+  **multi-skill** (`dotnet-wpf` tem quatro, com nomes próprios) tem uma
+  `description` por skill, que legitimamente difere da do `plugin.json` — o
+  booleano `igual nos 3` reprovaria o estado correto. Agora o bloco usa `glob`:
+  compara `plugin.json` × `marketplace.json` sempre, e depois imprime uma linha
+  por `SKILL.md` encontrado; sem nenhum, diz que o canônico é o `plugin.json`.
+- **E o filtro de linha do README só reconhecia uma das duas formas.** A tabela
+  mistura `| **nome** |` e `| [**nome**](#ancora) |` (linha com link para a
+  seção detalhada), e o `startswith` casava só a primeira. O sintoma foi honesto,
+  não silencioso — `versao na linha do README: []` contra `esperado: ['1.7.0']`,
+  visivelmente errado, que é a propriedade que o booleano da v0.3.0 não tinha —,
+  mas é falso alarme. Agora a comparação normaliza a primeira célula (tira o
+  link e os asteriscos) e imprime **quantas linhas** casaram, para distinguir
+  "não achei" de "achei e diverge". Achado rodando o próprio bloco contra os
+  três formatos de plugin do repo, em vez de o declarar correto.
+
 ## [0.3.1] — 2026-09-09
 
 ### Fixed

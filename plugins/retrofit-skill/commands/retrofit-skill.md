@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.3.1
+  version: 0.3.2
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -106,24 +106,47 @@ em vez de rebasear com a edição já feita.
 
      ```bash
      python3 - <<'EOF'
-     import json, re, io
+     import json, re, io, glob
      nome = 'SUA-SKILL'
      pj = json.load(open(f'plugins/{nome}/.claude-plugin/plugin.json'))
      mk = {p['name']: p for p in json.load(open('.claude-plugin/marketplace.json'))['plugins']}[nome]
-     sk = io.open(f'plugins/{nome}/skills/{nome}/SKILL.md', encoding='utf-8').read()
-     d_sk = re.search(r'^description:\s*(.*?)(?=\n[a-z_]+:|\n---)', sk, re.S | re.M).group(1).strip().strip('"')
      rd = io.open('README.md', encoding='utf-8').read()
-     print('description igual nos 3:', pj['description'] == mk['description'] == d_sk)
+     print('description plugin.json == marketplace.json:', pj['description'] == mk['description'])
      print('tamanho:', len(pj['description']), '(cap 500)')
-     linhas = [l for l in rd.split('\n') if l.startswith(f'| **{nome}** |')]
+     skills = sorted(glob.glob(f'plugins/{nome}/skills/*/SKILL.md'))
+     if not skills:
+         print('plugin só de comandos — o canônico é o plugin.json, não há SKILL.md')
+     for sp in skills:
+         sk = io.open(sp, encoding='utf-8').read()
+         d = re.search(r'^description:\s*(.*?)(?=\n[a-z_]+:|\n---)', sk, re.S | re.M).group(1).strip().strip('"')
+         print(f'{sp}: igual ao plugin.json?', d == pj['description'], '| len', len(d))
+     def _e_do_plugin(linha):
+         if not linha.startswith('|'):
+             return False
+         celula = linha.split('|')[1].strip()
+         celula = re.sub(r'^\[|\]\(#[^)]*\)$', '', celula).strip().strip('*')
+         return celula == nome
+     linhas = [l for l in rd.split('\n') if _e_do_plugin(l)]
      vers = [l.split('|')[2].strip() for l in linhas if l.split('|')[2].strip() not in ('✓', '—')]
-     print('versao na linha do README:', vers, '— esperado:', [pj['version']])
+     print('versao na linha do README:', vers, '— esperado:', [pj['version']], f'({len(linhas)} linhas)')
      EOF
      ```
 
      ⚠️ Este passo existe porque falhou na prática: um retrofit atualizou a
      description em 2 dos 3 arquivos e deixou o README numa versão antiga. O erro
      só apareceu na sessão seguinte, quando outra pessoa rodou o validador.
+
+     ⚠️ **O plugin pode não ter `SKILL.md` — e pode ter vários.** A forma
+     anterior lia `plugins/<nome>/skills/<nome>/SKILL.md` como se todo plugin
+     tivesse exatamente um, com o nome do plugin. Dois casos reais quebram isso:
+     um plugin **só de comandos** (o `retrofit-skill` é um) não tem `skills/`, e
+     o cheque estourava em `FileNotFoundError` — um cheque que não roda é pior
+     que um que reprova, porque o erro parece problema do ambiente; e um plugin
+     **multi-skill** (o `dotnet-wpf` tem quatro, com nomes próprios) tem uma
+     `description` por skill, que **legitimamente difere** da do `plugin.json`.
+     Daí o `glob`: sem skill, ele diz que o canônico é o `plugin.json`; com
+     várias, imprime uma linha por skill para você julgar — em vez de colapsar
+     tudo num booleano que mente nos dois casos.
 
      ⚠️ **E o cheque do README já foi ele próprio o sensor cego.** A forma
      anterior perguntava `f"| {pj['version']} |" in rd` — se a string existe em

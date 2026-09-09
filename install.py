@@ -181,6 +181,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_dir": "plugins/dotnet-wpf/skills/dotnet-wpf-e2e-testing",
     },
     {
+        "plugin": "unlovable",
+        "cursor_name": "unlovable",
+        "display": "Unlovable — remove todos os traços do Lovable (marca, og/preview, email, wrapper do Vite)",
+        "source_type": "skill",
+        "source_dir": "plugins/unlovable/skills/unlovable",
+    },
+    {
         "plugin": "zitadel-idp",
         "cursor_name": "zitadel-idp",
         "display": "Zitadel IdP — self-hosted OIDC integration field guide (bootstrap, JWT, branding, gotchas)",

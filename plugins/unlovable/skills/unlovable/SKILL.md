@@ -1,7 +1,7 @@
 ---
 name: unlovable
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 description: "Strip every Lovable trace from a codebase scaffolded on lovable.dev — brand strings, og/twitter preview metadata, `.lovable/` residue, the `LOVABLE_API_KEY` email feature (migrated to SMTP) and the `@lovable.dev/*` Vite wrapper that owns the build. Tells cosmetic residue apart from the removals that break the build. Triggers — lovable, lovable.dev, unlovable, lovable-tagger, LOVABLE_API_KEY, remove Lovable branding, WhatsApp preview shows Lovable."
 ---
 
@@ -96,8 +96,39 @@ git rm --cached .env && printf "\n# Secrets\n.env\n.env.*\n!.env.example\n" >> .
 ## 5. Favicon e preview do WhatsApp
 
 - **Favicon**: criar `public/` se não existir, copiar o `.ico`/logo da marca do projeto p/ `public/favicon.ico`, e adicionar `{ rel: "icon", href: "/favicon.ico" }` no head `links:` do `__root.tsx` (TanStack) ou `<link rel="icon">` no `index.html` (Vite).
-- **Preview WhatsApp/og**: o preview "remete ao Lovable" vem dos **metadados og/twitter** — não necessariamente de uma imagem. Corrigir `title`/`og:title`/`og:description`/`author`/`twitter:site` para a marca real é o que remove o branding no compartilhamento. Se houver `og:image` do Lovable, apontar p/ asset próprio.
-- Procurar asset já existente no repositório ou em outro projeto da mesma marca antes de inventar um.
+- **Preview WhatsApp/og**: o preview "remete ao Lovable" vem dos **metadados og/twitter** — não necessariamente de uma imagem. Corrigir `title`/`og:title`/`og:description`/`author`/`twitter:site` para a marca real é o que remove o branding no compartilhamento.
+
+### Leia o card como um mapa: cada linha aponta para uma tag
+
+Antes de editar, case o que o print mostra com a tag que o produziu — `og:title`
+costuma **já estar certo** (o Lovable preenche com o nome do app), então o card
+sai meio certo e meio Lovable, e isso faz o problema parecer maior ou menor do
+que é. Um caso real: título `JRC Sales Quote` correto, subtítulo
+`Lovable Generated Project` (o `og:description`) e o banner *"Build apps and
+websites by chatting with AI"* (o `og:image` apontando para
+`https://lovable.dev/opengraph-image-*.png`).
+
+### Para o `og:image`, remover é a saída certa — apontar para asset próprio é a cara
+
+A tentação é trocar a URL do Lovable pela imagem da marca. Isso quase nunca é
+uma edição de uma linha, por dois motivos que só aparecem depois de decidir:
+
+- **`og:image` quer URL absoluta.** Crawler de rede social não resolve caminho
+  relativo de forma confiável — e o endereço **difere por ambiente**
+  (staging × produção). Chumbar um domínio faz o card de um dos dois ambientes
+  apontar para o outro; fazer certo é uma variável de build (`VITE_*` com
+  `--build-arg` por workflow), não uma string no HTML.
+- **O logo que existe no repo raramente serve.** O formato do card é 1200x630;
+  logo de cabeçalho costuma ser uma faixa larga e baixa (457x154 no caso real),
+  que sai recortada ou com tarja.
+
+Então: **apague `og:image` e `twitter:image` e troque `twitter:card` para
+`summary`.** O card passa a mostrar título e descrição da marca, sem imagem — o
+branding do Lovable some hoje, sem asset novo e sem dependência de domínio.
+Registre a imagem própria como pendência (`TODO.md`) descrevendo as duas
+exigências acima; sem arte, qualquer imagem é pior que nenhuma. Deixe um
+comentário no HTML dizendo por que não há imagem, ou o próximo autor "conserta"
+a ausência devolvendo o problema.
 
 ## 6. Verificação final
 
@@ -105,7 +136,13 @@ git rm --cached .env && printf "\n# Secrets\n.env\n.env.*\n!.env.example\n" >> .
 grep -rin "lovable" src/ vite.config.ts package.json  # deve vir vazio (código)
 grep -rn "api\.lovable\|LOVABLE_" src/                # vazio
 bun run build                                          # exit 0
+grep -c lovable dist/index.html                        # 0 — o ARTEFATO, não a fonte
 ```
+
+A última linha não é redundante. Metadado de `index.html` é copiado para o build
+pelo Vite, e o que o crawler do WhatsApp/Telegram lê é o **artefato servido** —
+provar que a string saiu da fonte não prova que saiu do que vai para produção.
+É a mesma pergunta de sempre: você verificou o rótulo ou a coisa?
 
 Refs remanescentes em docs `.md` que apenas *descrevem* a migração (histórico) podem ficar; o que não pode sobrar é marca/mensagem visível no app e dependência de build/feature.
 
@@ -113,5 +150,6 @@ Refs remanescentes em docs `.md` que apenas *descrevem* a migração (histórico
 
 - NÃO remover `.tanstack/` (é TanStack, não Lovable).
 - `bun.lock`/lockfile npm podem reter a string "lovable" só como **mirror de registry** (ex.: `sandbox-npm-cache.lovable.dev` em URLs `resolved`) — inofensivo, não é código; conferir antes de gastar tempo. Um `grep` no lockfile é a fonte mais comum de falso positivo neste trabalho.
+- **Mas nem toda sobra em lockfile é mirror.** Num monorepo, `npm install` da raiz atualiza o lockfile da raiz e **não toca** lockfiles órfãos dentro dos workspaces (vestígios de quando o pacote era um repo só). O do workspace continua declarando o `lovable-tagger` como dependência de verdade, e o `grep` do §6 acusa depois de o trabalho estar correto e o build limpo. Antes de "consertar", abra o arquivo: entrada de dependência num lockfile que ninguém atualiza é resíduo **inerte** — some quando alguém aposentar o arquivo, e forçá-lo agora mexe em algo fora do escopo desta limpeza. O que não pode sobrar é no lockfile **vivo**.
 - O wrapper Lovable também injeta dev-only plugins (componentTagger, sandbox detection) — não precisam ser replicados p/ build/deploy local.
 - Mexer no repo exige autorização do usuário (regra inviolável); apresente o inventário e as decisões antes de editar.

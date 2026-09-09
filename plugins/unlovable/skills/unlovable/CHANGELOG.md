@@ -1,5 +1,38 @@
 # Changelog — unlovable
 
+## [1.1.0] — 2026-09-09
+
+Primeiro uso real depois de publicada: limpeza do `sales_quote` (Vite + React
+com `lovable-tagger`, caso 3a). Três coisas que a skill não tinha.
+
+### Changed
+
+- **`og:image`: a recomendação estava invertida.** A v1.0.0 dizia *"se houver
+  `og:image` do Lovable, apontar p/ asset próprio"* — que soa como uma edição de
+  uma linha e não é. `og:image` quer URL **absoluta**, e num projeto com staging
+  e produção em domínios diferentes isso é variável de build, não string no HTML;
+  além disso o logo que existe no repo costuma ser faixa de cabeçalho (457x154 no
+  caso medido), não o 1200x630 do card. A saída certa é **remover** `og:image` /
+  `twitter:image` e usar `twitter:card: summary`, registrando a imagem própria
+  como pendência — o branding some hoje, sem asset e sem chumbar domínio.
+
+### Added
+
+- **Ler o card como mapa.** `og:title` normalmente já está correto (o Lovable o
+  preenche com o nome do app), então o preview sai meio certo e meio Lovable, e
+  isso distorce o tamanho aparente do problema. Casar cada linha do print com a
+  tag que a produziu vem antes de editar.
+- **Verificação no artefato**: `grep -c lovable dist/index.html` no §6. Metadado
+  de `index.html` é o que o crawler lê **do build servido**; provar que a string
+  saiu da fonte não prova que saiu do que vai para produção.
+- **Nem toda sobra em lockfile é mirror de registry.** O Pitfall existente cobria
+  só o falso positivo (`sandbox-npm-cache.lovable.dev` em URLs `resolved`). Em
+  monorepo há um segundo caso: `npm install` da raiz não toca lockfiles órfãos
+  dentro dos workspaces, que seguem declarando o pacote como dependência real. O
+  `grep` do §6 acusa depois de o trabalho estar certo e o build limpo — e a saída
+  é reconhecer o resíduo como **inerte**, não "consertar" um arquivo fora do
+  escopo.
+
 ## [1.0.0] — 2026-09-09
 
 Primeira publicação no marketplace. A skill nasceu em `~/.hermes/skills/devops/`

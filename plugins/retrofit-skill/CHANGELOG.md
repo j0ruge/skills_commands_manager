@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.1] — 2026-09-09
+
+### Fixed
+
+- **O cheque de confirmação do README era ele próprio um sensor cego.** A
+  v0.3.0 introduziu um bloco `python3` para confirmar que os quatro lugares
+  batem — e a linha do README perguntava `f"| {pj['version']} |" in rd`, isto é,
+  se a string existe em *algum lugar* do arquivo. Ela responde `True` quando
+  **outro** plugin está naquela versão. Medido nesta data: um script de edição
+  morreu numa `AssertionError` sem escrever o README, e o cheque seguinte
+  imprimiu `versao no README: True` — exatamente o falso verde que a v0.3.0
+  existia para impedir, um nível acima. Agora o bloco extrai a versão da **linha
+  do plugin** (o README tem duas tabelas com uma linha cada: compatibilidade,
+  onde o campo é `✓`, e versões) e **imprime o valor encontrado** ao lado do
+  esperado, em vez de devolver um booleano. Cheque que não consegue reprovar não
+  é cheque; e imprimir o valor deixa o erro visível mesmo quando a comparação
+  está errada.
+
 ## [0.3.0] — 2026-08-26
 
 O fluxo já mandava rodar `validate-versions.py` — e mesmo assim um retrofit

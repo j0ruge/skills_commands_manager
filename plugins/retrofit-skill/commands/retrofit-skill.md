@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.3.0
+  version: 0.3.1
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -115,13 +115,27 @@ em vez de rebasear com a edição já feita.
      rd = io.open('README.md', encoding='utf-8').read()
      print('description igual nos 3:', pj['description'] == mk['description'] == d_sk)
      print('tamanho:', len(pj['description']), '(cap 500)')
-     print('versao no README:', f"| {pj['version']} |" in rd)
+     linhas = [l for l in rd.split('\n') if l.startswith(f'| **{nome}** |')]
+     vers = [l.split('|')[2].strip() for l in linhas if l.split('|')[2].strip() not in ('✓', '—')]
+     print('versao na linha do README:', vers, '— esperado:', [pj['version']])
      EOF
      ```
 
      ⚠️ Este passo existe porque falhou na prática: um retrofit atualizou a
      description em 2 dos 3 arquivos e deixou o README numa versão antiga. O erro
      só apareceu na sessão seguinte, quando outra pessoa rodou o validador.
+
+     ⚠️ **E o cheque do README já foi ele próprio o sensor cego.** A forma
+     anterior perguntava `f"| {pj['version']} |" in rd` — se a string existe em
+     *algum lugar* do arquivo. Ela responde `True` porque **outro** plugin está
+     naquela versão, e o README tem duas tabelas com uma linha do seu plugin em
+     cada (compatibilidade, onde o campo 2 é `✓`, e versões). Foi medido: um
+     `python3` que morreu numa `AssertionError` sem escrever o README, seguido
+     deste cheque dizendo `versao no README: True`. Por isso a forma acima extrai
+     a versão **da linha do seu plugin** e a imprime para comparação, em vez de
+     devolver um booleano — um cheque que não consegue reprovar não é cheque, e
+     um que imprime o valor encontrado deixa o erro visível mesmo quando a
+     comparação está errada.
    - Commit: `feat|fix($ARGUMENTS): vX.Y.Z — <resumo>`. **Sem trailer
      `Co-Authored-By`** — ver *Autoria dos commits* abaixo. Push pra origin/main.
 

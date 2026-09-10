@@ -4,6 +4,44 @@ Registro por sessão da skill; o changelog **versionado** é `plugins/ticket/CHA
 (a entrada 1.4.0 de 2026-09-03 resume o que está aqui). Cada entrada registra **o que
 mudou e por quê** — a lição que a motivou, não só o diff.
 
+## 2026-09-10
+
+Retrofit a partir da abertura do **SQ-122** (projeto SQ): História, 13 pontos,
+sprint Formulário, `fixVersion` 0.8.0, criada em uma chamada REST com ADF. O
+caminho de criação funcionou como documentado — o que falhou foi a **conferência**.
+
+### `SKILL.md` + `references/workflow.md` — o sensor de conferência tinha um ponto cego próprio
+
+A 1.4.0 alinhou a tabela de sprint à checagem por JQL. Medido agora: logo após o
+`POST /issue`, `key = SQ-122 AND sprint in openSprints()` devolve `{"issues":[]}`
+com o campo **já gravado** (`GET …?fields=customfield_10020` → `(405,
+"Formulário", active)`), e passa a encontrar a issue segundos depois. É lag de
+indexação, e a instrução vigente (*"se o valor não bater, reportar a falha
+explicitamente"*) transformaria isso num aviso de que o cartão ficou no backlog.
+
+Vale reparar no padrão: a 1.2.0 tinha trocado `sprint list-workitems` por JQL
+porque o primeiro dava falso-negativo por **paginação**; a JQL dá o mesmo
+falso-negativo por **lag**; e o `acli search` que não casa nada não imprime nada,
+o que é um terceiro modo de enganar. O que sobra de confiável é a leitura do
+campo — e ela ficou mais barata, porque um `GET` só traz os cinco campos que
+interessam.
+
+### `references/workflow.md` — o que faltava para a criação em uma chamada
+
+`POST /rest/api/3/issue` pede `project` e `issuetype` por **id**, e o
+`.jira-project` guarda a key. Duas chamadas descobrem (`GET /project/<KEY>`,
+`GET /issue/createmeta/<KEY>/issuetypes`); os ids do SQ ficam como exemplo, com o
+aviso de confirmar. No mesmo caminho, `board list-sprints --json` devolve
+`{"sprints":[…]}` — a chave não é `values` nem uma lista nua, e o parser óbvio
+quebra com uma mensagem que não ajuda.
+
+### `references/templates.md` — o construtor de ADF em arquivo
+
+O heredoc canalizado (`python3 - <<'EOF'`) morre inteiro num typo e aponta para
+"linha N de stdin". Gravado em `/tmp/build-adf.py`, o conserto é uma linha. Nota
+irmã: heredoc quotado preserva UTF-8, então não há motivo para tirar acentos
+"por segurança" — devolvê-los depois custou uma rodada nesta sessão.
+
 ## 2026-09-02
 
 Retrofit a partir de uma sessão real que abriu 4 cartões (RS-850…RS-853), criou

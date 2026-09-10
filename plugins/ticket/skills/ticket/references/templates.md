@@ -60,6 +60,14 @@ O ADF é um JSON com estrutura `{ "version": 1, "type": "doc", "content": [...] 
 
 ### Antes de postar: valide o ADF
 
+> **Grave o construtor num arquivo.** `cat > /tmp/build-adf.py` e depois
+> `python3 /tmp/build-adf.py` — não `python3 - <<'EOF'`. O construtor é um
+> script longo e um typo (um `])` onde cabia `]}`) faz o Python apontar para
+> "linha N de stdin", sem arquivo para editar: conserto vira repasse do script
+> inteiro. E o heredoc **quotado** (`<<'EOF'`) entrega UTF-8 intacto, então não
+> tire acentos "por segurança" — a descrição é lida por gente, em PT-BR, e
+> devolvê-los depois custa outra rodada.
+
 O Jira recusa ADF malformado com **400 sem dizer qual nó** está errado — a
 resposta não nomeia o campo, o índice nem o tipo. Isso transforma um erro de uma
 linha em tentativa e erro. Uma varredura de segundos transforma o mesmo 400 num

@@ -220,7 +220,7 @@ confiabilidade, não por elegância.
 |---|---|---|
 | Issue **nova** | `acli jira workitem create --from-json` com `additionalAttributes` | ❌ não |
 | Issue **existente** | `mcp__atlassian__editJiraIssue` | ✅ sim |
-| Conferir o que gravou | `acli ... view --fields` + JQL `sprint in openSprints()` (ver §Conferir que gravou) | ❌ não |
+| Conferir o que gravou | `GET /issue/<KEY>?fields=…` (imediato; a JQL tem lag — ver §Conferir que gravou) | ❌ não |
 
 ### Descobrir os IDs dos campos (não confie nos números)
 
@@ -245,6 +245,16 @@ acli jira board list-sprints --id $BOARD --state active --json
 
 Retorna as sprints ativas do board do projeto detectado (ex.: board `10` para
 RS, `51` para SQ). Extrair o `id`.
+
+O envelope é `{"isLast":…, "maxResults":…, "sprints":[…], "startAt":…, "total":…}`
+— a chave é **`sprints`**, não `values` e não uma lista nua. Um parser escrito
+por analogia com outras APIs do Jira quebra com `'str' object has no attribute
+'get'`, que não sugere em nada o formato certo:
+
+```bash
+acli jira board list-sprints --id $BOARD --state active --json \
+  | python3 -c 'import json,sys;[print(s["id"], s["name"], s["state"]) for s in json.load(sys.stdin)["sprints"]]'
+```
 
 > ⚠️ **A sprint ativa é a de `"state": "active"` — ponto.** Não a descarte
 > porque o `endDate` já passou: times deixam a sprint correr meses além da data
@@ -351,6 +361,23 @@ curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
 ⚠️ **`updated` não é sensor**: o Jira não bumpa `fields.updated` numa mudança de
 `fixVersions`. Concluir "não gravou" pelo timestamp é errado.
 
+#### Os dois ids que o `POST /issue` exige (e de onde vêm)
+
+O corpo pede `project` e `issuetype` por **id** — e nem um nem outro aparece em
+lugar nenhum da configuração da skill (`.jira-project` guarda a *key*, não o id).
+Duas chamadas resolvem, e o resultado vale para o projeto inteiro:
+
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "$J/project/$PROJECT" \
+  | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["id"], d["key"], d["name"])'
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "$J/issue/createmeta/$PROJECT/issuetypes" \
+  | python3 -c 'import json,sys;[print(t["id"], t["name"]) for t in json.load(sys.stdin)["issueTypes"]]'
+```
+
+Medido em SQ (2026-09-10): projeto `10050`; tipos `10000` Epic · `10009` História ·
+`10018` Tarefa · `10019` Subtarefa · `10020` Bug · `10271` Referência. Confirme
+antes de reusar — tipos são configuração de projeto e mudam.
+
 ### A flag `released` do Jira não diz se a versão foi lançada
 
 O campo é metadado que alguém precisa marcar à mão, então ele atrasa em relação
@@ -369,18 +396,53 @@ Se o repo diz que foi, corrija o Jira (`PUT /version/<ID>` com `released` e
 
 ### Conferir que gravou (o passo que evita o backlog silencioso)
 
-```bash
-# O que a issue tem agora
-acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+**Um `GET` do REST lê os cinco campos de uma vez** — status, assignee,
+`fixVersions`, pontos e sprint — e responde **na hora**, inclusive para uma issue
+criada há um segundo. É o sensor pós-criação:
 
-# Confirmação independente — JQL, determinístico e sem paginação:
-acli jira workitem search --jql "key = ${PROJECT}-XXX AND sprint in openSprints()" --fields "key,status"
+```bash
+curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+  "$J/issue/${PROJECT}-XXX?fields=status,assignee,fixVersions,customfield_10016,customfield_10020"
 ```
+
+Não é preciso alternar ferramenta por campo: o `acli view --fields` lê sprint e
+pontos, mas não `fixVersions` (§fixVersion), então o REST cobre os dois casos.
+
+<CRITICAL>
+**A JQL não serve como conferência logo após a criação — ela tem lag de
+indexação.** Medido em 2026-09-10, segundos após um `POST /issue` que nasceu com
+`customfield_10020: 405`:
+
+```text
+key = SQ-122 AND sprint in openSprints()   → {"issues":[]}          ← ainda não indexado
+GET /issue/SQ-122?fields=customfield_10020 → [(405,"Formulário")]   ← já gravado
+```
+
+Segundos depois a mesma JQL devolveu a issue. Quem seguisse a regra *"se não
+bater, reportar a falha"* anunciaria ao dev que o cartão ficou no backlog —
+exatamente o alarme falso que esta seção existe para evitar, e que já derrubou o
+`sprint list-workitems` (adiante). **Todo sensor desta skill já falhou de um jeito
+diferente**: paginação, lag, silêncio. Por isso o veredito é da leitura do campo,
+não da busca.
+</CRITICAL>
 
 ⚠️ **`sprint list-workitems` é falso-negativo por paginação.** Ele lista ~30
 itens; cartão recém-criado cai fora da primeira página e "some" — estando na
-sprint. Usar esse comando como sensor produz exatamente o alarme falso que a
-conferência existe para evitar.
+sprint.
 
-Se o valor não bater com o pedido, reportar a falha explicitamente. Um "issue
-criada ✅" sem essa releitura é como o cartão some no backlog sem ninguém notar.
+⚠️ **`acli workitem search` que não casa nada imprime NADA** — sem linha de
+resultado, sem "0 results", sem erro, e ainda sai 0. Saída vazia é
+indistinguível de comando quebrado, então não a leia como veredito.
+
+A JQL continua útil **depois** — para conferir de novo mais tarde, ou quando a
+leitura do campo já disse que gravou e você quer o cruzamento. Nesse caso, o
+desempate entre "não está na sprint" e "ainda não indexou" é uma query só:
+
+```bash
+# Se `key = X` sozinha também vier vazia, é índice, não sprint.
+acli jira workitem search --jql "key = ${PROJECT}-XXX" --fields "key"
+```
+
+Se a **leitura do campo** não bater com o pedido, reportar a falha
+explicitamente. Um "issue criada ✅" sem essa releitura é como o cartão some no
+backlog sem ninguém notar.

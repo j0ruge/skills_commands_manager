@@ -4,7 +4,7 @@ description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git
 user_invocable: true
 argument_description: "Subcomando: start (open) | split | close | status"
 metadata:
-  version: 1.4.0
+  version: 1.4.1
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
@@ -178,24 +178,26 @@ Antes de tudo, analisar o argumento passado após `start`:
    daily. Depois de mexer em sprint/score, **releia e compare**:
 
    ```bash
-   acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
+   set -a; . ~/.hermes/.env; set +a
+   curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+     "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX?fields=status,assignee,fixVersions,customfield_10016,customfield_10020"
    ```
 
-   Verificação independente de que o cartão está mesmo na sprint — **por JQL,
-   que é determinístico**:
+   Um `GET` só traz os cinco campos, e responde **na hora** — inclusive numa
+   issue criada há um segundo. O `acli view --fields` também lê sprint e pontos,
+   mas não lê `fixVersions`, então o REST evita alternar ferramenta por campo.
 
-   ```bash
-   acli jira workitem search --jql "key = ${PROJECT}-XXX AND sprint in openSprints()" --fields "key,status"
-   ```
-
-   ⚠️ **Não use `sprint list-workitems` como sensor.** Ele pagina (~30 itens) e o
-   cartão recém-criado costuma cair fora da primeira página — usá-lo produz
-   exatamente o alarme falso que este passo existe para evitar (*"a sprint não
-   foi aplicada"* sobre um cartão que **está** na sprint).
+   ⚠️ **Não confira por JQL logo depois de criar.** `key = X AND sprint in
+   openSprints()` tem **lag de indexação** e devolve vazio por alguns segundos
+   com o campo já gravado (medido). Anunciar "ficou no backlog" com base nisso é
+   o alarme falso que este passo existe para evitar. Mesma coisa, por outra
+   causa, com `sprint list-workitems`, que pagina (~30 itens) e perde o cartão
+   novo. Detalhe e desempate em `references/workflow.md §Conferir que gravou`.
 
    ⚠️ **O exit code do `acli` não é sensor de nada.** Ele imprime `✗ Failure: …`
-   e **sai 0** — cadeia `&&` e checagem de `$?` são decorativas aqui. O que diz a
-   verdade é a releitura do campo.
+   e **sai 0** — cadeia `&&` e checagem de `$?` são decorativas aqui. E um
+   `workitem search` que não casa nada não imprime **nada**: nem linha, nem
+   "0 results", nem erro. O que diz a verdade é a releitura do campo.
 
    Se o valor não bateu com o que foi pedido, **avise o dev explicitamente**
    ("a sprint não foi aplicada — o cartão continua no backlog") em vez de
@@ -320,9 +322,17 @@ Antes de tudo, analisar o argumento passado após `start`:
    #           fixVersions:[{id}], customfield_10016: N, customfield_10020: SPRINT_ID }
    ```
 
-   Monte o ADF com um script (heredoc Python) em vez de escrever JSON à mão: um
-   `description` malformado é recusado **sem dizer qual nó** está errado — e
-   montar por script não basta, porque o script também erra. **Rode a varredura
+   `project` e `issuetype` vão por **id**, que o `.jira-project` não guarda —
+   duas chamadas os descobrem, uma vez por projeto (`references/workflow.md
+   §Os dois ids que o POST /issue exige`).
+
+   Monte o ADF com um script **gravado em arquivo** (`cat > /tmp/build-adf.py`),
+   não com um heredoc canalizado para `python3 -`: um erro de sintaxe no meio de
+   um heredoc longo aponta para "linha N de stdin" e obriga a repassar o script
+   inteiro, enquanto o arquivo se conserta numa linha e roda de novo. Escrever
+   JSON à mão é pior ainda: um `description` malformado é recusado **sem dizer
+   qual nó** está errado — e montar por script não basta, porque o script também
+   erra. **Rode a varredura
    de marks antes do POST** (`references/templates.md` §Antes de postar: valide o
    ADF): ela troca o 400 mudo por um diagnóstico exato em segundos, e pega o erro
    mais comum — um helper de marks que recebe string em vez de lista.
@@ -331,12 +341,15 @@ Antes de tudo, analisar o argumento passado após `start`:
    enxerga (é literalmente diferente por campo):
 
    ```bash
-   # sprint + score: o acli lê bem
-   acli jira workitem view ${PROJECT}-XXX --fields "customfield_10016,customfield_10020" --json
-   # fixVersion: SÓ o REST GET lê — o acli devolve [] mesmo com o campo gravado
+   # Um GET só: o REST lê os cinco campos, e o fixVersion SÓ ele lê
+   # (o `acli view --json` devolve [] mesmo com o campo gravado).
    curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
-     "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX?fields=fixVersions,customfield_10016,customfield_10020,status,assignee"
+     "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX?fields=status,assignee,fixVersions,customfield_10016,customfield_10020"
    ```
+
+   ⚠️ **Não troque essa leitura por uma JQL aqui**: recém-criada, a issue ainda
+   não está indexada, e `sprint in openSprints()` volta vazia com a sprint já
+   gravada (§Conferir que gravou em `references/workflow.md`).
 
    Se algum campo não veio como pedido, dizer isso ao dev — o cartão está no
    backlog ou sem rótulo de release. Não reportar sucesso sem essa releitura.

@@ -1,5 +1,57 @@
 # Changelog — ticket
 
+## [1.4.1] — 2026-09-10
+
+Uma sessão real (abertura do **SQ-122** no projeto SQ) cobrou a conferência que a
+1.4.0 tinha acabado de alinhar. Todas as lições abaixo foram **medidas**.
+
+### Fixed
+
+- **A JQL de conferência tem lag de indexação — e a 1.4.0 a tinha promovido a
+  sensor** (`SKILL.md` sub-fluxos A/B, `references/workflow.md §Conferir que
+  gravou`). Segundos após um `POST /issue` que nasceu com `customfield_10020: 405`,
+  `key = SQ-122 AND sprint in openSprints()` devolveu `{"issues":[]}` enquanto
+  `GET /issue/SQ-122?fields=customfield_10020` já mostrava `(405, "Formulário",
+  active)`; a mesma JQL achou a issue segundos depois. Quem seguisse a regra
+  *"se não bater, reportar a falha"* anunciaria ao dev um cartão no backlog que
+  **estava** na sprint — o alarme falso que a seção existe para evitar, e pelo
+  qual o `sprint list-workitems` já tinha sido descartado (por paginação). O
+  veredito pós-criação passa a ser a **leitura do campo**; a JQL fica para
+  conferência tardia, com o desempate `key = X` sozinha, que separa "não está na
+  sprint" de "ainda não indexou". Três sensores desta skill já falharam de três
+  jeitos diferentes — paginação, lag e silêncio —, e o texto agora diz isso.
+- **`acli workitem search` que não casa nada imprime NADA** — sem linha, sem
+  "0 results", sem erro, e ainda sai 0. Saída vazia é indistinguível de comando
+  quebrado, então não vale como veredito. Registrado ao lado do `✗ Failure` que
+  sai 0.
+
+### Changed
+
+- **Um `GET` do REST substitui o par de ferramentas na releitura.** A 1.2.0 tinha
+  tornado a conferência *por campo* ("o sensor difere por campo") e o resultado
+  prático era rodar `acli view` para dois campos e `curl` para o `fixVersion`. Um
+  `GET /issue/<KEY>?fields=status,assignee,fixVersions,customfield_10016,customfield_10020`
+  lê os cinco de uma vez e responde na hora — a assimetria continua verdadeira
+  (o `acli` **não** lê `fixVersions`), só deixa de custar duas chamadas.
+
+### Added
+
+- **Os dois ids que o `POST /rest/api/3/issue` exige** (`references/workflow.md`).
+  O corpo pede `project` e `issuetype` por **id**, e o `.jira-project` guarda a
+  *key* — a receita de criação em uma chamada estava incompleta sem isso.
+  `GET /project/<KEY>` e `GET /issue/createmeta/<KEY>/issuetypes` resolvem, com os
+  valores medidos em SQ como exemplo (e o lembrete de confirmar: tipo de issue é
+  configuração de projeto).
+- **O envelope de `board list-sprints --json` é `{"sprints":[…]}`** — não lista
+  nua, não `values`. Um parser escrito por analogia com outras APIs do Jira quebra
+  com `'str' object has no attribute 'get'`, mensagem que não sugere o formato
+  certo.
+- **O construtor de ADF vai num arquivo, não num heredoc canalizado**
+  (`references/templates.md`). Um typo (`])` onde cabia `]}`) faz o Python apontar
+  para "linha N de stdin" e obriga a repassar o script inteiro; em arquivo, o
+  conserto é uma linha. E heredoc **quotado** entrega UTF-8 intacto — tirar acento
+  "por segurança" só custa a rodada de devolvê-los.
+
 ## [1.4.0] — 2026-09-03
 
 Duas frentes: três lições **medidas** numa sessão real de 2026-09-02 (abriu 4 cartões

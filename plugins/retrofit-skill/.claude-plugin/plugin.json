@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "0.3.2",
+  "version": "0.4.0",
   "category": "development",
   "keywords": [
     "retrofit",
@@ -15,7 +15,10 @@
     "session-lessons",
     "lean-retrofit",
     "local-skill",
-    "lean-vs-full"
+    "lean-vs-full",
+    "symlink",
+    "clobber",
+    "git-diff-stat"
   ],
   "platforms": [
     "claude-code",

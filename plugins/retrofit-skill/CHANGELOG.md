@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0] — 2026-09-11
+
+Dois acréscimos, e os dois vêm do mesmo incidente: um retrofit que **danificou o
+repositório que estava melhorando**.
+
+### 🔴 `~/.claude/skills/<nome>` costuma ser SYMLINK — e o `ls -la` esconde isso
+
+A pasta instalada e a do marketplace parecem dois diretórios com os mesmos
+arquivos: `ls -la` lista arquivos reais (`-rw-rw-r--`), `md5sum` bate, e a
+conclusão natural é "são duas cópias, ressincronizo no fim". O `ls -la` está
+listando o conteúdo **através** do link.
+
+O dano não é perder tempo: o `cp` de "ressincronização" escreve **de volta no
+marketplace**, e com caminhos que não correspondem exatamente ele sobrescreve o
+arquivo errado. Aconteceu — `plugins/<skill>/CHANGELOG.md` (versionado) por cima
+de `plugins/<skill>/skills/<skill>/CHANGELOG.md` (registro por sessão), apagando
+91 linhas. Os dois são distintos de propósito e cada um diz isso no cabeçalho.
+
+O PASSO 0 ganhou a checagem certa (`ls -ld`, `readlink -f`, comparação de inode —
+o `-d` é a diferença) e a conclusão: sendo symlink, **não há cópia para
+sincronizar**, e qualquer passo de "ressincronizar" só pode causar dano.
+
+### Ler o `--stat` antes do commit, e responder por cada arquivo
+
+O que pegou o clobber não foi nenhum dos gates da skill. O `validate-versions`
+passou limpo; a releitura da description passou. Eles olham o que você mudou **de
+propósito** — nenhum olha o que você mudou sem querer. O que denunciou foi o
+`--stat`: `CHANGELOG.md | 567 ++++----` num arquivo que o retrofit não tinha
+motivo para tocar.
+
+Novo passo antes do commit: `git add -A && git diff --cached --stat`, com a regra
+de que **arquivo inesperado é sinal, não ruído**. É barato e é a última chance
+antes de o erro virar histórico.
+
 ## [0.3.2] — 2026-09-09
 
 ### Fixed

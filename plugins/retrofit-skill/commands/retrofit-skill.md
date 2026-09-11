@@ -1,7 +1,7 @@
 ---
 description: Apply non-obvious session lessons to a target skill in two modes — full (marketplace skill: bumps version, updates CHANGELOG/marketplace.json/README, commits and pushes) or lean (local skill in another repo: edits files + CHANGELOG and commits there, no bump or marketplace changes). Triggers — retrofit, skill-maintenance, session-lessons, lean-retrofit, local-skill.
 metadata:
-  version: 0.3.2
+  version: 0.4.0
 ---
 
 Invoque a skill `skill-creator` antes de qualquer outra ação nesta task —
@@ -36,6 +36,34 @@ PARA LOCALIZAR O REPO DO MARKETPLACE (só no modo completo):
 - Confirme o caminho encontrado antes de seguir.
 
 No modo completo a skill alvo fica em `<REPO>/plugins/$ARGUMENTS/`.
+
+### 🔴 `~/.claude/skills/<nome>` costuma ser um SYMLINK, não uma cópia
+
+Medido em 11/09/2026, e custou um clobber. A pasta local e a do marketplace
+parecem dois diretórios com os mesmos arquivos — `ls -la` mostra arquivos reais
+(`-rw-rw-r--`), `md5sum` dá igual, e a conclusão natural é "são duas cópias, vou
+ressincronizar no fim". **Errado:** o `ls -la` está listando o conteúdo
+*através* do link.
+
+A consequência é pior que perder tempo. Um `cp marketplace/… local/…` de
+"ressincronização" escreve **através do symlink**, de volta no marketplace — e
+se os caminhos não corresponderem exatamente, sobrescreve o arquivo errado. Foi
+o que houve: `plugins/<skill>/CHANGELOG.md` (versionado) copiado por cima de
+`plugins/<skill>/skills/<skill>/CHANGELOG.md` (registro por sessão), apagando 91
+linhas de histórico. Os dois são distintos de propósito, e cada um diz isso no
+próprio cabeçalho.
+
+Confira o link, não o conteúdo — `-d` faz toda a diferença:
+
+```bash
+ls -ld ~/.claude/skills/<nome>          # `l` no início = symlink; `-la` NÃO mostra isso
+readlink -f ~/.claude/skills/<nome>     # para onde aponta
+stat -c '%i' <local>/SKILL.md <marketplace>/SKILL.md   # mesmo inode = mesmo arquivo
+```
+
+Se for symlink: **não existe cópia para sincronizar**, e editar a fonte já
+atualiza a instalação. Pule qualquer passo de "ressincronizar" — ele só pode
+causar dano.
 
 ## ANTES DE EDITAR — atualize o repo local
 
@@ -159,6 +187,20 @@ em vez de rebasear com a edição já feita.
      devolver um booleano — um cheque que não consegue reprovar não é cheque, e
      um que imprime o valor encontrado deixa o erro visível mesmo quando a
      comparação está errada.
+   - **Antes do commit, leia o `--stat` e responda por cada arquivo.**
+
+     ```bash
+     git add -A && git diff --cached --stat
+     ```
+
+     Um arquivo que você não pretendia tocar é **sinal, não ruído** — e foi o
+     único sensor que pegou o clobber do PASSO 0 (`CHANGELOG.md | 567 ++++----`
+     num arquivo que o retrofit não deveria ter alterado). O `validate-versions`
+     passou limpo, a releitura da description passou, e mesmo assim havia dano
+     no commit: os gates olham o que você mudou de propósito, e nenhum deles
+     olha o que você mudou sem querer. Contar arquivos é barato e é a última
+     chance antes de o erro virar histórico.
+
    - Commit: `feat|fix($ARGUMENTS): vX.Y.Z — <resumo>`. **Sem trailer
      `Co-Authored-By`** — ver *Autoria dos commits* abaixo. Push pra origin/main.
 

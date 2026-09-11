@@ -16,8 +16,28 @@
 
 | Projeto | Board | Caminho até "done" | Status final | Como chegar ao done |
 |---|---|---|---|---|
-| RS | 10 | `Tarefas pendentes → Em andamento → Aprovação → Finished` | `Finished` | duas transições (`Aprovação`, depois `Finished`) |
+| RS | 10 | `Tarefas pendentes → Em andamento → Aprovação → Finished` | `Finished` | duas transições (`Aprovação`, depois `Finished`) — **por convenção do time, não por restrição do board** (ver abaixo) |
 | SQ | 51 | `Tarefas pendentes → Em andamento → Concluído` (**sem `Aprovação`**) | `Concluído` | `acli --status "Concluído"` direto (ou MCP transição **id `31`**) |
+
+### ⚠️ O caminho documentado é convenção; o board costuma ser mais permissivo
+
+Medido no RS em 11/09/2026, com a issue em `Em andamento`:
+
+```text
+id= 2  Approval          → Aprovação
+id=31  Itens concluídos  → Finished     ← atalho: pula a Aprovação
+```
+
+Ou seja, a coluna "duas transições" da tabela descreve o **processo do time**, não um
+limite do Jira: dá para ir direto a `Finished`. Duas consequências práticas:
+
+- **Prefira o caminho documentado**, mesmo tendo atalho. O passo por `Aprovação` é o
+  rastro que o time espera encontrar; pulá-lo economiza uma chamada e apaga a etapa do
+  histórico.
+- **O conjunto de transições muda conforme o status atual** — não é uma lista fixa da
+  issue. A partir de `Aprovação` aparece `id=6 DONE → Finished`, que **não existe** a
+  partir de `Em andamento`. Por isso a Regra 1 vale a cada passo: liste de novo depois
+  de transicionar, em vez de reaproveitar os ids da leitura anterior.
 
 ### Descobrir transições (fazer isto, não chutar)
 

@@ -4,7 +4,7 @@ description: "Jira ticket lifecycle for JRC Brasil projects, integrated with Git
 user_invocable: true
 argument_description: "Subcomando: start (open) | split | close | status"
 metadata:
-  version: 1.4.1
+  version: 1.5.0
 ---
 
 # Skill: Ticket — Gestão de Tickets Jira
@@ -531,9 +531,33 @@ diferentes.
    ```
 
    **Fallback (sem MCP atlassian disponível):** montar ADF JSON manual e postar
-   via `acli --body-file` — ver `references/templates.md §ADF (legado)` para a
-   estrutura e a referência rápida. Markdown e Wiki Markup **não** funcionam
-   no `acli` (renderizam como texto puro).
+   via `acli`. Markdown e Wiki Markup **não** funcionam ali (renderizam como
+   texto puro) — ver `references/templates.md §ADF (legado)` para a estrutura.
+
+   ⚠️ **O comando é `comment create`, não `comment`.** `acli jira workitem comment`
+   é um grupo com subcomandos (`create`/`list`/`update`/`delete`/`visibility`), e
+   passar `--key` direto nele devolve `✗ Error: unknown flag: --key` — que soa
+   como flag errada, não como subcomando faltando:
+
+   ```bash
+   acli jira workitem comment create --key "${PROJECT}-XXX" --body-file /tmp/comment.json
+   ```
+
+   🔴 **Confirme por REST, NUNCA por `acli comment list`.** O `acli` imprime
+   `✓ Comment ... successfully added` e **sai 0 mesmo quando falha** (a regra geral
+   do §Tratamento de Erros), então o veredito tem de vir de uma releitura. E a
+   releitura óbvia mente: `acli jira workitem comment list --json` **achata o ADF
+   para texto puro** na exibição, então um comentário perfeitamente armazenado
+   aparece como string crua — medido em 11/09/2026, e quase virou um defeito
+   reportado que não existia. Só o REST mostra o formato **armazenado**:
+
+   ```bash
+   set -a; . ~/.hermes/.env; set +a
+   curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+     "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX/comment?orderBy=-created&maxResults=1" \
+     | python3 -c "import json,sys; b=json.load(sys.stdin)['comments'][-1]['body']; print(type(b).__name__, len(b.get('content',[])) if isinstance(b,dict) else b[:80])"
+   # espera: dict <N>   ·   se vier `str`, o ADF NÃO foi aceito
+   ```
 
 6. **Transicionar até o status "done" — descobrir as transições, não cravar nomes:**
 
@@ -552,7 +576,32 @@ diferentes.
      destino**); alternativamente, MCP transição **id `31`** ("Itens concluídos").
    - Fallback `acli` (pelo nome do **status de destino**): `acli jira workitem transition --key "${PROJECT}-XXX" --status "<status-destino>"`.
 
-7. **Commitar mudanças pendentes:**
+7. **Conferir o `fixVersion` — o ticket saiu em qual release?**
+
+   O `start` pergunta fixVersion; o `close` não perguntava, e o resultado é um
+   ticket que foi a produção sem rótulo de release (aconteceu em 11/09/2026: a
+   issue fechou com o trabalho servindo em produção e o campo vazio). Leia o
+   campo e compare com a realidade do repo:
+
+   ```bash
+   set -a; . ~/.hermes/.env; set +a
+   curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+     "https://jrcbrasil.atlassian.net/rest/api/3/issue/${PROJECT}-XXX?fields=fixVersions" 
+   git tag --sort=-v:refname | head -3      # o que de fato saiu
+   ```
+
+   - **Campo preenchido e coerente** → siga.
+   - **Vazio, e a versão existe no projeto** → ofereça atribuí-la, dizendo qual.
+   - **Vazio, e a versão NÃO existe no Jira** → **pare e pergunte.** Criar
+     `fixVersion` é ato de nível de projeto: afeta o planejamento de release do
+     time, não é detalhe de fechar um ticket. Diga qual versão falta e deixe a
+     decisão com o dev.
+
+   ⚠️ Não use a flag `released` do Jira como sensor de release — ela é metadado
+   marcado à mão e atrasa (medido: versões já lançadas constavam
+   `released=False`). Quem sabe se lançou é o repo: a tag em `origin/main`.
+
+8. **Commitar mudanças pendentes:**
 
    - Verificar `git status` — se houver mudanças não commitadas (staged ou unstaged):
      - Mostrar as mudanças ao dev e perguntar se deve commitar
@@ -564,7 +613,7 @@ diferentes.
      - Se houver erros de lint, corrigir e commitar o fix antes de prosseguir
    - Se não houver mudanças, pular para o próximo passo
 
-8. **Criar Pull Request:**
+9. **Criar Pull Request:**
 
    - Push da branch:
 
@@ -582,7 +631,7 @@ diferentes.
    - O body do PR deve conter o mesmo conteúdo do resumo. Se você usou o caminho
      MCP no step 5, **é o mesmo markdown** — sem duplicação de trabalho.
 
-9. **Voltar para `${BASE_BRANCH}`:**
+10. **Voltar para `${BASE_BRANCH}`:**
 
    ```bash
    git checkout ${BASE_BRANCH}
@@ -591,9 +640,9 @@ diferentes.
 
    > Se o dev pediu para **permanecer no branch atual** (fluxo direto no
    > `${BASE_BRANCH}`, sem feature branch e sem PR — como no commit direto em
-   > `main`), pular os steps 8-9.
+   > `main`), pular os steps 9-10.
 
-10. **Output:**
+11. **Output:**
 
    ```text
    ✅ Issue ${PROJECT}-XXX fechada

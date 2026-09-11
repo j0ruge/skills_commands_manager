@@ -1,5 +1,96 @@
 # Changelog — ticket
 
+## [1.5.0] — 2026-09-11
+
+Quatro lições de um `close` real (RS-877, projeto RS). Três são sensores que
+mentem de formas diferentes; a quarta é um passo que faltava no fluxo.
+
+### `acli jira workitem comment` é um GRUPO, não um comando
+
+`acli jira workitem comment --key ... --body-file ...` devolve
+`✗ Error: unknown flag: --key`, que soa como flag errada e manda a investigação
+para o lugar errado. O comando é **`comment create`**. A skill dizia "postar via
+`acli --body-file`" sem nomear o subcomando; agora nomeia, com exemplo.
+
+### 🔴 `acli comment list --json` achata o ADF para texto puro
+
+O sensor óbvio para "o comentário ficou formatado?" é reler pelo `acli`. Ele
+devolve o `body` como **string crua** mesmo quando o ADF foi armazenado
+perfeitamente — e a conclusão natural ("o ADF não foi interpretado") é falsa.
+Quase virou um defeito reportado que não existia: o REST mostrou o `body` como
+objeto, com os 17 nós certos.
+
+A skill já avisava que o **exit code** do `acli` não é sensor. Esta é a mesma
+família por outra porta: a **leitura de volta** também não é. O veredito é o
+`GET /rest/api/3/issue/<KEY>/comment`, e o comando pronto está no step 5 do
+`close`.
+
+### A tabela de transições descrevia convenção como se fosse restrição
+
+A linha do RS dizia "duas transições (`Aprovação`, depois `Finished`)". Medido: a
+partir de `Em andamento` existe `id=31 Itens concluídos → Finished`, que **pula a
+Aprovação**. O caminho de duas etapas é o **processo do time**, não um limite do
+board — e vale segui-lo mesmo assim, porque é o rastro que o time espera; o
+atalho economiza uma chamada e apaga a etapa do histórico.
+
+Junto, um detalhe que a Regra 1 implicava sem dizer: **o conjunto de transições
+muda conforme o status atual**. De `Aprovação` aparece `id=6 DONE → Finished`,
+que não existe a partir de `Em andamento`. Reaproveitar ids de uma leitura
+anterior quebra.
+
+### O `close` não perguntava `fixVersion`
+
+O `start` pergunta sempre; o `close` fechava um ticket que foi a produção sem
+rótulo de release — foi o que aconteceu na RS-877. Novo step 7 (os seguintes
+renumerados): lê o campo, compara com as tags do repo, e trata o caso difícil
+com cuidado — quando a versão **não existe** no Jira, para e pergunta, porque
+criar `fixVersion` é ato de nível de projeto, não detalhe de fechamento.
+
+## [1.5.0] — 2026-09-11
+
+Quatro lições de um `close` real (RS-877, projeto RS). Três são sensores que
+mentem de formas diferentes; a quarta é um passo que faltava no fluxo.
+
+### `acli jira workitem comment` é um GRUPO, não um comando
+
+`acli jira workitem comment --key ... --body-file ...` devolve
+`✗ Error: unknown flag: --key`, que soa como flag errada e manda a investigação
+para o lugar errado. O comando é **`comment create`**. A skill dizia "postar via
+`acli --body-file`" sem nomear o subcomando; agora nomeia, com exemplo.
+
+### 🔴 `acli comment list --json` achata o ADF para texto puro
+
+O sensor óbvio para "o comentário ficou formatado?" é reler pelo `acli`. Ele
+devolve o `body` como **string crua** mesmo quando o ADF foi armazenado
+perfeitamente — e a conclusão natural ("o ADF não foi interpretado") é falsa.
+Quase virou um defeito reportado que não existia: o REST mostrou o `body` como
+objeto, com os 17 nós certos.
+
+A skill já avisava que o **exit code** do `acli` não é sensor. Esta é a mesma
+família por outra porta: a **leitura de volta** também não é. O veredito é o
+`GET /rest/api/3/issue/<KEY>/comment`.
+
+### A tabela de transições descrevia convenção como se fosse restrição
+
+A linha do RS dizia "duas transições (`Aprovação`, depois `Finished`)". Medido: a
+partir de `Em andamento` existe `id=31 Itens concluídos → Finished`, que **pula a
+Aprovação**. O caminho de duas etapas é o **processo do time**, não um limite do
+board — e vale segui-lo mesmo assim, porque é o rastro que o time espera; o
+atalho economiza uma chamada e apaga a etapa do histórico.
+
+Junto, um detalhe que a Regra 1 implicava sem dizer: **o conjunto de transições
+muda conforme o status atual**. De `Aprovação` aparece `id=6 DONE → Finished`,
+que não existe a partir de `Em andamento`. Reaproveitar ids de uma leitura
+anterior quebra.
+
+### O `close` não perguntava `fixVersion`
+
+O `start` pergunta sempre; o `close` fechava um ticket que foi a produção sem
+rótulo de release — foi o que aconteceu na RS-877. Novo step 7 (os seguintes
+renumerados): lê o campo, compara com as tags do repo, e trata o caso difícil
+com cuidado — quando a versão **não existe** no Jira, para e pergunta, porque
+criar `fixVersion` é ato de nível de projeto, não detalhe de fechamento.
+
 ## [1.4.1] — 2026-09-10
 
 Uma sessão real (abertura do **SQ-122** no projeto SQ) cobrou a conferência que a

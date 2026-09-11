@@ -62,6 +62,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_dir": "plugins/cors/skills/cors",
     },
     {
+        "plugin": "n8n-ops",
+        "cursor_name": "n8n-ops",
+        "display": "n8n como infraestrutura — diagnosticar automacao silenciosa, importar sem duplicata, vigiar sem mentir",
+        "source_type": "skill",
+        "source_dir": "plugins/n8n-ops/skills/n8n-ops",
+    },
+    {
         "plugin": "criar-prd",
         "cursor_name": "criar-prd",
         "display": "Criar PRD — Product Requirements Document a partir de uma descricao de funcionalidade",

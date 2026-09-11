@@ -2,6 +2,32 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.0.1] — 2026-09-11
+
+Description reescrita para disparar melhor. **Mudança de julgamento, não de medição** — e vale
+registrar por quê, porque a tentação de tratar como medida é grande.
+
+O otimizador de description da `skill-creator` rodou 5 iterações sobre 20 consultas e devolveu
+`recall=0%` para **todas** as candidatas, incluindo versões muito explícitas em inglês, com scores
+byte-idênticos (`18/36`, `12/24`) entre descrições radicalmente diferentes. Isso não é resultado: é
+instrumento. O harness detecta disparo observando uma invocação do `Skill` tool em
+`claude -p --output-format stream-json`, e **em modo print o modelo não invoca skills** — provado por
+controle: uma pergunta de CORS de manual, com a skill `cors` instalada, invocou `Bash` duas vezes e
+nunca `Skill`. Recall é estruturalmente zero para qualquer texto naquele ambiente.
+
+Então nada foi aplicado a partir dos números. O que foi aproveitado são os **princípios** que as
+candidatas exibiam e a description original não:
+
+- **Diretiva, não descritiva** — "Use quando JÁ existe um n8n rodando e algo nele está errado" em vez
+  de "Operar n8n como infraestrutura".
+- **Sintomas, não temas** — "diz sucesso sem mudar nada", "desliga o workflow calado", "alarme que
+  deduplica sem esconder a segunda falha", em vez de "importar workflow" e "escrever alarme".
+- **Exclusão explícita dos vizinhos** — "Não use para Zapier, Make ou Airflow". As três apareceram
+  como quase-acertos no conjunto de consultas negativas.
+- **Cap duro de 500 chars** do `CLAUDE.md` deste repo, que vence o teto de 700 do fluxo de retrofit:
+  a versão diretiva nasceu com 760, foi cortada para 497 enxugando em vez de somar. Ficou de fora a
+  declaração de idioma ("vale em PT e EN") — cabe no corpo da skill, não na superfície de disparo.
+
 ## [1.0.0] — 2026-09-11
 
 Primeira versão. Nasceu de uma missão real em que uma automação gravou o registro e **a logística

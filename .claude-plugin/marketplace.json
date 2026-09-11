@@ -794,8 +794,8 @@
     {
       "name": "n8n-ops",
       "source": "./plugins/n8n-ops",
-      "version": "1.0.0",
-      "description": "Operar n8n como infraestrutura, não desenhar fluxos: diagnosticar automação que não avisou (gravou? notificou? entregou?), importar workflow sem criar duplicata invisível, ensaiar antes de ativar, e escrever alarme que não mente. A coluna `active` NÃO prova que um workflow roda — o sensor é a tabela de execuções. Triggers — n8n, workflow não disparou, webhook não chegou, automação silenciosa, import:workflow, execution_entity, watchdog de automação.",
+      "version": "1.0.1",
+      "description": "Use quando JÁ existe um n8n rodando e algo nele está errado, não provado ou invisível — não para desenhar fluxos na tela. Cron ou webhook que não disparou nem avisou ninguém, sem prova de que rodou; import que duplica, erra projectId/userId ou diz sucesso sem mudar nada; execution_entity/execution_data com valor estranho; ensaiar antes de ativar; alarme que deduplica sem esconder a segunda falha. `active` não prova que roda; exit 0 não prova que importou. Não use para Zapier, Make ou Airflow.",
       "category": "operations",
       "keywords": [
         "n8n",

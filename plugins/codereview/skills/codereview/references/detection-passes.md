@@ -110,7 +110,7 @@ Apply these 5 principles as analysis lenses to all CODE files (reduced rigor for
 
 ---
 
-## Additional Detection Passes (6.1–6.10)
+## Additional Detection Passes (6.1–6.11)
 
 ### 6.1 Bug Detection
 
@@ -424,6 +424,69 @@ This pass approximates what a dedicated secret scanner (GitGuardian, gitleaks, t
 > 5. **Install `ggshield` pre-commit hook** (`pip install ggshield && ggshield install -m local`) to catch the next leak on your machine before it leaves.
 
 **Output format for pass 6.10 findings**: in addition to the standard finding format, populate the "Secrets Detection" table in the report (see `references/report-template.md`). Any ≥1 finding in this pass forces overall grade to **F** and prepends a BLOCKED banner to the report.
+
+---
+
+### 6.11 Silent-Blinding Sensors
+
+**Always runs**, like pass 6.10 — but unlike secrets it is **not a grade gate**: it never forces an F
+and never blocks on its own. It is always on because the cost asymmetry runs the other way from most
+passes: the family is cheap to grep for and expensive to discover in production, where by definition
+nothing told you.
+
+**What this pass looks for**: code whose job is to *notice something* — a guard, a gate, a health
+check, an alarm, a verification step — and whose failure mode is **silence**. Silence is
+indistinguishable from success, so these defects survive review, survive CI, and are discovered only
+when someone asks "why didn't we get an alert?" long after the thing they watched went wrong.
+
+The unifying test, and the question to ask of any sensor in a diff:
+
+> **If this sensor itself breaks, does anything go red — or does it just stop reporting?**
+
+A sensor that answers "stops reporting" is worse than no sensor, because its presence is read as
+coverage. That is what makes this a review-time finding rather than a style note.
+
+#### The five forms
+
+| Form | What to grep for | Why it blinds |
+|------|------------------|---------------|
+| **Swallowed error in a sensor** | `2>/dev/null`, `\|\| true`, `catch {}`, `except: pass`, `?? ''`, `.catch(() => null)` on a read whose value decides an alert | The variable ends up empty/default, the warning branch never fires, and the log says nothing |
+| **Negative verdict** | success defined as *"did not match a list of failure strings"* — `grep -q 'error\|failed' \|\| echo OK` | Everything that breaks **before** the tool runs (connection refused, container missing, permission denied) matches no failure pattern and reads as success |
+| **Gate aimed at the wrong target** | `head -1`, `[0]`, a glob assumed singular, a hardcoded filename where the build emits N | The gate passes green over a file it was never supposed to be the only one checking |
+| **Dedup key too coarse** | an alert/idempotency key built from `{rule, day, entity}` with no per-event discriminant | The second real occurrence in the same window collides with the first and is dropped forever — and by the second one nobody is watching |
+| **Assertion without a timeout** | `curl`/`fetch`/`http` in an assertion with no `--max-time`/`--connect-timeout`/`AbortSignal` | On a network failure the body is empty, "no forbidden pattern found" counts zero occurrences in nothing, and prints `ok` |
+
+#### Calibration — what is NOT a finding
+
+Flag only when the swallowed/negative/untimed value **decides an alert, a gate, or control flow**:
+
+- `2>/dev/null` on a cosmetic command (silencing a known deprecation banner, a `which` probe) — not a finding.
+- A `catch` that swallows and then **has a fallback with observable behavior** (renders an empty state, returns a documented default that the caller handles) — not a finding.
+- A retry loop that logs each failure and gives up loudly — not a finding; it reports.
+- Test code asserting a failure path — not a finding.
+
+The distinction is observability, not syntax: `catch {}` next to a `console.error` is noisy code;
+`catch {}` where the caught value was the only input to a warning is a blind sensor.
+
+#### Severity
+
+**MEDIUM** by default. **HIGH** when the blinded sensor is the only control covering that risk
+(the sole health check for a deploy, the only gate before a publish, the only alarm on a data path).
+**Never CRITICAL** — that rung belongs to pass 6.10, and inflating this one makes the report's
+severity ladder stop meaning anything.
+
+A finding here should name the blind spot concretely, not the syntax:
+"if the DB read fails, `active` stays empty and the deactivation warning never fires — the operator
+sees only the success line" beats "avoid `|| true`".
+
+#### Suggested fix shape
+
+Prefer making the failure *loud* over making it *impossible*: a sensor that cannot read its input
+should say so, in the same channel as its normal verdict, and the surrounding flow should either
+abort or carry the "unknown" state forward explicitly. `unknown` and `healthy` must not render the
+same. Where a verdict is currently negative, note in the finding that the positive success marker is
+strictly better, and that when it is not documented anywhere the honest move is to record the real
+output the first time the tool runs for real, then switch to it.
 
 ---
 

@@ -2,6 +2,54 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## [1.20.0] — 2026-09-11
+
+Novo passe de detecção **6.11 — Silent-Blinding Sensors**, always-on como o 6.10 mas **sem gate de
+nota**. Nasceu de uma revisão escopada real (RS-877, frontend do DSR): dos cinco achados, **três
+estavam em código que já havia passado por duas rodadas de review** — porque a família inteira é
+invisível a quem procura bug, não sensor cego.
+
+### O que o passe procura
+
+Código cujo trabalho é *notar alguma coisa* — guarda, gate, health check, alarme, etapa de
+verificação — e cujo modo de falha é **silêncio**. Silêncio é indistinguível de sucesso, então o
+defeito sobrevive ao review, sobrevive ao CI, e só aparece quando alguém pergunta "por que não
+recebemos o alerta?". A pergunta que define o passe: *se este sensor quebrar, alguma coisa fica
+vermelha, ou ele só para de reportar?*
+
+Cinco formas, todas medidas em código real:
+
+| Forma | Exemplo que motivou |
+|---|---|
+| Erro engolido no sensor | `2>/dev/null \|\| true` numa leitura cujo valor decidia se um aviso dispara |
+| Veredito **negativo** | sucesso = "não casei com `error\|failed`" — deixava passar `Connection refused`, `No such container`, `Permission denied` |
+| Gate mirando o alvo errado | gate lia 1 de 5 chunks que o build emitia; verde sobre o arquivo errado |
+| Chave de dedup grossa demais | `{regra, dia, entidade}` sem discriminante — a segunda falha real do dia sumia para sempre |
+| Asserção sem timeout | `curl` sem `--max-time`: corpo vazio conta zero ocorrências e imprime `ok` |
+
+### Calibração, para não virar ruído
+
+Só conta quando o valor engolido/negativo/sem-timeout **decide um alerta, um gate ou fluxo de
+controle**. `2>/dev/null` cosmético, `catch` com fallback observável e retry que loga e desiste alto
+não são achado. A distinção é observabilidade, não sintaxe.
+
+Severidade **MEDIUM** por padrão, **HIGH** quando o sensor cego é o único controle sobre aquele
+risco, **nunca CRITICAL** — esse degrau é do 6.10, e inflar este faz a escada de severidade parar
+de significar alguma coisa.
+
+### Por que always-on mas sem gate
+
+Sensor cego não reporta nada por definição, então foco estreito é justamente quando ele escaparia —
+daí always-on. Mas ele não pode forçar F: se forçasse, o banner de BLOCKED deixaria de significar
+"uma credencial está exposta". As duas passagens obrigatórias diferem em **consequência**, não em
+cobertura.
+
+### Também nesta versão
+
+- `metadata.version` do `SKILL.md` estava em **1.14.0** enquanto o `plugin.json` marcava 1.19.0 —
+  divergência pré-existente, alinhada agora em 1.20.0.
+- Quatro keywords novas: `silent-failure`, `blind-sensor`, `observability`, `poka-yoke`.
+
 ## [1.19.0] — 2026-09-03
 
 Otimização de custo (`/claude-api` → `cost-optimization`, Steps 0–4) da skill `codereview`, **medida**

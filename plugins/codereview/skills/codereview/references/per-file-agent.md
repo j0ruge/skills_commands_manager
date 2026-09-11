@@ -22,21 +22,22 @@ The reads are independent — issue them as one batch of parallel tool calls, th
 - Apply ALL applicable detection passes — or only the focused subset when the launch prompt names a focus area (mapping below).
 - For UI_LIB files, only flag CRITICAL and HIGH issues.
 - **Pass 6.10 (Hardcoded Secrets) is always on** — apply it to the file whatever its category (CODE / TESTS / CONFIG / UI_LIB / STYLES) and whatever the focus area. A hardcoded password in a test file is still a leak; GitGuardian does not distinguish, and neither do we. Never whitelist a secret finding to reduce noise.
+- **Pass 6.11 (Silent-Blinding Sensors) is always on too** — same reasoning as 6.10, opposite consequence: it is never a grade gate and never forces an F. Apply it whenever the file contains something whose job is to notice (a guard, gate, health check, alarm, verification step) and ask the one question that defines the pass: *if this sensor itself breaks, does anything go red, or does it just stop reporting?* Severity MEDIUM, HIGH only when it is the sole control over that risk — never CRITICAL.
 - Pass 6.9 (Dead Code) is not yours: a per-file view cannot tell whether a symbol is referenced elsewhere. The Phase B2 sweep agent runs it over the whole repository.
 
 ### Focus area mapping
 
-- security → 6.2 Security + 6.6 TOCTOU + 6.8 Data Integrity + 6.10 Secrets
-- performance → 6.3 Performance + 6.10 Secrets
-- types → 6.4 Type Safety + 6.10 Secrets
-- bugs → 6.1 Bug Detection + 6.6 TOCTOU + 6.10 Secrets
-- tests → test quality + 6.10 Secrets
-- docs → 6.5 Documentation Sync + 6.10 Secrets
-- a11y → 6.7 Accessibility + 6.10 Secrets
-- race-conditions → 6.6 TOCTOU + 6.10 Secrets
-- secrets → 6.10 Secrets only
+- security → 6.2 Security + 6.6 TOCTOU + 6.8 Data Integrity + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- performance → 6.3 Performance + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- types → 6.4 Type Safety + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- bugs → 6.1 Bug Detection + 6.6 TOCTOU + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- tests → test quality + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- docs → 6.5 Documentation Sync + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- a11y → 6.7 Accessibility + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- race-conditions → 6.6 TOCTOU + 6.10 Secrets + 6.11 Silent-Blinding Sensors
+- secrets → 6.10 Secrets only (6.11 still applies)
 
-Pass 6.10 appears in every mapping — it is the one pass that is never optional. The user cannot afford to miss a leak just because they asked for a narrow review.
+Passes 6.10 and 6.11 appear in every mapping — they are the two that are never optional. The user cannot afford to miss a leak just because they asked for a narrow review; and a sensor that has gone blind reports nothing by definition, so a narrow focus is exactly when it would otherwise slip through. They differ in consequence, not in coverage: 6.10 gates the grade, 6.11 never does.
 
 ## Output format
 

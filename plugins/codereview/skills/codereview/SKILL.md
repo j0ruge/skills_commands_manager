@@ -1,8 +1,8 @@
 ---
 name: codereview
 metadata:
-  version: 1.14.0
-description: "Pre-PR review with severity grading and tiered model routing. Detects TOCTOU races, accessibility gaps, hardcoded secrets, docs/OpenAPI drift, contract drift in tests, and dead code via a parallel whole-repo sweep (unused exports, orphaned files, unreachable code). Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, contract drift, dead code, code health."
+  version: 1.20.0
+description: Pre-PR review with severity grading and tiered model routing. Detects TOCTOU races, accessibility gaps, hardcoded secrets, silent-blinding sensors (swallowed errors, negative verdicts, gates aimed at the wrong file), docs drift, and dead code via a whole-repo sweep. Report carries an Overall Grade table + Recommended Actions. Stack-agnostic, TypeScript/React defaults. Triggers — code review, pre-PR, secrets scan, accessibility audit, dead code, silent failure, code health.
 ---
 
 ## User Input
@@ -138,6 +138,12 @@ Spawn **one dedicated agent** for pass 6.9 (Dead Code & Unused Symbols), launche
 - Focus `dead-code` → run it (and skip the per-file passes — this is the only analysis).
 - Focus `bugs` → run it (dead code often masks or accompanies bugs).
 - Narrow focuses (`security`, `a11y`, `types`, `performance`, `docs`, `tests`, `race-conditions`) → **skip it.** Unlike pass 6.10 (secrets), dead code is hygiene, not a gate — it is not always-on, and surfacing it during a focused security review is noise.
+
+> The two always-on passes sit at opposite ends of that trade-off, and it is worth keeping them
+> straight: **6.10 (Secrets)** runs everywhere *and* gates the grade; **6.11 (Silent-Blinding
+> Sensors)** runs everywhere and gates nothing. 6.11 is always on because a sensor that has gone
+> blind reports nothing by definition — a narrow focus is exactly when it slips through — but it
+> must never force an F, or the blocked-report signal stops meaning "a credential is exposed".
 - **≤3 CODE files** (model routing skipped) → run the sweep **inline in the main model** instead of spawning an agent.
 
 > **Output discipline** — the orchestrator sees only the agent's **final assistant message**; its grep/tool outputs are not propagated. The final message is the return template from `sweep-agent.md`, filled in — not "done" or "scan complete".
@@ -185,6 +191,7 @@ After all sonnet agents return, the main model:
    - Per-file agents may over-flag memoization issues (React.memo, useCallback) — downgrade per the rules in detection-passes.md
    - Ambiguous TOCTOU patterns in single-user contexts — downgrade to LOW
    - Patterns that are actually project conventions (check CLAUDE.md) — remove or downgrade
+   - **Pass 6.11 (Silent-Blinding Sensors) findings never rise above HIGH and never touch the grade gate.** Downgrade to LOW, or drop, anything where the swallowed error has observable fallback behavior — the pass is about blind spots, not about `catch` syntax.
    - **Pass 6.10 (Secrets) findings are NEVER downgraded to MEDIUM/LOW and NEVER removed.** The only allowed recalibration is CRITICAL ↔ HIGH per the test-file nuance in detection-passes.md (inline test literals are HIGH; prod code is CRITICAL; env-var lookups are not flagged at all).
 5. **Deduplication** — remove findings that overlap or repeat the same root cause (does not apply to pass 6.10 — each occurrence is reported, then aggregated if ≥3 in one file or ≥5 across PR).
 6. **Test coverage summary** — compile from Phase A results

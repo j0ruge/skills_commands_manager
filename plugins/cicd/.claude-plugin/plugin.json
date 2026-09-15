@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "2.26.0",
+  "version": "2.27.0",
   "category": "development",
   "keywords": [
     "cicd",
@@ -89,7 +89,10 @@
     "discover-dont-assume",
     "zero-file-push-skips-workflow",
     "workflow-dispatch-valve",
-    "environment-branch-no-deploy"
+    "environment-branch-no-deploy",
+    "actionlint",
+    "actionlint-shellcheck-blind",
+    "workflow-yaml-lint"
   ],
   "platforms": [
     "claude-code",

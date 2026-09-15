@@ -2,6 +2,55 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-15 — O linter de workflow que passa verde sem ter lido o seu shell — bump 2.26.0 → [2.27.0]
+
+**O quê:** `troubleshooting-shared.md` §12 (novo) + lição **82** + 1 linha na Quick
+Troubleshooting + bloco "Validar os workflows antes de commitar" em *Useful Commands*.
+
+**Por quê:** a skill já citava `actionlint` de passagem, só dentro do §11 (composite
+action), como "valide local antes de commitar". Faltava o que torna esse conselho
+confiável — e o que faz dele mais uma instância do tema recorrente da skill
+(`prove-the-sensor`): **o actionlint delega a análise do shell dos `run:` ao
+`shellcheck`, e sem esse binário no PATH ele desliga a regra em silêncio.**
+
+Medido no mesmo arquivo, com um `if` sem `then`/`fi` dentro de um `run:`:
+
+| Condição | Resultado |
+| --- | --- |
+| `shellcheck` no PATH | 3 erros, **exit 1** |
+| `shellcheck` ausente | **exit 0, saída vazia** |
+
+Nenhum aviso nos dois casos. E a ausência não é forçável: `-shellcheck=<inexistente>`
+**também sai 0** — não existe flag que transforme a regra desligada em falha. Só o
+`-verbose` imprime `Rule "shellcheck" was disabled` (idem `pyflakes`, para `run:` com
+`shell: python`). Consequência que muda o conselho: **"passou no actionlint" não é
+afirmação verificável sem dizer se o shellcheck estava presente**, e no CI quem decide
+é a imagem — `ubuntu-latest` traz o binário, `slim`/container próprio não, e o gate
+segue verde tendo lido metade do arquivo.
+
+Também entra a delimitação do que as sondas caseiras cobrem: `yaml.safe_load` e
+`bash -n` nos blocos `run:` respondem "bem-formado", nunca "correto" — passam com
+`${{ steps.x.outputs.y }}` apontando para step inexistente, `uses:` com ref inválida e
+`runs-on:` com label que nenhum runner tem. São complemento do actionlint, não
+substituto.
+
+Dois detalhes menores, medidos, que custam tempo:
+
+- Fora de repositório git ele sai **3** (não 1), com mensagem que culpa o layout
+  (`check workflows directory is put correctly in your Git repository`) quando a causa
+  é não haver `.git` — e um script que testa `-eq 1` deixa isso passar.
+- Label self-hosted desconhecido é reprovado; a cura é declarar o inventário em
+  `.github/actionlint.yaml`, não afrouxar o `runs-on:` — o que preserva a regra do §4
+  (label específico, nunca `self-hosted` pelado) e faz o arquivo virar documentação
+  executável do parque de runners.
+
+§12b traz a receita de instalação (binário Go único, sem root) e o **probe de
+arquivo sabidamente ruim**, além do step de CI que falha se a regra estiver desligada.
+
+Description inalterada (494/500 chars — sem folga para mais um gatilho, e
+`CI/CD`/`GitHub Actions` já cobrem a entrada). Keywords: `actionlint`,
+`actionlint-shellcheck-blind`, `workflow-yaml-lint`.
+
 ## 2026-09-03 — Prompt audit: nomes de um projeto viram placeholders, lições alinhadas à semântica do paths-ignore — bump 2.25.0 → [2.26.0]
 
 Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Nenhuma lição muda de conteúdo técnico — muda o que a skill diz a um modelo que revisa

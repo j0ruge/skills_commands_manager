@@ -625,3 +625,131 @@ jobs:
 > A composite cobre o que é idêntico entre CI e o re-gate de CD. Jobs exclusivos de
 > um workflow (ex.: `integration` com Testcontainers só no `ci.yml`) ficam inline —
 > não force tudo na composite só por simetria.
+
+---
+
+## 12. `actionlint` — e por que ele passa verde sem ter lido o seu shell
+
+Todo workflow deste runbook é YAML que embute shell. As duas metades falham por
+motivos diferentes, e a maioria das verificações caseiras só cobre uma delas:
+
+| Sonda | Cobre | NÃO cobre |
+| --- | --- | --- |
+| `yaml.safe_load` / `yq` | sintaxe YAML | contexto de expressão, ref de action, label de runner, shell |
+| `bash -n` nos blocos `run:` | sintaxe do shell | tudo que é GitHub Actions |
+| `actionlint` | ambas — **se** o shellcheck estiver instalado | — |
+
+`yaml.safe_load` + `bash -n` passando nos três workflows é rotina: os dois
+respondem "bem-formado", e nenhum responde "correto". `${{ steps.x.outputs.y }}`
+apontando para um step que não existe mais, `uses:` com ref inválido e
+`runs-on:` com label que nenhum runner tem passam por ambos.
+
+### 12a. 🔴 Sem `shellcheck` no PATH, o actionlint sai 0 sem ler os `run:`
+
+Esta é a parte que morde, e ela é a mesma classe de `prove-the-sensor`: o
+actionlint **delega** a análise do shell ao `shellcheck`, e quando o binário não
+está presente ele **desliga a regra em silêncio** — sem aviso, sem código de
+saída diferente, sem uma linha no stdout.
+
+Medido no mesmo arquivo, com um `if` sem `then`/`fi` dentro de um `run:`:
+
+```console
+$ actionlint                      # shellcheck presente
+.github/workflows/t.yml:8:9: shellcheck reported issue in this script: SC1050:error: Expected 'then' [shellcheck]
+... (3 erros)
+$ echo $?
+1
+
+$ PATH=/usr/bin:/bin actionlint   # shellcheck ausente
+$ echo $?
+0
+```
+
+**Zero output, exit 0** — no arquivo que acabou de produzir três erros. E não
+adianta exigir a regra na linha de comando: apontar `-shellcheck=` para um
+binário inexistente **também sai 0**. Não há flag que transforme a ausência em
+falha.
+
+A única coisa que denuncia é o `-verbose`:
+
+```console
+$ actionlint -verbose 2>&1 | grep 'was disabled'
+verbose: Rule "shellcheck" was disabled: exec: "shellcheck": executable file not found in $PATH
+verbose: Rule "pyflakes" was disabled: exec: "pyflakes": executable file not found in $PATH
+```
+
+(`pyflakes` é o equivalente para `run:` com `shell: python` — mesma cegueira.)
+
+Consequência prática: **"passou no actionlint" não é uma afirmação verificável
+sem dizer se o shellcheck estava lá.** Num runner de CI isso é pior que local,
+porque a imagem muda sem você notar — `ubuntu-latest` traz shellcheck hoje, uma
+imagem `slim` ou um container próprio não traz, e o gate continua verde.
+
+### 12b. Instalar e **provar** antes de confiar
+
+O actionlint é um binário Go único; não precisa de root nem de package manager:
+
+```bash
+VER=$(gh api repos/rhysd/actionlint/releases/latest --jq .tag_name | tr -d v)
+curl -sL "https://github.com/rhysd/actionlint/releases/download/v${VER}/actionlint_${VER}_linux_amd64.tar.gz" \
+  | tar -xz -C /usr/local/bin actionlint
+command -v shellcheck || sudo apt-get install -y shellcheck   # a metade que importa
+```
+
+Prove o sensor com um arquivo sabidamente ruim, do jeito que a skill exige em
+qualquer gate (o §6 de `cd-verification-and-rollback.md` diz o mesmo sobre
+captura de log vazia — ausência de erro só é informação depois que você provou
+que o erro apareceria):
+
+```bash
+# Falha esperada: se isto sair 0, o seu actionlint está cego para shell.
+printf 'name: p\non: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          if [ "$X" = foo ]\n          echo oi\n' \
+  > .github/workflows/_probe.yml
+actionlint .github/workflows/_probe.yml; echo "exit=$?  # 1 = enxergando, 0 = CEGO"
+rm .github/workflows/_probe.yml
+```
+
+No CI, a forma barata de não depender da imagem é fixar a checagem num step que
+falha se a regra estiver desligada:
+
+```yaml
+- name: actionlint (com prova de que o shellcheck está ativo)
+  run: |
+    actionlint -verbose 2>&1 | grep -q 'Rule "shellcheck" was disabled' \
+      && { echo "::error::shellcheck ausente — o actionlint não leria os blocos run:"; exit 1; }
+    actionlint
+```
+
+### 12c. Ele exige repositório git, e diz isso de um jeito enganoso
+
+Rodar fora de um repo git não é "nenhum problema encontrado":
+
+```console
+$ actionlint
+no project was found in any parent directories of "/tmp/x". check workflows directory is put correctly in your Git repository
+$ echo $?
+3
+```
+
+A mensagem fala em **diretório de workflows no lugar errado**, então a leitura
+natural é mexer no layout — quando a causa é não haver `.git`. Repare que o
+código é **3**, não 1: num script que só testa `if actionlint; then`, isso conta
+como falha, mas num que compara `-eq 1` passa batido.
+
+### 12d. Label self-hosted precisa de allowlist, senão ele reprova o seu padrão
+
+A skill exige label específico (`[self-hosted, staging]`, nunca `self-hosted`
+pelado — §4). O actionlint não tem como saber quais labels existem no seu repo e
+reprova os desconhecidos. A cura não é afrouxar o `runs-on:`, é declarar:
+
+```yaml
+# .github/actionlint.yaml
+self-hosted-runner:
+  labels:
+    - staging
+    - production
+```
+
+Esse arquivo é documentação executável do inventário de runners: um label que
+alguém inventar num workflow novo e não estiver aqui vira erro de lint, em vez
+de virar um job `queued` para sempre (§4 e o §11 do `self-hosted-runner-docker.md`).

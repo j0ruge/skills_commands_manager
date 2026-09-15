@@ -1,7 +1,7 @@
 ---
 name: cicd
 metadata:
-  version: 2.26.0
+  version: 2.27.0
 description: "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Self-hosted runner runbook — what breaks when you move a billed job onto one, which runner to trust for production — deploy-time proof (rollback with re-smoke, backup gates that check the dump), and Actions minute economics. Triggers — CI/CD, GitHub Actions, job never starts, Actions minutes/quota, GHCR auth, self-hosted runner, deploy queued, rollback/backup gate."
 ---
 
@@ -84,6 +84,7 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | `[S]` | Deploy queued; ao corrigir um modo de falha o runner cai em OUTRO (o log MUDA: `registration has been deleted` → `401`/`Invalid configuration` → `version deprecated`) | §7/§8/§9 **empilhados** no mesmo runner — cada fix desmascara o próximo (o `docker volume rm` do §9 expõe um PAT expirado; o PAT novo expõe o binário deprecado) | `self-hosted-runner-docker.md` §10 — descascar de baixo p/ cima: limpar config morta → validar+trocar PAT → `compose pull`; **re-ler os logs após cada passo** |
 | `[S]` | Deploy fica `queued` e ninguém percebe por dias/semanas — sem ❌, sem alerta (site segue no ar com a imagem velha) | Job self-hosted fica `queued` em silêncio; **`timeout-minutes` não conta tempo em fila** (só após o runner pegar o job) → quebra de runner nunca vira falha visível | Detecção proativa (`self-hosted-runner-docker.md` §11): **preflight gate** (falha o deploy no push se não há runner online com o label — exige PAT admin, `GITHUB_TOKEN` não lista runners) + **watchdog** agendado (cron, `actions:read`, alerta deploy preso) |
 | `[S]` | CD step emits yellow `::warning::` on every deploy ("ENOENT" or similar in a script that finished its real work first) | Script writes output path resolved upward from `__dirname` — exists in dev source tree, missing in container image (Dockerfile only copies `packages/<self>/`); `continue-on-error: true` masks indefinitely | `cd-pipeline-pitfalls.md` §5 — wrap the write in try/catch best-effort and emit the artifact via `console.log` so CD logs capture it |
+| `[S]` | `actionlint` sai **0** num workflow cujo `run:` tem shell quebrado (ou o gate de lint some sem ninguém mexer nele) | `shellcheck` ausente do PATH — o actionlint **desliga a regra em silêncio**, sem aviso e sem mudar o exit code; `-shellcheck=<inexistente>` também sai 0, não há flag que force a falha | `troubleshooting-shared.md` §12a — instalar shellcheck junto; provar com arquivo sabidamente ruim ou `actionlint -verbose \| grep 'was disabled'`; no CI, falhar o step se a regra estiver desligada |
 | `[S]` | Deploy blocked                                         | Concurrency group with previous run                  | Wait or cancel previous run via `gh run cancel`                                       |
 | `[S]` | `--max-warnings 0` fails in ESLint                     | Pre-existing warnings                                | Fix warnings or use `eslint-disable`                                                  |
 | `[B]` | `manifest unknown` in service container                | Discontinued Docker image                            | Switch to official image (e.g., `postgres:17`)                                        |
@@ -250,6 +251,7 @@ Frontend:          checkout → install → lint → typecheck → test (Vitest)
 | 79 | `[F]` | Snapshot que grava valor de env força o CI a reproduzir o valor **exato** — e a mensagem (`Snapshot mismatched`) não menciona ambiente | Depois de resolver a lição 78 a suíte para de explodir e sobram falhas de snapshot: o componente renderiza `href` de `import.meta.env.VITE_*` e o `.snap` versionado guardou o valor renderizado. Essas variáveis **não** são placeholder livre — têm um único valor aceitável, e ele está no `.snap`. Descubra em um comando (`grep -oP 'href="\\K[^"]*' **/__snapshots__/*.snap \| sort -u`) em vez de por eliminação. Injetar o valor do `.snap` desbloqueia; desacoplar o componente do env no teste remove a classe. Em qualquer caso, comente no bloco `env` que o valor está amarrado ao `.snap`, senão a próxima pessoa "limpa o placeholder" e quebra o CI sem tocar no teste. Ver `self-hosted-job-migration.md` §8 |
 | 80 | `[S]` | Job de **gate** muda de natureza ao migrar: o que vigia o runner não pode rodar nele — e o job continua passando, então nada avisa | O YAML muda igual a qualquer outro job; o que muda é o que o verde significa. Um `preflight` que barra o deploy sem runner com o label X (lição 51) vira **tautológico** em `[self-hosted, X]`: com o runner offline ele próprio fica `queued` — exatamente o silêncio que existia para quebrar. O critério é **qual runner vigia qual**: preflight de staging rodando no runner staging ❌ perde o fail-fast; preflight de **produção** rodando no runner **staging** ✅ o mantém (máquinas diferentes); o **watchdog agendado fica em `ubuntu-latest`** mesmo sob bloqueio de cota — alarme morto é melhor que alarme verde que não enxerga, e é o que sobra da camada de detecção. Migrar o preflight de staging costuma ainda ser certo (ele é `needs:` do deploy e o hospedado mataria o CD inteiro) — só não deixe o arquivo afirmando o que ele não garante mais. Ver `self-hosted-job-migration.md` §9 |
 | 81 | `[S]` | `paths-ignore` pula também o push que **não altera arquivo nenhum** — e é assim que uma branch de ambiente nasce sem deploy | O filtro pula quando *todos* os arquivos do push casam; com **zero** arquivos a condição é **vacuamente verdadeira**. Criar `staging` apontando para um commit que já existe é exatamente esse push: nada falha, nada fica vermelho, o `gh run list` segue mostrando runs antigos e o silêncio se parece com "deploy ok" — merge correto, runner online, zero runs. Dois agravantes fecham a saída: `git commit --allow-empty` cai na mesma condição (zero arquivos alterados), e a **doc oficial do GitHub não cobre o caso** — confirme empiricamente com `gh run list --workflow=<wf> -L 3`, não procurando na documentação. Fix: `workflow_dispatch` como válvula permanente, com um detalhe de ordem que decide tudo — o GitHub lê o workflow **do ref**, então ele precisa já estar no commit para onde a branch aponta; somar depois de cortar a branch não cria botão nenhum. Sem ele, a única saída é empurrar um commit que altere arquivo fora do `paths-ignore`, sujando a branch de ambiente com conteúdo que não veio da promoção. Ver `ci-cost-minutes.md` §3b |
+| 82 | `[S]` | O `actionlint` é o único linter que lê as duas metades de um workflow (YAML + shell dos `run:`) — e **cega em silêncio** quando falta o `shellcheck` | `yaml.safe_load` e `bash -n` respondem "bem-formado", nunca "correto": não olham contexto de expressão, ref de `uses:` nem label de `runs-on:`. O actionlint olha, mas **delega o shell ao `shellcheck`** e, sem o binário no PATH, desliga a regra sem aviso: medido no mesmo arquivo com `if` sem `then`, **3 erros e exit 1** com shellcheck, **saída vazia e exit 0** sem ele. Não há como forçar — `-shellcheck=<inexistente>` também sai 0; só `-verbose` imprime `Rule "shellcheck" was disabled`. Isso torna "passou no actionlint" inverificável sem dizer se o shellcheck estava lá, e no CI a imagem decide por você (`ubuntu-latest` traz, `slim`/container próprio não) — o gate fica verde tendo lido metade. Dois detalhes que custam tempo: fora de repo git ele sai **3** (não 1) com mensagem que culpa o layout (`check workflows directory is put correctly`), e ele reprova label self-hosted desconhecido — a cura é declarar o inventário em `.github/actionlint.yaml`, não afrouxar o `runs-on:`. Ver `troubleshooting-shared.md` §12 |
 
 ---
 
@@ -270,6 +272,23 @@ gh secret list --env staging
 
 # Check images on GHCR
 gh api orgs/<ORG>/packages/container/<PACKAGE_NAME>/versions
+```
+
+### Validar os workflows antes de commitar
+
+`actionlint` lê YAML **e** o shell dos `run:` — mas só a segunda metade se o
+`shellcheck` estiver no PATH, e ele não avisa quando não está (lição 82).
+
+```bash
+# Instalar (binario Go unico, sem root) + a metade que importa
+VER=$(gh api repos/rhysd/actionlint/releases/latest --jq .tag_name | tr -d v)
+curl -sL "https://github.com/rhysd/actionlint/releases/download/v${VER}/actionlint_${VER}_linux_amd64.tar.gz" \
+  | tar -xz -C /usr/local/bin actionlint
+command -v shellcheck || sudo apt-get install -y shellcheck
+
+# Provar que enxerga o shell ANTES de confiar no verde
+actionlint -verbose 2>&1 | grep 'was disabled'   # nada impresso = regras ativas
+actionlint                                        # exit 0 so vale depois da linha acima
 ```
 
 ### Backend

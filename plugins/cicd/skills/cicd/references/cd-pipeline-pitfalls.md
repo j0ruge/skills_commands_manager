@@ -512,3 +512,51 @@ handles SIGTERM/SIGQUIT fine as PID 1 — so this bites specifically when a shel
 **Verify**: `docker stop <ctr>` should return in well under the grace period and the
 app's shutdown handlers should log. `docker inspect --format '{{.State.ExitCode}}'`
 after a clean stop is `0` (or `143` = 128+SIGTERM) instead of `137` (SIGKILL).
+
+## §9. Actions expression syntax inside a shell COMMENT invalidates the whole workflow
+
+Measured 15/09/2026, and it cost a blocked promotion.
+
+The Actions parser scans a `run:` block for its expression delimiter **everywhere** — it has no
+notion of shell syntax, so `#` does not protect anything. An **empty** expression is a parse
+error, and one is enough to make the entire file invalid.
+
+The trap is that the people most likely to type it are the ones *explaining* interpolation. A
+comment written to justify quoting a heredoc — "the shell still substitutes `$()` here, after
+Actions has already interpolated its own syntax" — breaks the file if it spells that syntax out
+literally. The comment about interpolation breaks the workflow by interpolation.
+
+**Symptom, and why it misleads**: the run goes red with **zero jobs**, `gh run view --log-failed`
+answers `log not found`, and the run's `name` is the *file path* instead of the workflow name.
+That is nearly the hosted-runner quota-block signature, so the first hypothesis is billing. See
+`ci-cost-minutes.md` §5 for the discriminator (`.name` of the run).
+
+**Why it is worse than a red CI**: an invalid workflow does not fire on its own triggers either.
+Push to the deploy branch and **no run is created at all** — the merge looks complete while the
+environment keeps serving the old image. Nothing turns red, because nothing runs.
+
+**The fix that holds**: `actionlint` in the gate, not merely configured. An `.github/actionlint.yaml`
+with nothing executing it documents intent and measures nothing — the repo where this happened had
+exactly that, added the same day. Neither the test runner nor the code formatter reads YAML, so the
+only remaining way to find out was to push to the deploy branch and see no deploy.
+
+```yaml
+- name: Actionlint — validate the workflows
+  run: |
+    VERSION=1.7.7
+    curl -sSL --retry 3 --fail \
+      "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz" \
+      | tar xz -C /tmp actionlint
+    /tmp/actionlint -color
+```
+
+**Verify the sensor in both directions before trusting it** — a linter you only ever saw pass is
+not yet evidence. Reintroduce the defect in a scratch copy and confirm it fails:
+
+```text
+defect present -> cd-staging.yml:93:164: unexpected end of input while parsing ... [expression]   exit=1
+file corrected ->                                                                                 exit=0
+```
+
+Writing the sequence in prose (as this section does) is how you document it without breaking the
+very file you are editing.

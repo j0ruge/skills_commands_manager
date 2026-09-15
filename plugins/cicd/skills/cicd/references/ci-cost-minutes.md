@@ -288,14 +288,46 @@ simplesmente não roda, e o PR fica sem rede de segurança sem que ninguém perc
 `cd-production.yml` — se ele ficar em `ubuntu-latest`, o bloqueio só aparece no dia da tag de
 release, que é o pior momento possível para descobrir.
 
+### O sósia: workflow inválido produz quase a mesma assinatura
+
+Medido em 15/09/2026. Um YAML que o GitHub **não consegue parsear** também gera run vermelho com
+zero jobs e `log not found` — e a leitura instintiva, para quem conhece a seção acima, passa a ser
+"conta bloqueada". Foi o que aconteceu: a primeira hipótese foi billing, e estava errada.
+
+O que separa os dois é o **`.name` do run**, que a assinatura acima não usa:
+
+| Sinal | Cota esgotada | Workflow inválido |
+| ----- | ------------- | ----------------- |
+| `.name` do run | nome legível do workflow (`CD Staging`) | **o caminho do arquivo** (`.github/workflows/cd-staging.yml`) |
+| `.jobs` | existem, com `runner_name` vazio | **lista vazia — nenhum job** |
+| onde está a causa | annotations do check-run | `actionlint` local, aponta linha e coluna |
+| cura | billing | corrigir o YAML |
+
+O GitHub usa o caminho como nome porque não conseguiu ler o `name:` de dentro do arquivo. É um
+sintoma barato e inequívoco, e é o primeiro a consultar.
+
+⚠️ **Um workflow inválido não é um CI vermelho — é um deploy que não acontece.** Ele não dispara
+nem nos gatilhos que deveria: o push na branch de deploy não gera run, o merge aparece concluído e
+o ambiente segue servindo a imagem antiga. Vermelho alguém vê; silêncio, não.
+
 ### Diagnóstico em uma linha
 
+Comece pelo `.name` do **run**, não pelos jobs — o one-liner antigo não conseguia distinguir os
+dois casos:
+
 ```bash
+gh api "/repos/<o>/<r>/actions/runs/<id>" -q '[.name, .path, .conclusion] | @tsv'
+# `.name` == `.path`  -> workflow INVALIDO (rode `actionlint`)
+# `.name` legivel     -> siga para os jobs:
 gh api "/repos/<o>/<r>/actions/runs/<id>/jobs" \
   -q '.jobs[] | [.name, (.runner_name // "VAZIO"), (.steps|length), .conclusion] | @tsv'
 ```
 
 `VAZIO` + `0` steps = bloqueio de conta. `runner_name` preenchido = falha real, vá ler o log.
+
+🔴 **Saída vazia do segundo comando não é "não deu para medir" — é o próprio sinal.** Ele itera
+`.jobs[]`, e no workflow inválido essa lista é vazia: o `jq` não imprime linha nenhuma, nem
+`VAZIO`, nem `0`. Um sensor que emudece onde deveria acusar é indistinguível de um que não rodou.
 
 ## 6. Checklist rápido
 

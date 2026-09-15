@@ -2,6 +2,40 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-15 — O workflow invalido que se disfarca de conta bloqueada — bump 2.27.0 → [2.28.0]
+
+**O quê:** `ci-cost-minutes.md` §5 ganha a subseção "O sósia: workflow inválido" (tabela
+discriminadora + diagnóstico em uma linha reescrito) + `cd-pipeline-pitfalls.md` §9 (novo) +
+lição **83** + emenda na linha de sintoma da Quick Troubleshooting.
+
+**Por quê:** a skill documentava a assinatura do bloqueio de cota (lição 74) — run vermelho,
+zero jobs, `log not found` — como se ela fosse única. Não é. Um workflow que o GitHub não
+consegue parsear produz **quase a mesma assinatura**, e numa sessão real a primeira hipótese
+foi billing, errada. O discriminador é o **`.name` do run**, que vira o caminho do arquivo
+quando o GitHub não consegue ler o `name:` de dentro dele — campo que a skill não mencionava.
+
+Pior: o diagnóstico em uma linha que a §5 recomendava **fica cego exatamente neste caso**. Ele
+itera `.jobs[]`, e no workflow inválido essa lista é vazia — o `jq` não imprime nem `VAZIO` nem
+`0`, imprime *nada*. Um sensor que emudece onde deveria acusar é indistinguível de um que não
+rodou, que é o tema recorrente da skill aplicado a ela própria. O one-liner passa a começar pelo
+`.name` do run.
+
+A causa concreta medida: a sintaxe de expressão do Actions escrita dentro de um **comentário de
+shell** num `run:`. O parser a procura em qualquer ponto do bloco e `#` não protege nada; uma
+expressão vazia basta para invalidar o arquivo. Quem digita isso é justamente quem está
+*explicando* interpolação — o comentário sobre interpolação quebrou o workflow por interpolação.
+
+E a consequência é pior que CI vermelho: o workflow inválido **não dispara nem nos próprios
+gatilhos**. O push na branch de deploy não criou run algum; o merge aparecia concluído e o
+ambiente seguia servindo a imagem antiga. Vermelho alguém vê; silêncio, não.
+
+Fecha também uma lacuna aberta pela própria lição 82: ela leva o leitor a criar
+`.github/actionlint.yaml` (para declarar labels self-hosted), mas nada dizia para **executar** o
+actionlint no gate. Foi exatamente esse o estado do repo — config presente, nada a rodando. Teste
+e formatador não leem YAML, então a única forma restante de descobrir era empurrar para a branch
+de deploy e não ver deploy. A lição 83 pede o step no gate e a validação do sensor nos dois
+sentidos (com o defeito, exit 1 apontando linha:coluna; corrigido, exit 0).
+
 ## 2026-08-27 — Migrar job para self-hosted: as armadilhas que a alavanca de custo não contava — bump 2.21.1 → [2.22.0]
 
 **O quê:** nova reference `references/self-hosted-job-migration.md` (pré-voo por ordem de risco medida, as 4 armadilhas com assinatura de log, e o padrão de descobrir a topologia em vez de supor) + nova seção `ci-cost-minutes.md` §5 (bloqueio de cota/cobrança) + §3a re-rankeada + **§3b corrigida** + lições 71–74 + lição 68 emendada + 2 linhas na Quick Troubleshooting + linha na routing table + 4 keywords + descrição enxugada (473 → 467 chars). Corrige também um **drift de versão**: o `SKILL.md` marcava `2.20.0` enquanto `plugin.json`/`marketplace.json` estavam em `2.21.1`.

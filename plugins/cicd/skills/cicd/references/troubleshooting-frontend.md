@@ -250,6 +250,66 @@ a cada run — restaure com `git checkout --` ou adicione ao `.gitignore`.
 
 ---
 
+### 10. Job de teste **verde** com milhares de linhas de ruído — e o ruído que é sensor cego
+
+**Sintoma**: o `ci-gate-frontend` passa, mas o log tem 1.000+ linhas de `stderr` com
+`Error:` e `Warning:`. A leitura natural é "é só ruído de jsdom" — e na maior parte é
+mesmo. O problema é que *"na maior parte"* não é uma medição, e o ruído ambiente é
+exatamente onde um sensor cego se esconde: quando tudo grita, nada grita.
+
+**Diagnóstico — agrupe por assinatura antes de decidir.** Não leia o log linha a linha;
+normalize e conte. Uma medição real (2.451 testes, 4 workspaces) levou ~30 s:
+
+```bash
+gh run view <run-id> --job <job-id> --log > job.log
+grep -oiE 'Error: [^|]{0,90}|Warning: [^|]{0,90}' job.log \
+  | sed -E 's/[0-9a-f]{8,}/<hash>/g; s/[0-9]{3,}/<n>/g' \
+  | sort | uniq -c | sort -rn | head -15
+```
+
+O resultado separa duas classes que se parecem no log e **não** se parecem em risco:
+
+| Classe | Exemplo medido | O que fazer |
+| --- | --- | --- |
+| Lacuna do ambiente | 591× `Not implemented: window.scrollTo` (jsdom não implementa) | *stub* no setup dos testes — silenciar é seguro e devolve o log à legibilidade |
+| Aviso de migração | 114× future flags do React Router v7 | agendar; não urge, mas não some sozinho |
+| Update fora do `act()` | ~106× (Radix Select e afins) | sinal de flakiness futura |
+| **Requisição sem handler de mock** | 354× `[MSW] intercepted a request without a matching request handler` | **é a que carrega risco — ver abaixo** |
+
+**A causa que importa**: `server.listen({ onUnhandledRequest: "warn" })`. Com `"warn"`, uma
+requisição que nenhum handler cobre **não falha o teste** — ela simplesmente não é
+atendida. O código sob teste recebe um erro de rede e cai no próprio tratamento de falha,
+que quase sempre é um *fallback* silencioso:
+
+```ts
+const achado = await api.ceps.buscar(cep).catch(() => null);   // vira "nada aconteceu"
+```
+
+O teste então passa **medindo o caminho de erro** enquanto a descrição dele promete medir
+a funcionalidade. É a mesma família do §9: verde que não mediu o que diz medir — só que
+aqui o gate está certo e o *teste* é que ficou cego, e nada no log distingue o teste que
+mocka de propósito daquele que esqueceu.
+
+**Fix**: torne a ausência de handler um erro, para que "esqueci o mock" falhe alto:
+
+```ts
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+```
+
+⚠️ **Não é troca de uma linha, e tratar como se fosse é o erro.** As 354 requisições caem
+todas no mesmo instante. Primeiro acrescente os handlers das rotas que já são exercitadas
+(o agrupamento acima já as enumera, normalizadas por id), depois vire a chave. Onde a
+falha de rede for o cenário sob teste, declare a exceção no próprio teste — ela vira
+documentação do que se está medindo, em vez de política global.
+
+**Antes de virar a chave, confira se o defeito já existe**: para cada rota da lista, veja
+se algum teste afirma o caminho de sucesso dela. Se afirma e passa, ele mocka por outro
+meio (um *spy* no cliente, por exemplo) e está saudável; se nenhum afirma, a
+funcionalidade nunca foi medida em jsdom — e aí o `"error"` não está criando trabalho
+novo, só está revelando o que já faltava.
+
+---
+
 ## Diagnosis Flow — Frontend
 
 ```text

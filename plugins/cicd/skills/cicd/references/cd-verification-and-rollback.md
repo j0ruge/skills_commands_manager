@@ -223,6 +223,56 @@ environment, where they can diverge.
 
 ---
 
+## §8. `cmd | tail` throws the exit code away — and `PIPESTATUS` does not exist in zsh
+
+**Symptom**: a pre-flight or gate script prints `EXIT_TEST=` — empty, neither `0` nor a
+number — and the run is reported as passing. Or worse: it prints nothing about the exit
+status at all, and whoever reads the output assumes green because no failure was printed.
+
+**Cause**: two separate faults that usually arrive together.
+
+A pipeline's exit status is the status of its **last** command. So `npm test | tail -25`
+exits with the status of `tail`, which is `0` no matter how the tests went. Piping a gate
+to `tail`/`head`/`grep` to keep the log short silently converts every failure into a pass.
+
+The reflex fix is `${PIPESTATUS[0]}` — and that is a **bash** array. In zsh the equivalent
+is `$pipestatus`, and it is **1-indexed**, so `${pipestatus[1]}` is the first command.
+Referencing `${PIPESTATUS[0]}` under zsh does not error: it expands to the empty string.
+The gate then assigns `EXIT_TEST=` and every later comparison operates on nothing.
+
+This matters beyond a developer's laptop. CI `run:` steps default to bash on GitHub
+Actions, but the same gate run locally as a pre-flight — by a human, or by an agent whose
+shell is zsh — silently stops measuring. The local filter that was supposed to catch the
+failure before CI becomes decorative, and the discrepancy is invisible because both
+transcripts look identical.
+
+**Fix**: do not read the exit status through a pipe at all. Redirect to a file and read
+`$?` directly — portable across shells, and it keeps the full log for when you need it:
+
+```bash
+npm run test      > test.log 2>&1; echo "EXIT_TEST=$?"  > exits.txt
+npm run lint      > lint.log 2>&1; echo "EXIT_LINT=$?" >> exits.txt
+npm run typecheck > tsc.log  2>&1; echo "EXIT_TSC=$?"  >> exits.txt
+cat exits.txt          # three real numbers, or the gate is lying to you
+```
+
+If you genuinely need the pipe, set `set -o pipefail` (bash and zsh both honour it) so the
+pipeline adopts the first non-zero status, instead of reaching for a `PIPESTATUS` spelling
+that differs between the two shells.
+
+**How to tell you have this bug**: the value is *empty*, not wrong — so a check for
+"non-zero" never fires. Grep your own output for an assignment with nothing after the `=`:
+
+```bash
+grep -E 'EXIT_[A-Z]+=$' exits.txt && echo "the gate measured nothing"
+```
+
+**Related**: this is §6 applied to the gate command itself — the sensor was silent because
+it never ran, not because the thing it watches is clean. Ask the same question: *would
+this have shown me a positive?* A gate that cannot print a non-zero is not a gate.
+
+---
+
 ## Symptoms → section
 
 | Symptom | Section |
@@ -236,3 +286,5 @@ environment, where they can diverge.
 | `pg_dump: server version mismatch` in the backup container | §5 |
 | Empty log capture / no-output check reported as "clean" | §6 |
 | `vars.X` looks unset because the environment list is empty | §7 |
+| A gate prints `EXIT_X=` with nothing after the `=` | §8 |
+| `cmd \| tail` reports success on a failing test suite | §8 |

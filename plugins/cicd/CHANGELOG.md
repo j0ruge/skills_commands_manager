@@ -2,6 +2,35 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-15 — O gate que fica verde sem ter medido: exit code no pipe e ruido que esconde sensor cego — bump 2.28.0 → [2.29.0]
+
+**O quê:** `cd-verification-and-rollback.md` §8 (novo) + `troubleshooting-frontend.md` §10
+(novo) + lições **84** e **85** + duas linhas na Quick Troubleshooting + o §8 citado no
+índice de referências do SKILL.md.
+
+**Por quê:** a skill já ensinava "prove o sensor antes de confiar no silêncio dele" (§6),
+mas só do lado do CD. Duas medições desta sessão mostram o mesmo defeito em dois lugares
+que ela não cobria.
+
+O primeiro é o comando do gate. `npm test | tail -25` sai com o status do `tail` — sempre
+0 —, e o conserto reflexo `${PIPESTATUS[0]}` **não existe no zsh**: lá o array é
+`$pipestatus`, 1-indexed, e a grafia bash expande para string **vazia**, sem erro. O gate
+então imprime `EXIT_TEST=` e toda comparação posterior opera sobre nada. Medido: os três
+gates de uma rodada (test/lint/typecheck) reportaram vazio de uma vez, e a leitura natural
+do log foi "passou". Agrava que `run:` no Actions é bash por padrão, mas o mesmo gate
+rodado localmente como pre-flight — por gente ou por agente cujo shell é zsh — emudece, e
+os dois transcripts ficam idênticos.
+
+O segundo é o ruído. Um job de teste verde com 1.000+ linhas de `Error:`/`Warning:` convida
+à leitura "é só jsdom" — que é leitura, não medição. Agrupando por assinatura (2.451
+testes), 591 eram `window.scrollTo` não implementado e 114 avisos de migração, seguros de
+silenciar; mas **354** eram requisições sem handler de mock, que são de outra classe: com
+`onUnhandledRequest: "warn"` elas não falham o teste, o código cai no próprio `catch`
+(`.catch(() => null)`) e o teste passa **medindo o caminho de erro** enquanto promete medir
+a funcionalidade. É a família do §9 (typecheck vácuo) com o culpado do outro lado: ali o
+gate estava errado, aqui o gate está certo e o teste é que ficou cego — e nada no log
+distingue quem mocka de propósito de quem esqueceu.
+
 ## 2026-09-15 — O workflow invalido que se disfarca de conta bloqueada — bump 2.27.0 → [2.28.0]
 
 **O quê:** `ci-cost-minutes.md` §5 ganha a subseção "O sósia: workflow inválido" (tabela

@@ -635,6 +635,8 @@ O runner **registra e conecta com sucesso** (não é problema de token nem de re
 > - `404 .../actions/runner-registration` + `Not configured` → **§7** (registration token vencido).
 > - `registration has been deleted from the server` → **§9** (config stale reaproveitada).
 > - `Runner version vX is deprecated and cannot receive messages` → **§8** (binário velho). Conectou e listou jobs antes de morrer — prova que credencial/registro estão OK.
+>
+> ⚠️ **Essa mensagem pode simplesmente NÃO EXISTIR** e o runner ainda assim recusar trabalho — a recusa nem sempre é anunciada. Se o log termina em `Listening for Jobs` e não diz mais nada, vá para o **§8b**: lá o tell é o oposto (contêiner estável e `healthy`, `RestartCount` baixo) e a prova está no filesystem, não no log.
 
 **Fix imediato** (no host, no diretório do compose):
 
@@ -662,7 +664,80 @@ runner:
 
 Aplicar exige recriar o container (a env é lida no start): `docker compose up -d --force-recreate <runner>`. Confirmar que sumiu de fato: `docker exec <runner> printenv DISABLE_AUTO_UPDATE` deve **não** retornar nada.
 
+<CRITICAL>
+**Num runner efêmero com entrypoint que limpa state, o auto-update é ESTRUTURALMENTE
+impossível — ligado ou desligado.** O `DISABLE_AUTO_UPDATE` não é a única forma de não
+atualizar.
+
+O update do runner tem duas metades: ele baixa `bin.<nova>/` e, **ao sair**, roda um script que
+troca `bin/` pelo novo. Se o entrypoint apaga `.runner`/`.credentials` e o contêiner reinicia,
+a segunda metade nunca acontece: o processo volta do `bin/` que veio **na imagem** — imutável
+quando o `FROM` é pinado por digest. O runner então baixa de novo, tenta de novo, e o único
+vestígio é o `bin.<nova>/` acumulando ao lado e o `RestartCount` subindo devagar (28 em ~3
+semanas, não milhares — por isso não se parece com crashloop).
+
+Medido em 18/09/2026: `bin/` de ago/2024 (2.319.1) com `bin.2.337.0/` baixado em 1º/set,
+`DISABLE_AUTO_UPDATE` **ausente** (auto-update ligado), e o runner mudo mesmo assim. Quem
+conserta é o bump do `FROM` — nunca o runtime. Sintoma completo no §8b.
+</CRITICAL>
+
 > **Corolário — caveat à lição 45 (pin por digest)**: pinar a imagem do **runner** por digest é **contraproducente sem cadência de bump**. A lição 45 vale para `node`/`nginx`/`postgres` (imutabilidade desejável), mas o GitHub **força currency de versão** do runner — um digest congelado garante que, em 1–2 meses, a versão fica deprecada e cai no §8. Para o runner, escolha conscientemente: (a) `:latest` + auto-update ligado (sempre atual, menos reproduzível), OU (b) pin por digest + **cron/rotina mensal de `docker compose pull`**. Não pine sem o (b).
+
+### §8b. A variante SILENCIOSA: runner `online`, ocioso e mudo (migração para o Broker)
+
+O §8 assume que o runner **anuncia** a recusa e morre. Existe uma variante em que ele não
+anuncia nada — e ela é pior, porque todos os sinais que você checaria dizem "saudável".
+
+Medido em 18/09/2026, depois de **três semanas** sem ninguém notar:
+
+```text
+docker ps          → Up 19 hours (healthy)          # não é crashloop
+RestartCount       → 28                             # não são "milhares"
+gh api .../runners → status=online  busy=false      # não é ausência nem offline
+docker logs        → ...15:15:56Z: Listening for Jobs   ← e acaba aqui, sem erro
+```
+
+A recusa aparece só no `_diag`, e não se parece com recusa:
+
+```bash
+docker exec <runner> sh -c 'grep -c BrokerMigration $(ls -t /actions-runner/_diag/Runner_*.log | head -1)'
+# 460  → uma linha por minuto:
+# [MessageListener] BrokerMigration message received. Polling Broker for messages...
+```
+
+O GitHub migrou a entrega de jobs para o serviço **Broker** e exige binário atual. Um runner
+velho fica nesse laço: conectado, escutando, e nunca designado.
+
+<CRITICAL>
+**O sensor decisivo está no filesystem, não no log** — e responde em um comando:
+
+```bash
+docker exec <runner> sh -c 'cat /actions-runner/*.version; ls -d /actions-runner/bin.* 2>/dev/null'
+# 2.319.1
+# /actions-runner/bin.2.337.0     ← baixou o novo e NUNCA trocou
+```
+
+Um diretório `bin.<versão-nova>/` ao lado de um `bin/` antigo é prova direta: o auto-update
+obedeceu, baixou, e o swap não aterrissou. Veja o §8a para o porquê estrutural.
+</CRITICAL>
+
+**Triagem barata antes de suspeitar do runner.** Com um `deploy` em fila, a hipótese cara é
+"gate de aprovação do Environment". Ela se refuta **de dentro do próprio run**, sem abrir UI e
+sem PAT: se **outro job do mesmo run** declara o mesmo `environment:` e executou, o Environment
+não é o bloqueio.
+
+```bash
+gh api "repos/<org>/<repo>/actions/runs/<id>/jobs" \
+  --jq '.jobs[] | "\(.name) \(.status)/\(.conclusion) labels=\(.labels|join(",")) runner=\(.runner_name // "-")"'
+# build-and-push-frontend  completed/success  labels=ubuntu-latest   runner=GitHub Actions 1000002875
+# deploy                   completed/cancelled labels=self-hosted,production runner=      ← só ESTE ficou sem runner
+```
+
+`runner_name` vazio no job em fila, com os irmãos executados, aponta para disponibilidade de
+runner — não para permissão, concorrência nem cota.
+
+**Fix**: o mesmo do §8 (binário atual). Se a imagem é **pinada por digest**, `docker compose
+pull` não muda nada — é preciso bumpar o `FROM` e reconstruir (§8a).
 
 ## §9. Config-reuse ressuscita credencial morta após o GitHub apagar o registro
 
@@ -768,7 +843,23 @@ ssh host 'cd /opt/<proj>/infra/<env> && docker compose -p <project> --env-file .
 
 **Por que o `timeout-minutes` não salva:** ele só começa a contar **depois** que um runner pega o job. Enquanto o job está em fila esperando runner, o relógio não anda — então um runner morto deixa o deploy `queued` para sempre, sem virar falha. Pior: o site continua no ar servindo a imagem **antiga** (o container atual não é tocado), então não há sintoma externo. Num incidente real isso passou **~5 semanas** despercebido.
 
-Defesa em profundidade — duas camadas, ambas em `ubuntu-latest` (não dependem do runner doente):
+Defesa em profundidade. As duas camadas clássicas vêm primeiro; a **terceira** existe porque
+nenhuma delas cobre o caso silencioso. Todas em `ubuntu-latest` — um vigia do runner não pode
+depender do runner que vigia, senão fica `queued` junto, que é exatamente o silêncio que ele
+existe para quebrar.
+
+<CRITICAL>
+**A e B não pegam o runner `online` e mudo do §8b — foi medido.** Vale saber disso antes de
+implementá-las e concluir que o problema está coberto:
+
+| Camada | Por que falha no §8b |
+| --- | --- |
+| **A** (preflight de presença) | o runner fica `status=online, busy=false` o tempo todo; a presença é verdadeira e a resposta é "tudo bem" |
+| **B** (watchdog de deploy preso) | só encontra o que já está em fila. No caso real ninguém tentou deployar por **17 dias** — não havia job preso, e quando houve, a detecção chegou junto com o humano |
+
+Quem detecta desde o primeiro dia é a **camada C**, abaixo: comparar a *versão* do runner com
+a release corrente. É a única das três que mede a causa em vez de um efeito.
+</CRITICAL>
 
 ### A. Preflight gate — falha rápida no push
 
@@ -840,6 +931,38 @@ Dois gotchas que tornam ingênua a primeira tentativa:
 1. **Cheque status de JOB, não de RUN.** Um deploy esperando runner deixa o **run** como `in_progress` (ci/build já rodaram) com o **job** `deploy` em `queued`. Filtrar `?status=queued` nos *runs* **erra** esse caso — itere `status=in_progress` e olhe `.jobs[].status=="queued"`.
 2. **Workflows `schedule` só rodam a partir do branch default** (ex.: `main`). O arquivo do watchdog precisa chegar à default branch para o cron ativar — não basta estar na branch de integração (`develop`). Isso costuma exigir um PR separado direto p/ `main`.
 3. Diferente do §A, **não precisa de secret**: listar *runs/jobs* só exige `actions: read` (que o `GITHUB_TOKEN` tem); listar *runners* é que exige admin.
+
+### C. Currency de versão — a que pega o runner mudo antes de alguém deployar
+
+`GET /actions/runners` devolve `version` por runner. Compare com a release corrente de
+`actions/runner`, **lida na hora** — número cravado no arquivo envelhece calado, e é assim que
+um sensor passa a aprovar exatamente o que existia para reprovar.
+
+```bash
+ATUAL=$(gh api repos/actions/runner/releases/latest --jq '.tag_name' | tr -d v)
+gh api "repos/$REPO/actions/runners" \
+  --jq '.runners[] | select(.status=="online") | "\(.name)\t\(.version)"' |
+while IFS=$'\t' read -r NOME VERSAO; do
+  ATRASO=$(( $(echo "$ATUAL" | cut -d. -f2) - $(echo "$VERSAO" | cut -d. -f2) ))
+  [ "$ATRASO" -ge "${MAX_MINORS_ATRASO:-3}" ] \
+    && echo "::error::$NOME em $VERSAO, $ATRASO minors atrás de $ATUAL — bumpe o FROM (§8a/§8b)"
+done
+```
+
+Duas escolhas que valem explicar:
+
+- **Limiar em minors, não em "igual à última".** A cadência de release é ~mensal e o GitHub
+  tolera alguns atrás; exigir igualdade transforma o gate em ruído mensal, e ruído que sempre
+  acende deixa de ser lido. `3` dá cerca de um trimestre de folga e ainda pega de longe um
+  runner 18 minors atrasado, que foi o caso real.
+- **Usa o mesmo `RUNNER_STATUS_PAT` da camada A**, com a mesma degradação: sem secret, avisa
+  e sai 0. Vale dizer no aviso *o que se perde* — sem isso, "checagem desligada" se lê como
+  detalhe, quando é justamente a metade que enxerga o §8b.
+
+⚠️ **Acoplamento de rotação.** Se o PAT for o mesmo `ACCESS_TOKEN` host-wide que registra os
+runners, rotacioná-lo sem regravar o secret faz A **e** C degradarem para fail-open ao mesmo
+tempo: elas avisam e param de proteger, e sobra só a camada B — a que já sabemos que não pega
+este caso.
 
 **Quando aplicar:** sempre que houver deploy self-hosted disparado por push/tag. O preflight dá ❌ imediato no push (e protege contra deploy sem runner); o watchdog cobre qualquer deploy que já tenha ficado preso (inclusive os disparados quando o runner já estava morto). Juntos transformam "semanas de silêncio" em "falha vermelha em minutos / ≤6h". Lembre: isto é **detecção**, não cura — o root-cause (§7–§10) continua sendo operacional/host-side.
 

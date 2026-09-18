@@ -207,6 +207,50 @@ curl -sI https://app.example.com/ | grep -i content-security-policy    # origins
 
 ---
 
+### §2a. The asymmetry that makes the clone dangerous instead of merely useless: it IS the deploy path for the runner
+
+§2 says to delete the operator clone because CD checks out its own copy. Measured on
+18/09/2026, that advice is right about the app and **wrong about one service** — and the
+exception is the one nobody thinks about.
+
+CD's `up -d` names its services explicitly, and `runner` is never among them:
+
+```yaml
+run: docker compose -f "$COMPOSE_FILE" up -d frontend backend postgres backup
+#                                                ^ no `runner` — a runner cannot deploy itself
+```
+
+So for every service except one, drift in the operator clone is inert: each deploy overwrites
+it from the runner workspace. Proof that costs one command — the live container carried a
+setting the host's compose file didn't even have:
+
+```bash
+docker exec <backup-container> printenv BACKUP_ON_START   # TRUE
+grep -c BACKUP_ON_START <operator-clone>/docker-compose.yml   # 0
+```
+
+For the `runner` service the opposite holds: that directory is the **only** path by which it is
+ever built and recreated. Drift there shows up in no deploy, produces no red run, and only
+bites the day someone recreates the runner — which is the day they are already fighting
+something else.
+
+**Practical consequences**, none of which follow from §2 alone:
+
+- **Don't delete the clone outright** where the runner is defined in that compose file; you'd
+  be removing the only way to rebuild the runner. Narrow it instead: keep it, and touch it only
+  with `docker compose up -d --no-deps runner`, never a bare `up -d`.
+- **That clone's `.env` has no app secrets.** CD writes the `.env` in the runner workspace from
+  GitHub secrets, so `docker compose config` in the operator clone prints `POSTGRES_*`,
+  `ZITADEL_MASTERKEY`, `JRC_API_TOKEN` "not set, defaulting to a blank string". A bare `up -d`
+  there doesn't fail — it starts containers with **empty credentials**, which is the
+  defined-but-empty trap of the §6 `JRC_API_TOKEN` lesson arriving by hand instead of by
+  pipeline.
+- **Sync it minimally.** Bringing the whole directory up to date with the repo is how you break
+  it: an `entrypoint.sh` newer than the host's compose may require an env var that compose
+  doesn't define (measured — `RUNNER_ENV_LABEL is required`, runner into crashloop, restored
+  from backup). Copy the one file you need, keep a `.bak`, and validate with
+  `docker compose config` before `up`.
+
 ## §3. `docker compose --profile X run` reconciles unrelated services
 
 **Symptom** (companion to §2): running `docker compose -f <file> --profile bootstrap run --rm idp-bootstrap` to manually re-run a one-shot job recreates running containers from `<file>`'s spec, even though those containers aren't in profile `bootstrap`. Live stack is briefly disrupted.

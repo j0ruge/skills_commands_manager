@@ -2,6 +2,35 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-18 — O runner que recusa trabalho sem anunciar, e a camada de detecção que faltava — bump 2.29.0 → [2.30.0]
+
+**O quê:** `self-hosted-runner-docker.md` §8b (novo) + §8a e §11 ampliados (camada **C**,
+currency de versão) + `cd-pipeline-pitfalls.md` §2a (novo) + lições **86–89** + 2 linhas na
+Quick Troubleshooting + os dois parágrafos de trigger.
+
+**Por quê:** a skill já cobria o binário deprecado (§8), mas pela assinatura errada. Medido em
+18/09/2026, depois de **três semanas** sem ninguém notar: o runner recusava trabalho **sem
+anunciar** — `Up 19 hours (healthy)`, `RestartCount` 28 (não milhares), `gh api …/runners`
+dizendo `online busy=false`, log terminando em `Listening for Jobs`. Nenhuma das isolation keys
+do §8/§9/§10 aparece. O único vestígio era `BrokerMigration message received` 1×/min no
+`_diag`: o GitHub migrou a entrega de jobs para o serviço Broker e exige binário atual.
+
+Três coisas que a skill afirmava e que a medição qualifica:
+
+1. **"Remova `DISABLE_AUTO_UPDATE` e o §8 para de recorrer"** (lição 48) não vale em contêiner
+   efêmero cujo entrypoint limpa o state: o update baixa `bin.<nova>/` e, ao sair, troca `bin/`
+   — e a segunda metade nunca acontece, porque o processo volta do `bin/` imutável da imagem.
+   Isso **fecha a saída (a) da lição 49** para esse desenho. O sensor é o filesystem, não o log.
+2. **As duas camadas da §11 não pegam este caso**, e isso importa antes de implementá-las e
+   concluir que o problema está coberto: presença responde "tudo bem" (o runner está
+   genuinamente online) e deploy-preso só acha o que já está em fila — no caso real ninguém
+   deployou por 17 dias. Entra a camada **C**, que compara `.runners[].version` com a release
+   corrente de `actions/runner`, lida na hora.
+3. **O §2 manda apagar o clone do operador** — certo para a aplicação (provado: o contêiner vivo
+   tinha `BACKUP_ON_START=TRUE` que o compose do host nem continha), e errado para o `runner`,
+   que o `up -d` do CD nunca lista porque não pode se deployar. Ali o clone é o **único** caminho
+   de deploy, e sincronizá-lo por inteiro derrubou um runner em crashloop.
+
 ## 2026-09-15 — O gate que fica verde sem ter medido: exit code no pipe e ruido que esconde sensor cego — bump 2.28.0 → [2.29.0]
 
 **O quê:** `cd-verification-and-rollback.md` §8 (novo) + `troubleshooting-frontend.md` §10

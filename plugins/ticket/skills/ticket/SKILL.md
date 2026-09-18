@@ -525,10 +525,16 @@ diferentes.
    mcp__atlassian__addCommentToJiraIssue(
      cloudId: "<cloud-id-da-jrcbrasil>",        # `getAccessibleAtlassianResources` se não souber
      issueIdOrKey: "${PROJECT}-XXX",
-     body: "<resumo em markdown — ver template em references/templates.md §Markdown>",
+     commentBody: "<resumo em markdown — ver template em references/templates.md §Markdown>",
      contentFormat: "markdown"
    )
    ```
+
+   ⚠️ **O campo é `commentBody`, não `body`** — e o engano custa o resumo
+   inteiro. A validação roda no servidor **depois** de o corpo ter sido
+   transmitido, então um `body:` responde
+   `MCP error -32602: ... Required at commentBody` só no fim, e a correção é
+   reenviar o comentário todo. Medido em 18/09/2026.
 
    **Fallback (sem MCP atlassian disponível):** montar ADF JSON manual e postar
    via `acli`. Markdown e Wiki Markup **não** funcionam ali (renderizam como
@@ -641,6 +647,22 @@ diferentes.
    > Se o dev pediu para **permanecer no branch atual** (fluxo direto no
    > `${BASE_BRANCH}`, sem feature branch e sem PR — como no commit direto em
    > `main`), pular os steps 9-10.
+
+   > **Se o PR já foi mergeado**, pular os steps 8-10 inteiros. Fechar o cartão
+   > *depois* de mergear é o caso comum — não a exceção —, e ali não há pendência
+   > a commitar, PR a abrir nem base para voltar: você já está nela. Tentar o
+   > step 9 abre um PR vazio de uma branch já integrada.
+   >
+   > ⚠️ E é justamente aí que o **step 1 falha**: a branch corrente é a base, e o
+   > regex `^(${BRANCH_PREFIX}-\d+)` não casa nada. Antes de pedir a key ao dev,
+   > olhe o commit de squash — ele carrega a key no subject:
+   >
+   > ```bash
+   > git log -1 --format='%s'      # ex.: "SQ-133: o consultor vê ... (#172)"
+   > ```
+   >
+   > Confirme com o dev o que encontrou, em vez de assumir: o último commit da
+   > base pode ser de outro cartão se alguém mergeou no meio.
 
 11. **Output:**
 

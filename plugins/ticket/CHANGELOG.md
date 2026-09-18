@@ -1,5 +1,36 @@
 # Changelog — ticket
 
+## [1.5.1] — 2026-09-18
+
+Duas correções de precisão vindas de um `close` real (SQ-133, projeto SQ), as
+duas sobre o mesmo ponto cego: o fluxo descrevia o caminho certo com um detalhe
+errado, e o detalhe só cobra no fim.
+
+### O campo do MCP é `commentBody`, não `body`
+
+O step 5 do `close` documentava a chamada com `body:`. O servidor recusa com
+`MCP error -32602: Invalid arguments for tool addCommentToJiraIssue: Required at
+commentBody` — e a validação roda **depois** de o corpo ter sido transmitido, de
+modo que o engano custa reenviar o resumo de fechamento inteiro, que é a parte
+cara da chamada. Corrigido no exemplo, com o porquê ao lado: o valor da linha não
+é saber o nome, é saber que descobri-lo tarde tem preço.
+
+### `close` depois de o PR já estar mergeado
+
+Os steps 8-10 (commitar pendências, abrir PR, voltar à base) assumem que o
+`close` é quem publica. Havia ressalva para o commit direto na base, mas não para
+a forma mais comum — mergear e **depois** fechar —, em que não há pendência a
+commitar, PR a abrir nem base para voltar, e o step 9 abriria um PR vazio de uma
+branch já integrada.
+
+Junto vem o efeito colateral que só aparece nessa ordem: com a base em checkout,
+o **step 1 não detecta a issue** (o regex casa o nome da branch, e a branch é a
+base). A key está no subject do commit de squash — `git log -1 --format='%s'` a
+devolve —, e a nova ressalva manda conferir isso com o dev antes de pedir a key,
+com a cautela de que o último commit pode ser de outro cartão.
+
+- `description` não foi tocada.
+
 ## [1.5.0] — 2026-09-11
 
 Quatro lições de um `close` real (RS-877, projeto RS). Três são sensores que

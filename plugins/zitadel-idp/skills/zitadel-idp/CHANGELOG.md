@@ -2,6 +2,38 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-18 — Quirk 51: `reuse` é a mesma palavra para "já estava certo" e "li uma declaração velha" — bump 0.14.0 → 0.15.0
+
+**Sintoma que teria evitado:** um deploy de staging com **quatro passos verdes** que não criou papel
+nenhum, e cuja saída era tranquilizadora — `reuse quote.cotador`, `reuse quote.admin`,
+`oidc config sem mudanças (no-op)` —, porque é exatamente o que o bootstrap imprime quando tudo já
+está certo.
+
+**A lição é sobre vocabulário.** Idempotência e defasagem falam igual: `reuse`, `ALREADY_EXISTS` e
+`no changes` saem nos dois mundos. Aqui o `zitadel-config.yaml` estava `COPY`ado numa imagem de
+**13/jun** que o deploy de **18/set** não reconstruiu, e o script aplicou fielmente a lista velha. O
+sinal de que faltou algo é um **negativo** — a ausência de linhas `created` —, e ninguém repara numa
+linha que não foi impressa. Isso põe o quirk na família do 30, uma camada abaixo: o 30 avisa que o
+arquivo de **saída** só é atualizado quando o bootstrap roda; este é a **entrada** envelhecendo do
+mesmo jeito.
+
+**A verificação foi escolhida pelo que NÃO exige.** O caminho por API é o `roles/_search` REST v1
+(Quirk 49 — não há gêmeo em Connect/v2) e pede um PAT, que é justamente o que falta num ambiente
+recém-criado ou de terceiro. A projeção no Postgres responde sem token, sem rede e sem expiração —
+e o `creation_date` é o que a torna decisiva em vez de informativa: papéis datados do nascimento da
+instância, num deploy que deveria acrescentar dois, dizem que o bootstrap **aplicou uma lista
+velha**, não que falhou.
+
+⚠️ Dois detalhes que custaram tempo: o sufixo numérico da projeção muda entre releases
+(`project_roles4` na v4.15.0) e deve sair do `information_schema` — palpite errado falha com
+`relation does not exist`, que se lê como banco quebrado; e o módulo `shell` do Ansible **templa
+`{{ }}`**, então `docker ps --format '{{.Names}}'` estoura ali.
+
+**E o conserto recomendado não é a consulta, é o gate:** um deploy cujo produto é *estado* precisa de
+asserção sobre estado, derivada da própria declaração (cada `roles[].key` do YAML tem de aparecer na
+saída do bootstrap). Essa forma pega também o caso do input velho, que a consulta à instância **não**
+pega — depois que alguém conserta à mão, uma rodada defasada e uma correta deixam a mesma instância.
+
 ## 2026-09-18 — Quirk 48: a chave do project role é imutável, e o alias no claim é o que desacopla o deploy — bump 0.12.0 → 0.13.0
 
 **Sintoma que teria evitado:** planejar um rename de papel como se fosse edição de campo, descobrir

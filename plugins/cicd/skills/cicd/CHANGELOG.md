@@ -2,6 +2,52 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-18 — Três armadilhas do primeiro deploy de staging num runner conteinerizado — bump 2.30.1 → [2.31.0]
+
+**O quê:** três lições novas (90, 91, 92) e três seções: `self-hosted-runner-docker.md` §12,
+`cd-pipeline-pitfalls.md` §10 e `cd-verification-and-rollback.md` §9.
+
+**Por quê:** um primeiro deploy de staging de um IdP — stack com três meses de estado real —
+reprovou, depois passou verde sem fazer nada, e só um `SELECT` rodado à mão por desconfiança
+mostrou isso. Cada etapa deixou uma lição que o runbook não tinha.
+
+**§12 — o runner conteinerizado não compartilha o filesystem do host, e METADE do comando
+funciona.** O passo reprovou com `test -r /opt/.../.env` falhando enquanto o arquivo estava
+intacto no host, `0600 root`, com as quatro variáveis. A causa não é permissão nem ausência: num
+runner socket-mount o job roda **dentro** do container, e um único `docker compose` mistura dois
+mundos — a fonte de um bind mount é resolvida pelo **daemon** (host), mas `--env-file`, `-f` e
+`--project-directory` são abertos pelo **CLI** (container). É por isso que engana: `docker run -v
+/host/x:/x` funciona e dá a impressão de que o container "vê o host". A skill já tinha os outros
+dois eixos dessa família — rede (`self-hosted-job-migration.md §2`) e permissão
+(`cd-pipeline-pitfalls.md §6`) —, e faltava o da **existência do caminho**, que é o menos visível
+dos três porque os outros dão erro sobre a coisa certa. Corolário que vale o parágrafo: monte o
+**diretório**, não o arquivo, porque rotação de segredo reescreve por substituição e bind mount de
+arquivo prende o **inode**.
+
+**§10 — `compose run`/`up` não reconstrói imagem cuja tag já existe.** Corrigida a montagem, o
+deploy passou **verde** e não criou nada. A imagem do bootstrap era de **13/jun**, o deploy de
+**18/set**, e o YAML embutido nela (`COPY`, não volume) declarava 2 dos 4 papéis do checkout — os
+dois ausentes eram o objetivo do deploy. É a lição 29 (`docker run` não re-pulla tag existente)
+pelo lado do *build*, e é pior: no pull você desconfia do registry, no build o artefato é o seu
+próprio repositório. O discriminador que decide se o pipeline tem o problema é o shape — quem
+empurra por `sha-<commit>` ao registry é imune; quem constrói local com tag de ambiente não é, e
+esse é quase sempre o de **staging**, o ambiente que existe para descobrir problemas.
+
+**§9 — o smoke prova que o serviço responde, não que o passo escreveu.** É a razão de as duas
+anteriores terem chegado até ali. Deploy normalmente entrega **serviço**, e "responde pelo caminho
+do usuário" é o smoke certo para serviço; bootstrap, seed e migration de dados entregam **fato**, e
+para fato aquele smoke é verdadeiro antes e depois. Agrava que esses passos são idempotentes por
+desenho, e idempotência tem vocabulário próprio (`reuse`, `already exists`, `no changes`) que é
+**indistinguível** entre "já estava certo" e "li uma declaração velha e concordei com ela" — o log
+mais tranquilizador do pipeline é o que menos distingue. Mesma família do §4 (backup `healthy` sem
+um dump) e do §6 (provar o sensor): o sinal observa algo **adjacente** ao trabalho. A saída é
+derivar a asserção da **declaração**, o que pega tanto o passo que não rodou quanto o que rodou
+contra input velho.
+
+⚠️ **Nota de processo:** as três lições nasceram numeradas 86–88 e colidiram com as da 2.30.0
+(mesma sessão, publicadas horas antes). O sensor que pegou foi contar duplicatas na coluna de
+número antes do commit — não a releitura do arquivo, que parecia correta.
+
 ## 2026-09-18 — Correção factual da 2.30.0: a cronologia do §8b estava errada — bump 2.30.0 → [2.30.1]
 
 **O quê:** §8b ganha a tabela da cronologia medida; o `<CRITICAL>` do sensor passa a dizer que

@@ -273,6 +273,51 @@ this have shown me a positive?* A gate that cannot print a non-zero is not a gat
 
 ---
 
+## §9. Passo one-shot cujo produto é ESTADO: o smoke prova que o serviço responde, não que o passo escreveu
+
+**Symptom**: o CD fica verde de ponta a ponta — pré-condições, `healthy`, o
+passo de provisionamento, o smoke — e a coisa que o deploy existia para fazer
+não aconteceu. Ninguém percebe no dia; percebe-se quando alguém tenta usar o que
+deveria ter sido criado.
+
+**Cause**: os deploys que este runbook trata normalmente entregam um **serviço**,
+e o smoke certo para serviço é "ele responde pelo caminho do usuário". Mas
+certos passos entregam **estado**: um bootstrap de IdP que cria papéis, um seed
+que insere linhas de catálogo, uma migration de dados que converte colunas. Para
+esses, "o serviço responde" é verdadeiro **antes e depois** do passo — inclusive
+quando ele não fez nada.
+
+Agrava que esses passos são idempotentes por desenho, e idempotência tem
+vocabulário próprio (`reuse`, `already exists`, `no changes`, `skipped`) que é
+**indistinguível** entre dois mundos opostos: *"já estava certo"* e *"eu li uma
+declaração velha e concordei com ela"*. O log mais tranquilizador do pipeline é
+justamente o que não distingue o sucesso do vazio.
+
+Mesma família do §4 (backup `healthy` sem um dump) e do §6 (provar o sensor
+antes de confiar no silêncio): o sinal observa algo **adjacente** ao trabalho.
+
+**Fix — asseverar o estado, e de preferência a partir da declaração**:
+
+- **A asserção nasce do input.** Se o passo é dirigido por um arquivo
+  declarativo (YAML, JSON, uma lista), o pós-teste é: *cada item declarado
+  existe depois?* Isso pega tanto o passo que não rodou quanto o que rodou
+  contra uma declaração velha (`cd-pipeline-pitfalls.md §10`).
+- **A saída do próprio passo costuma bastar**, e é mais barata que consultar o
+  banco: um bootstrap que imprime `created X` / `reuse X` por item permite
+  cruzar a lista impressa com a declarada, sem credencial nova nem acesso ao
+  datastore.
+- **Se for consultar o estado, prefira o caminho sem segredo.** Ler a projeção
+  ou a tabela direto no container do banco não exige token, não expira e não
+  precisa de rede — e não some quando alguém rotaciona um PAT.
+
+**A pergunta que generaliza**: *este passo produz um serviço ou um fato?* Se
+produz fato, o gate tem de olhar o fato. Um smoke a mais sobre o endpoint não
+compensa a ausência dessa pergunta.
+
+Medido em 2026-09-18 (IdP JRC): quatro passos verdes enquanto o bootstrap não
+criava papel nenhum; quem desmentiu foi um `SELECT` na projeção de papéis,
+rodado à mão **depois**, por desconfiança — não pelo pipeline.
+
 ## Symptoms → section
 
 | Symptom | Section |
@@ -288,3 +333,5 @@ this have shown me a positive?* A gate that cannot print a non-zero is not a gat
 | `vars.X` looks unset because the environment list is empty | §7 |
 | A gate prints `EXIT_X=` with nothing after the `=` | §8 |
 | `cmd \| tail` reports success on a failing test suite | §8 |
+| Green deploy whose provisioning step (bootstrap/seed/data migration) did nothing | §9 |
+| Idempotent step logging `reuse`/`already exists` for everything — and it is a stale input | §9 |

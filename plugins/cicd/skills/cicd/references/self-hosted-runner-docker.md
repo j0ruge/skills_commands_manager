@@ -985,6 +985,74 @@ este caso.
 
 **Quando aplicar:** sempre que houver deploy self-hosted disparado por push/tag. O preflight dá ❌ imediato no push (e protege contra deploy sem runner); o watchdog cobre qualquer deploy que já tenha ficado preso (inclusive os disparados quando o runner já estava morto). Juntos transformam "semanas de silêncio" em "falha vermelha em minutos / ≤6h". Lembre: isto é **detecção**, não cura — o root-cause (§7–§10) continua sendo operacional/host-side.
 
+## §12. O runner conteinerizado NÃO compartilha o filesystem do host — e metade do comando funciona
+
+**Sintoma**: um passo do CD reprova dizendo que um caminho do host não existe
+(`test -r /opt/<proj>/infra/docker/.env` falhando, `docker compose --env-file
+<host-path>` com `no such file`, `-f <host-path>/compose.yml` idem) enquanto o
+arquivo está **perfeito no host** — permissões certas, conteúdo certo, você
+acabou de olhar. A leitura natural — *"o arquivo sumiu"*, *"é permissão"* — manda
+a depuração para o lado errado, porque nenhuma das duas é verdade.
+
+**Causa**: num runner conteinerizado (socket-mount, docker-out-of-docker — §0
+deste arquivo), o job roda **dentro** do container. E um único comando `docker`
+mistura dois mundos:
+
+| O que | Quem resolve | Onde o caminho precisa existir |
+| --- | --- | --- |
+| `-v /host/path:/dentro` (fonte do bind mount) | **daemon** do host | no **host** ✅ |
+| `--env-file`, `-f`, `--project-directory`, `--env-file` de `compose run` | **CLI** (docker/compose) | **dentro do runner** ❌ |
+| `$GITHUB_WORKSPACE`, o checkout | runner | dentro do runner (é volume) ✅ |
+
+É por isso que o engano é tão fácil: `docker run -v /opt/.../x:/x` funciona e dá
+a impressão de que o container "vê o host". Ele não vê — quem viu foi o daemon.
+Qualquer flag que o **CLI** precise abrir antes de falar com o daemon é lida do
+filesystem do container.
+
+Família das duas assimetrias que este runbook já cobre, num terceiro eixo:
+`self-hosted-job-migration.md §2` é a **rede** (`127.0.0.1` é o loopback do
+runner, não o host), `cd-pipeline-pitfalls.md §6` é a **permissão** (uid 1001 ×
+1000). Este é a **existência do caminho** — e é o menos visível dos três, porque
+os outros dois dão erro sobre a coisa certa.
+
+**Fix — monte o que o CLI precisa ler, no mesmo caminho**:
+
+```yaml
+  runner:
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "runner-work:/runner/_work"
+      # mesmo caminho dos dois lados: o `--env-file /opt/.../.env` do workflow
+      # passa a resolver sem o workflow saber que existe um container no meio
+      - "/opt/<proj>/infra/docker:/opt/<proj>/infra/docker:ro"
+```
+
+Três coisas que não são detalhe:
+
+- **Monte o DIRETÓRIO, não o arquivo.** Rotação de segredo costuma reescrever o
+  `.env` por substituição (`mv novo .env`), e bind mount de arquivo prende o
+  **inode**: o container seguiria lendo a versão velha, calado — o mesmo
+  mecanismo que obriga `tee -a` em vez de `mv` ao editar arquivo bind-montado.
+- **`ro` é suficiente, e a exposição do segredo não aumenta.** Quem roda ali já
+  tem o socket do Docker do host, que é root-equivalente e domina qualquer
+  leitura de arquivo. Recusar a montagem "por segurança" defende um perímetro
+  que já não existe.
+- **Recriar o runner é o único caminho de deploy DELE** (§2a do
+  `cd-pipeline-pitfalls.md`): `up -d --no-deps runner` no diretório do host. O
+  CD lista os serviços e nunca inclui o runner, então esta montagem não chega lá
+  por deploy nenhum.
+
+**Diagnóstico em um comando** — pergunte de dentro, não de fora:
+
+```bash
+docker exec <runner-ctr> sh -c 'test -r <host-path> && echo LEGIVEL || echo AUSENTE'
+docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{println}}{{end}}' <runner-ctr>
+```
+
+Medido em 2026-09-18 (IdP JRC, primeiro deploy de staging): pré-condição
+reprovando com o `.env` intacto no host, `0600 root`, quatro variáveis com
+valor — e as únicas montagens do runner eram o socket e o volume de trabalho.
+
 ## Sintomas → seção
 
 | Sintoma | Vai para |
@@ -1009,3 +1077,4 @@ este caso.
 | Deploy `queued` + runner crashloop; log `curl (22) 401` / `Invalid configuration provided for token` ao `Obtaining the token` (STANDALONE, NÃO o `404` do §7; outros runners do host UP) | §10a (o PAT `ACCESS_TOKEN` — o "fix durável" da migração §7 — expirou/foi revogado; trocar SÓ a linha do PAT no `.env` persistente; fix durável = PAT sem expiração) |
 | Deploy ficou `queued` e ninguém percebeu por dias/semanas (sem ❌, sem alerta; site no ar com imagem velha) | §11 (detecção proativa — `timeout-minutes` não conta em fila; preflight gate + watchdog) |
 | Preflight precisa listar runners mas o `GITHUB_TOKEN` dá 403 / lista vazia | §11 (`/actions/runners` exige admin → PAT `Administration: Read`; watchdog usa só `GITHUB_TOKEN`/`actions:read`) |
+| Passo do CD diz que um caminho do HOST não existe (`--env-file`, `-f`) com o arquivo intacto lá | §12 (o CLI do compose roda DENTRO do runner; bind mount resolve no daemon, flag resolve no container — montar o diretório `ro`) |

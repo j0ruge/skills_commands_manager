@@ -201,7 +201,7 @@
     {
       "name": "cicd",
       "source": "./plugins/cicd",
-      "version": "2.30.1",
+      "version": "2.31.0",
       "description": "GitHub Actions / Docker / GHCR pipeline troubleshooting and config, auto-routed by stack (Node/Prisma, Django/gunicorn, Vite). Self-hosted runner runbook — what breaks when you move a billed job onto one, which runner to trust for production — deploy-time proof (rollback with re-smoke, backup gates that check the dump), and Actions minute economics. Triggers — CI/CD, GitHub Actions, job never starts, Actions minutes/quota, GHCR auth, self-hosted runner, deploy queued, rollback/backup gate.",
       "category": "development",
       "keywords": [
@@ -530,7 +530,7 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "description": "Self-hosted Zitadel v4 OIDC field guide — a numbered quirk catalogue, working docker-compose and an idempotent TypeScript bootstrap. High-friction traps: FirstInstance env placement, JWT/JWKS over self-signed HTTPS, TLS-terminating proxy (`--tlsMode external`) and the console's mixed-content `Failed to fetch`, v2.66→v4 upgrade, API v1→v2, silent-renew, 401 storms. Triggers — zitadel, oidc self-hosted, silent-renew, JWKS, masterkey, v2.66→v4, tlsMode external, pre-cutover check.",
       "category": "development",
       "keywords": [

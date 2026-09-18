@@ -604,3 +604,62 @@ file corrected ->                                                               
 
 Writing the sequence in prose (as this section does) is how you document it without breaking the
 very file you are editing.
+
+## §10. `compose run`/`up` não RECONSTRÓI imagem cuja tag já existe — a lição 29 pelo lado do build
+
+**Symptom**: um passo de bootstrap/seed/migration roda **verde** e não faz o que
+o código do checkout manda. O log do próprio passo é tranquilizador — ele diz
+`reuse`, `already exists`, `no changes` para tudo — porque o artefato que rodou
+é antigo, e do ponto de vista dele o estado realmente já está como ele espera.
+Nada no run vermelha.
+
+**Cause**: um service com `build:` **e** tag fixa (`image: meu/bootstrap:staging`)
+só é construído quando a tag **não existe localmente**. Depois da primeira vez,
+`docker compose run` e `up -d` reusam a imagem local e ignoram o contexto de
+build — é exatamente a lição 29 (`docker run` não re-pulla tag existente) com
+*build* no lugar de *pull*, e ela é pior aqui: no pull você ao menos suspeita do
+registry, no build o "artefato" é o seu próprio repositório, então ninguém
+desconfia dele.
+
+Morde mais quando o **input do passo está DENTRO da imagem** — um
+`zitadel-config.yaml`, um `seed.json`, uma fixture — copiado por `COPY` em vez de
+montado por volume. Aí a imagem velha carrega a *declaração* velha, e o passo
+aplica fielmente o que ela diz.
+
+**O discriminador que decide se você tem o problema**:
+
+| Shape do pipeline | Vulnerável? |
+| --- | --- |
+| Build+push ao registry com tag do commit (`sha-<short>`), deploy só puxa | **Não** — tag imutável por commit |
+| `build:` local com tag de ambiente fixa (`:staging`, `:latest`) | **Sim** |
+
+E note a ironia operacional: o segundo shape é quase sempre o de **staging**,
+que é o ambiente que existe para descobrir problemas antes de produção.
+
+**Fix**:
+
+```yaml
+- name: Bootstrap (idempotente)
+  run: |
+    # `--build`: o config é COPIADO para dentro da imagem e a tag é fixa, então
+    # sem ele o deploy roda o artefato do dia em que a imagem foi construída.
+    docker compose -f "$COMPOSE_FILE" --profile bootstrap run --rm --build <svc>
+```
+
+(`compose run --build` existe desde o Compose v2.13; em versões anteriores, um
+`docker compose build <svc>` explícito antes do `run`.)
+
+**Verificação que fecha o diagnóstico** — pergunte a idade da imagem e o
+conteúdo que ela carrega, não o log do passo:
+
+```bash
+docker image inspect -f '{{.Created}}' <img>:<tag>
+docker run --rm --entrypoint sh <img>:<tag> -c 'cat /config/<arquivo>'   # o INPUT, não a saída
+```
+
+Medido em 2026-09-18 (IdP JRC): imagem de **13/jun**, deploy de **18/set**
+verde, e o YAML embutido nela tinha 2 dos 4 papéis declarados no checkout — os
+dois que faltavam eram justamente o objetivo do deploy. Ver também
+`cd-verification-and-rollback.md §9`, que é como isso foi **descoberto**: o CD
+não asseverava o estado que o passo deveria escrever.
+

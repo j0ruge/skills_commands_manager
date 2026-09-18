@@ -834,6 +834,36 @@ Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/app/packages/idp/src/infrastr
 
 **Fix**: add `COPY packages/idp/src packages/idp/src` and `COPY packages/idp/tsconfig.json packages/idp/` in the runtime stage, and audit the YAML COPY line. Verify with: `docker run --rm --entrypoint sh <image> -c 'ls /app/packages/idp/src && ls /config/'`.
 
+⚠️ **And there is a quieter sibling of that YAML bug: the path is right and the *content* is old.** Because the config is `COPY`ed into the image rather than mounted, the bootstrap reads whatever the YAML said **when the image was built**. If your deploy runs the bootstrap through a service with `build:` and a fixed tag (`image: x/idp-bootstrap:staging`), Docker will not rebuild once that tag exists locally, so the step keeps applying a months-old declaration — and it reports success, because from its own point of view the state already matches. Nothing in the log says "stale": an idempotent bootstrap prints `reuse <role>` both when the role was already correct and when it is reading an obsolete list. Measured 2026-09-18: image from 13 June serving an 18 September deploy, carrying 2 of the 4 declared roles. Fix: `--build` on `compose run` (or push the image to a registry under the commit SHA and pull it). Verify the **input**, not the log: `docker image inspect -f '{{.Created}}' <image>` and `docker run --rm --entrypoint sh <image> -c 'cat /config/zitadel-config.yaml'`.
+
+
+### The bootstrap logs `reuse` for everything and you cannot tell success from a no-op
+
+**Symptom**: a deploy runs the bootstrap, every step is green, and the role/app/grant you added to the YAML is not there. The step's own output is reassuring — `reuse quote.cotador`, `reuse quote.admin`, `oidc config sem mudanças (no-op)` — which reads exactly like "everything was already correct".
+
+**Why the log cannot answer this**: idempotence and staleness share a vocabulary. `reuse`, `ALREADY_EXISTS` and `no changes` are emitted both when the declaration was satisfied and when the bootstrap is reading an **obsolete declaration** (stale image, wrong `ZITADEL_BOOTSTRAP_ENV` per Quirk 30, a YAML path that points at a legacy copy). The absence of `created` lines is the signal, and it is a *negative* one — nobody notices a line that is not printed.
+
+**Prove it against the instance, and prefer the path that needs no credential.** The API answer is `POST /management/v1/projects/{projectId}/roles/_search` (REST v1 — Quirk 49: there is no Connect/v2 twin), but it needs a PAT, which is exactly what you may not have on a fresh or third-party environment. The projection in Postgres answers the same question with no token, no network and no expiry:
+
+```bash
+# The projection carries a version suffix that changes across Zitadel releases
+# (`project_roles4` in v4.15.0) — discover it instead of hardcoding, or your
+# check fails with "relation does not exist" and reads like a broken database.
+docker exec -i <postgres-idp-ctr> psql -U zitadel -d zitadel -Atc \
+  "select table_name from information_schema.tables
+    where table_schema='projections' and table_name like 'project_roles%';"
+
+docker exec -i <postgres-idp-ctr> psql -U zitadel -d zitadel -c \
+  "select role_key, creation_date from projections.project_roles4
+    where role_key like '<prefix>.%' order by role_key;"
+```
+
+The `creation_date` is what makes this decisive rather than merely informative: roles dated at the instance's birth, in a deploy that was supposed to add two, say the bootstrap applied an old list — not that it failed.
+
+⚠️ **Do not run this through a templating layer that eats `{{ }}`** (Ansible's `shell` module does, and `docker ps --format '{{.Names}}'` blows up there) — put the SQL in a file, or wrap it in `{% raw %}`.
+
+**Then fix the gate, not just the instance**: a deploy whose product is *state* needs an assertion about that state. The cheapest one is derived from the declaration you already have — every `roles[].key` in the YAML must appear in the bootstrap's own output as `created` or `reuse`. That catches the stale-input case too, which a query against the instance does not (a stale run and a correct run leave the same instance once someone fixes it by hand).
+
 ## CI / smoke-e2e errors (GHA runner)
 
 The smoke-e2e job that runs Zitadel + bootstrap inside GitHub Actions has its own cluster of pitfalls — none of which manifest in dev (host machine perms / generous timeouts / your own password). When `continue-on-error: true` is set on the job, these can rot for months without anyone noticing because the run-level conclusion stays "success".

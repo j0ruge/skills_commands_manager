@@ -1,5 +1,43 @@
 # Changelog — zitadel-idp
 
+## [0.15.0] - 2026-09-18
+
+### Added
+
+- **Quirk 51 — um bootstrap idempotente não consegue dizer que teve sucesso.** `reuse`,
+  `ALREADY_EXISTS` e `no changes` são impressos tanto quando a declaração foi satisfeita
+  quanto quando o script está lendo uma **declaração obsoleta**, e o sinal de que algo
+  faltou é um **negativo**: a ausência de linhas `created`, que ninguém repara. Medido em
+  2026-09-18: quatro passos verdes de CD, zero papéis criados, `zitadel-config.yaml`
+  `COPY`ado numa imagem de 13/jun que o deploy de 18/set não reconstruiu. Família do
+  Quirk 30 uma camada abaixo — o 30 avisa que o arquivo de **saída** só é atualizado
+  quando o bootstrap roda; este é a **entrada** envelhecendo do mesmo jeito.
+- **Entrada nova em `troubleshooting.md`** — "The bootstrap logs `reuse` for everything
+  and you cannot tell success from a no-op": como provar contra a instância pelo caminho
+  que **não pede credencial** (a projeção `projections.project_roles<N>` no Postgres, em
+  vez do `roles/_search` REST v1 do Quirk 49, que exige PAT). O `creation_date` é o que
+  torna a consulta decisiva: papéis datados do nascimento da instância, num deploy que
+  deveria acrescentar dois, dizem que o bootstrap **aplicou uma lista velha**, não que
+  falhou.
+- Linha na tabela de roteamento do `SKILL.md` para essa entrada.
+
+### Changed
+
+- A entrada do `ERR_MODULE_NOT_FOUND` / YAML `COPY`ado ganha a metade que faltava: além do
+  caminho **errado** (cópia legada), o caminho **certo com conteúdo velho** — o caso em que
+  o service tem `build:` com tag fixa e o Docker não reconstrói.
+
+### Notes
+
+- Dois detalhes medidos que entraram escritos: o sufixo numérico da projeção muda entre
+  releases (`project_roles4` na v4.15.0) e deve ser descoberto pelo `information_schema`
+  — um palpite errado falha com `relation does not exist`, que se lê como banco quebrado;
+  e o módulo `shell` do Ansible **templa `{{ }}`**, então `--format '{{.Names}}'` estoura ali.
+- O conserto recomendado não é a consulta e sim o **gate**: asserção derivada da própria
+  declaração (cada `roles[].key` do YAML tem de aparecer na saída do bootstrap), que pega
+  também o caso do input velho — o que a consulta à instância não pega, porque depois de
+  alguém consertar à mão uma rodada defasada e uma correta deixam a mesma instância.
+
 ## [0.14.0] - 2026-09-18
 
 ### Added

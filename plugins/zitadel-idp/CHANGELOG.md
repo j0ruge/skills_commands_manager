@@ -1,5 +1,27 @@
 # Changelog — zitadel-idp
 
+## [0.13.0] — 2026-09-18
+
+Lição do rename `quote.cotador` → `quote.consultor` no sales_quote (SQ-133).
+
+- **Quirk 48 — a chave de um project role é imutável.** `UpdateProjectRole` só mexe em
+  `displayName`/`group`; renomear é remover e recriar. O quirk descreve a migração de quatro passos
+  (criar → conceder a união → tirar a chave velha → apagar o papel por último) e as duas armadilhas
+  que a tornam pior do que parece: o bootstrap declarativo é **aditivo**, então o papel velho é
+  recriado em toda instância nova até alguém apagar declaração e papel; e a ordem vira dependência
+  entre dois repositórios quando o IdP é declarado fora do repo da app, cujo modo de falha é
+  `401 role_nao_reconhecida` para todos ao mesmo tempo.
+- **A receita nova em `api-cheatsheet.md §"Renaming a project role"`** traz o runbook reversível-
+  primeiro e o **alias na borda do claim** — aceitar as duas chaves e normalizar para a nova —, que é
+  o que desacopla o deploy da app da migração do IdP. Com as duas exigências que custaram caro: data
+  de remoção do alias, e um caso negativo ao lado dele (um alias escrito como "qualquer desconhecida
+  → a nova" passa em todo teste positivo e promove em silêncio o papel de outro produto).
+- Vizinho dos quirks 41 e 46 e **distinto** deles: aqueles são sobre reconciliação de *grants*; este
+  é sobre o ciclo de vida do *papel*.
+- Medido em 2026-09-18: as duas chaves coexistiram num projeto real (`roles/_search` devolvendo
+  ambas) e a suíte de navegador da app passou com uma conta de fato re-concedida à chave nova.
+- `description` **não** foi tocada — está em 482 de 500 chars, e o guia manda enxugar em vez de somar.
+
 ## [0.12.0] — 2026-09-03
 
 Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo.

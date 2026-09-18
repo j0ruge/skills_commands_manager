@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "0.12.0",
+  "version": "0.13.0",
   "category": "development",
   "keywords": [
     "zitadel",
@@ -75,7 +75,10 @@
     "hashed-password-import",
     "eventstore-hash",
     "ids-staging",
-    "jwks-positive-check"
+    "jwks-positive-check",
+    "project-role-rename",
+    "role-key-immutable",
+    "claim-alias"
   ],
   "platforms": [
     "claude-code",

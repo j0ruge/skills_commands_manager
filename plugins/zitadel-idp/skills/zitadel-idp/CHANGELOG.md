@@ -2,6 +2,27 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-18 — Quirk 48: a chave do project role é imutável, e o alias no claim é o que desacopla o deploy — bump 0.12.0 → 0.13.0
+
+**Sintoma que teria evitado:** planejar um rename de papel como se fosse edição de campo, descobrir
+no meio que `UpdateProjectRole` não toca a chave, e então executar a migração numa ordem que derruba
+o acesso de todos — ou, pior, deployar a app que só conhece a chave nova antes de o IdP migrar, e
+receber `401 role_nao_reconhecida` em massa com uma mensagem que não menciona IdP nenhum.
+
+- `SKILL.md`: quirk 48 na lista + uma linha em "When to use this skill" (renomear/aposentar papel,
+  reconciliar grants depois de a config declarativa ganhar um papel).
+- `references/api-cheatsheet.md`: seção **"Renaming a project role"** logo depois de "Create project
+  roles", que é onde alguém escolhe a chave e portanto onde a imutabilidade precisa estar. Traz o
+  runbook de 4 passos (os dois primeiros aditivos, os dois últimos destrutivos), o `PUT` com a
+  **união** dos `roleKeys` (Quirk 8 — o campo substitui, não soma), o padrão do alias e a ressalva de
+  que payload de evento com o papel gravado se normaliza **na leitura**, não por migração de dados.
+
+**O que a sessão de origem mostrou e vale registrar:** a skill já tinha os quirks 8, 41 e 46 —
+busca global de grants, bootstrap que não reconcilia, `SEED_USER_ROLE` como lista — e a missão
+re-derivou o conteúdo do 8 lendo um script do próprio projeto, porque a skill não foi carregada no
+planejamento. O que faltava mesmo era só o ciclo de vida do papel; o resto era caminho mais caro
+para o mesmo lugar.
+
 ## 2026-07-15 — Admin Console `[unknown] Failed to fetch` (environment.json api http vs issuer https) + description slim — bump 0.9.0 → 0.10.0
 
 Source: sessão de ops no `sales_quote` — subir a infra local pediu o IdP de `validade_bateria_estoque` up; o Console admin do Zitadel (`/ui/console`) carregava a shell mas estourava "[unknown] Failed to fetch" em toda chamada de API. Investigação (Playwright + `docker inspect`) isolou uma causa nova e não-óbvia que os quirks existentes (incluindo o 15, o triad de TLS) não cobriam.

@@ -126,6 +126,56 @@ x-zitadel-orgid: ${orgId}
 
 ---
 
+## Renaming a project role
+
+The key is the one field you cannot change. `UpdateProjectRole` (v1 `PUT /management/v1/projects/{p}/roles/{roleKey}`, v2 `ProjectService/UpdateProjectRole`) accepts `displayName` and `group`, and upstream states plainly that the key is not editable — to change it you remove the role and create a new one. Since the key is what lands in `urn:zitadel:iam:org:project:roles`, that makes a rename a migration of every token in flight, not an edit.
+
+Do it in this order, which is reversible until the last step:
+
+```http
+# 1. Create the new key. The bootstrap is additive, so this is also what you
+#    add to the declarative YAML — keep the old entry for now.
+POST /management/v1/projects/{projectId}/roles
+x-zitadel-orgid: ${orgId}
+{ "roleKey": "quote.consultor", "displayName": "Consultor", "group": "quote" }
+
+# 2. Grant it to everyone who holds the old key. Quirk 8's global search first,
+#    then PUT the UNION — roleKeys REPLACES the set, it does not merge.
+POST /management/v1/users/grants/_search
+{ "queries": [ { "roleKeyQuery": { "roleKey": "quote.cotador" } } ] }
+
+PUT /management/v1/users/{userId}/grants/{grantId}
+{ "roleKeys": ["battery.admin", "quote.admin", "quote.consultor"] }
+
+# 3. Drop the old key from those grants — the same PUT, minus the old entry.
+# 4. Delete the old role, and remove it from the YAML in the same change.
+DELETE /management/v1/projects/{projectId}/roles/{roleKey}
+```
+
+Steps 1 and 2 add; steps 3 and 4 remove. Running them in that order means the first surprise costs a re-check instead of an outage, and a rollback is the `PUT` from step 2 again.
+
+### The alias is what makes the schedule yours
+
+Steps 1–4 are operator work, done per environment, often in a repository that is not the app's. If the app only accepts the new key, its deploy and that migration become an ordering dependency nobody declared — and getting it wrong answers `401` for every user at once, with a message that never mentions the IdP.
+
+Have the app accept **both** keys while the migration runs, normalizing to the new one at the two places that read the claim:
+
+```ts
+// backend: after stripping the `<prefix>.` from urn:zitadel:iam:org:project:roles
+function deriveRole(roles: string[]): Role | null {
+  if (roles.includes("admin")) return "admin";
+  if (roles.includes("consultor") || roles.includes("cotador")) return "consultor"; // alias
+  return null;
+}
+```
+
+Two properties are worth stating, because both were learned the expensive way:
+
+- **Give the alias a removal date and a test that names it.** It is dead code the day the old key is gone from the last environment, and dead code with no expiry is how a two-name role becomes permanent.
+- **Keep a negative case next to it.** An alias written as "anything unknown → the new role" passes every positive test and silently promotes a token carrying some other product's role. The test that matters is the one asserting an unknown key still fails closed.
+
+⚠️ Read-model normalization is a separate question from the claim. If you persist the role inside event payloads or audit rows, those rows keep the old key forever — normalize them **on read** (one literal in the serializer) rather than migrating the data, unless something actually queries by that column.
+
 ## Create an OIDC application
 
 This is the most quirk-laden endpoint. Use it for SPAs (PKCE), backends (client credentials), and native apps. The fields differ per `appType`.

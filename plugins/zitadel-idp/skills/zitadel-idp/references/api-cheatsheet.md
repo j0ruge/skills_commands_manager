@@ -128,6 +128,11 @@ x-zitadel-orgid: ${orgId}
 
 ## Renaming a project role
 
+> This section owns the **API calls**. For running the migration across
+> environments — declaring the role before creating it, turning step 2 into an
+> idempotent tool instead of a `PUT` per user, and tracking which environment is
+> where — see `role-migration.md`.
+
 The key is the one field you cannot change. `UpdateProjectRole` (v1 `PUT /management/v1/projects/{p}/roles/{roleKey}`, v2 `ProjectService/UpdateProjectRole`) accepts `displayName` and `group`, and upstream states plainly that the key is not editable — to change it you remove the role and create a new one. Since the key is what lands in `urn:zitadel:iam:org:project:roles`, that makes a rename a migration of every token in flight, not an edit.
 
 Do it in this order, which is reversible until the last step:

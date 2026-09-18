@@ -1,5 +1,47 @@
 # Changelog — zitadel-idp
 
+## [0.14.0] - 2026-09-18
+
+### Added
+
+- **Quirk 49 — `ListProjectRoles` não tem equivalente em Connect/v2.** Medido contra
+  v4.15.0: `/zitadel.management.v1.ManagementService/ListProjectRoles` responde
+  `404 {"code":5}`; a leitura de roles do projeto continua REST v1
+  (`POST /management/v1/projects/{id}/roles/_search`), com o projeto no path e a org
+  no header. **O que motivou registrar**: o 404 em si é barato — caro é que uma guarda
+  construída sobre essa leitura (*"recuse role que não existe no projeto"*) passa a
+  recusar **tudo**, pela causa errada, imprimindo a mesma mensagem de quando funciona.
+  Só apareceu ao exercitar a guarda com uma role que **existe**. Deixa a regra geral:
+  guarda se testa nos dois caminhos, contra instância viva.
+- **Quirk 50 — campo de config aceito pelo schema e nunca lido pelo bootstrap.**
+  `seedUser.roles` era validado desde sempre e nunca consumido; a fonte real era
+  `ZITADEL_SEED_USER_ROLE`, que o compose de produção definia e o de staging não —
+  staging nascia sem nenhuma role do segundo produto, **sem erro nenhum**. Campo ausente
+  é uma pergunta que alguém faz; campo que parseia limpo é uma **resposta**, e ela está
+  errada. Fix registrado é precedência `env > YAML > default` (env definida-mas-vazia
+  **não** é escolha), log da origem que venceu, e um `superRefine` pareado que recusa
+  role do seed user ausente de `applications[].roles[].key`. Família dos quirks 41 e 46,
+  uma camada acima: eles são sobre o grant que não reconcilia, este é sobre a
+  **declaração** que nunca chegou ao código.
+- **`references/role-migration.md`** — reference nova, para a OPERAÇÃO de uma migração de
+  papel entre ambientes. O quirk 48 (v0.13.x) deixou o rename descrito pelas chamadas de
+  API, e `api-cheatsheet.md §"Renaming a project role"` continua dono delas; o que faltava
+  é o resto: declarar a role no YAML **antes** de criá-la por API (criar por Console é
+  runtime, e some no `--reset-zitadel` sem nada acusar), transformar o passo 2 numa
+  **ferramenta** idempotente em vez de um `PUT` por usuário — dry-run por default, recusa
+  de role inexistente antes de qualquer escrita, e `depois ⊇ antes` conferido imediatamente
+  antes de cada `PUT` —, e manter uma tabela datada de estado por ambiente, provada lendo
+  o grant **de volta** da API e não pela saída da ferramenta. Separação por progressive
+  disclosure: o cheatsheet responde "qual chamada?", este responde "como executo isto três
+  vezes sem quebrar um ambiente?".
+
+### Changed
+
+- Quirk 48 e a seção do rename no `api-cheatsheet.md` ganham ponteiro cruzado para o
+  reference novo.
+- `metadata.version` do `SKILL.md` estava em `0.12.0` enquanto o `plugin.json` já ia em
+  `0.13.1` — sincronizado em `0.14.0`.
+
 ## [0.13.1] — 2026-09-18
 
 Correção do próprio quirk 48, um dia depois: a revisão de PR da SQ-133 refutou a afirmação com que

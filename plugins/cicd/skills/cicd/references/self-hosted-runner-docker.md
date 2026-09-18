@@ -688,7 +688,19 @@ conserta é o bump do `FROM` — nunca o runtime. Sintoma completo no §8b.
 O §8 assume que o runner **anuncia** a recusa e morre. Existe uma variante em que ele não
 anuncia nada — e ela é pior, porque todos os sinais que você checaria dizem "saudável".
 
-Medido em 18/09/2026, depois de **três semanas** sem ninguém notar:
+Medido em 18/09/2026. A cronologia importa mais que o sintoma, porque ela mostra que o defeito
+é **latente por semanas e fatal em segundos**:
+
+| Quando | O quê |
+| --- | --- |
+| 01/09 09:31 | o update é **oferecido**: `bin.2.337.0/` baixado, swap não aterrissa. O runner **segue trabalhando** em 2.319.1 |
+| 18/09 15:14 | último job executado com sucesso (um deploy de produção) |
+| 18/09 15:15:21 | `Runner update in progress` — o GitHub passa a **exigir**; 15:15:44 o runner sai para atualizar |
+| 18/09 15:15:56 | volta do `bin/` da imagem, ainda 2.319.1, e **fica mudo**. Daí em diante só `BrokerMigration` |
+| 18/09 16:57 → 18:30 | o deploy seguinte enfileira e é achado por acaso |
+
+**17 dias de defeito visível, ~35 segundos entre "o GitHub exige" e "o runner está mudo", e a
+descoberta só no próximo deploy.** Os sinais no instante da descoberta:
 
 ```text
 docker ps          → Up 19 hours (healthy)          # não é crashloop
@@ -719,6 +731,11 @@ docker exec <runner> sh -c 'cat /actions-runner/*.version; ls -d /actions-runner
 
 Um diretório `bin.<versão-nova>/` ao lado de um `bin/` antigo é prova direta: o auto-update
 obedeceu, baixou, e o swap não aterrissou. Veja o §8a para o porquê estrutural.
+
+**E ele é um indicador ANTECEDENTE, não um post-mortem** — este é o ponto que faz valer
+checá-lo por rotina. No caso medido ele estava lá desde 01/09, com o runner ainda pegando jobs
+normalmente; quem o olhasse em qualquer dia daquelas duas semanas teria visto o problema antes
+de ele custar um deploy. Nenhum outro sinal disponível tinha essa antecedência.
 </CRITICAL>
 
 **Triagem barata antes de suspeitar do runner.** Com um `deploy` em fila, a hipótese cara é
@@ -855,10 +872,12 @@ implementá-las e concluir que o problema está coberto:
 | Camada | Por que falha no §8b |
 | --- | --- |
 | **A** (preflight de presença) | o runner fica `status=online, busy=false` o tempo todo; a presença é verdadeira e a resposta é "tudo bem" |
-| **B** (watchdog de deploy preso) | só encontra o que já está em fila. No caso real ninguém tentou deployar por **17 dias** — não havia job preso, e quando houve, a detecção chegou junto com o humano |
+| **B** (watchdog de deploy preso) | ajuda, mas só depois do estrago começar: ela não vê nada até alguém tentar deployar. No caso medido o runner emudeceu às 15:15 e o deploy só veio às 16:57 — B teria acusado por volta das 17:30, cerca de uma hora antes do humano |
 
-Quem detecta desde o primeiro dia é a **camada C**, abaixo: comparar a *versão* do runner com
-a release corrente. É a única das três que mede a causa em vez de um efeito.
+**A camada C é a única com antecedência real**, e a diferença não é de minutos: o runner ficou
+17 dias com o update baixado e não aplicado, **trabalhando normalmente**, antes de o GitHub
+passar a exigir. C teria acusado no **primeiro** desses dias; B, três semanas depois, uma hora
+antes de alguém perceber sozinho. É a única das três que mede a **causa** em vez de um efeito.
 </CRITICAL>
 
 ### A. Preflight gate — falha rápida no push

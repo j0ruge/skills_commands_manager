@@ -2,6 +2,37 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-18 — Correção factual da 2.30.0: a cronologia do §8b estava errada — bump 2.30.0 → [2.30.1]
+
+**O quê:** §8b ganha a tabela da cronologia medida; o `<CRITICAL>` do sensor passa a dizer que
+`ls -d /actions-runner/bin.*` é **indicador antecedente**; §11 corrige o argumento sobre a
+camada B; lições 86 e 88 reescritas. Sem mudança de conteúdo técnico — só de fato.
+
+**Por quê:** a 2.30.0 afirmava que o runner ficara **três semanas** mudo. Errado, e a medição
+que derrubou isso apareceu ao revisar outra coisa: houve um deploy de produção **bem-sucedido
+no mesmo dia, às 15:12–15:14**, naquele runner. A cronologia real é mais útil do que a que eu
+tinha escrito:
+
+| Quando | O quê |
+| --- | --- |
+| 01/09 09:31 | update **oferecido**: `bin.2.337.0/` baixado, swap não aterrissa — e o runner **segue trabalhando** |
+| 18/09 15:14 | último job executado com sucesso |
+| 18/09 15:15:21 → 15:15:56 | o GitHub passa a **exigir**; ~35s depois o runner está mudo |
+| 18/09 16:57 → 18:30 | o deploy seguinte enfileira e é achado por acaso |
+
+Duas consequências que mudam o que a skill ensina:
+
+1. **O defeito é latente por semanas e fatal em segundos.** `bin.<nova>/` esteve visível por
+   **17 dias** com tudo funcionando — é indicador **antecedente**, não post-mortem, e é isso que
+   justifica checá-lo por rotina.
+2. **A camada B não é inútil, como a 2.30.0 dava a entender.** Ela não vê nada até alguém
+   deployar, mas aqui teria acusado ~17:30 — uma hora antes do humano. O argumento a favor da
+   camada C fica mais forte por outro motivo: ela teria acusado em **01/09**.
+
+A lição de método: "há três semanas" foi **inferido** de um diretório datado de 01/09 e de um
+"último deploy em 21/ago" que só significava que ninguém deployou desde então. Nenhum dos dois
+media indisponibilidade. Data de artefato não é data de falha.
+
 ## 2026-09-18 — O runner que recusa trabalho sem anunciar, e a camada de detecção que faltava — bump 2.29.0 → [2.30.0]
 
 **O quê:** `self-hosted-runner-docker.md` §8b (novo) + §8a e §11 ampliados (camada **C**,
@@ -9,8 +40,7 @@ currency de versão) + `cd-pipeline-pitfalls.md` §2a (novo) + lições **86–8
 Quick Troubleshooting + os dois parágrafos de trigger.
 
 **Por quê:** a skill já cobria o binário deprecado (§8), mas pela assinatura errada. Medido em
-18/09/2026, depois de **três semanas** sem ninguém notar: o runner recusava trabalho **sem
-anunciar** — `Up 19 hours (healthy)`, `RestartCount` 28 (não milhares), `gh api …/runners`
+18/09/2026: o runner recusava trabalho **sem anunciar** — `Up 19 hours (healthy)`, `RestartCount` 28 (não milhares), `gh api …/runners`
 dizendo `online busy=false`, log terminando em `Listening for Jobs`. Nenhuma das isolation keys
 do §8/§9/§10 aparece. O único vestígio era `BrokerMigration message received` 1×/min no
 `_diag`: o GitHub migrou a entrega de jobs para o serviço Broker e exige binário atual.

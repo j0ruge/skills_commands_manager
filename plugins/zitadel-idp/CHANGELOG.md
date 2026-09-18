@@ -1,5 +1,26 @@
 # Changelog — zitadel-idp
 
+## [0.13.1] — 2026-09-18
+
+Correção do próprio quirk 48, um dia depois: a revisão de PR da SQ-133 refutou a afirmação com que
+ele foi escrito.
+
+- **O alias liberta a ordem de CONCEDER, nunca a de RETIRAR.** O 0.13.0 dizia que, com o alias no
+  claim, *"the app ships whenever it is ready and the IdP migrates on its own schedule"* — e a
+  receita afirmava que os passos 3–4 custavam "a re-check instead of an outage". Falso para o passo
+  3: o alias mora no build **novo**, então retirar a chave velha antes de ele estar servindo naquele
+  ambiente deixa o usuário só com uma chave que o binário em produção nunca ouviu falar. Mesmo
+  `401 role_nao_reconhecida`, agora mirado em quem o operador acabou de tocar.
+- **O agravante é a forma da API**: como `roleKeys` substitui, conceder o novo e retirar o velho são
+  a mesma chamada, e o natural é escrever um `PUT` só com o conjunto final — que é exatamente a
+  interrupção. A receita ganhou o aviso de não colapsar os passos 2 e 3, uma tabela de "seguro antes
+  do deploy?" por passo, e a saída para quem precisa rebaixar cedo (manter a chave legada na união).
+- Medido: o runbook de migração do `sales_quote`, escrito a partir da versão sem ressalva, nasceu com
+  o passo destrutivo antes do deploy e **afirmando** "sem ordem obrigatória"; quem pegou foi o
+  revisor do PR #172, não o autor. A lição que viaja: perigo de ordenação que a API aceita nas duas
+  direções não tem sensor — só a prosa.
+- `description` não foi tocada (482/500 chars).
+
 ## [0.13.0] — 2026-09-18
 
 Lição do rename `quote.cotador` → `quote.consultor` no sales_quote (SQ-133).

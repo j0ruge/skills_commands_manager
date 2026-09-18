@@ -148,11 +148,14 @@ PUT /management/v1/users/{userId}/grants/{grantId}
 { "roleKeys": ["battery.admin", "quote.admin", "quote.consultor"] }
 
 # 3. Drop the old key from those grants — the same PUT, minus the old entry.
+#    ⚠️ ONLY after the alias-aware build is serving in THIS environment (below).
 # 4. Delete the old role, and remove it from the YAML in the same change.
 DELETE /management/v1/projects/{projectId}/roles/{roleKey}
 ```
 
 Steps 1 and 2 add; steps 3 and 4 remove. Running them in that order means the first surprise costs a re-check instead of an outage, and a rollback is the `PUT` from step 2 again.
+
+⚠️ **Do not collapse 2 and 3 into one `PUT`.** They are the same endpoint with the same body shape, and the natural thing to write is a single call carrying the final desired set — which is precisely the outage. Step 2 is safe in any order relative to the deploy; step 3 is not (next section). Keeping them apart is what puts the deploy between them.
 
 ### The alias is what makes the schedule yours
 
@@ -168,6 +171,23 @@ function deriveRole(roles: string[]): Role | null {
   return null;
 }
 ```
+
+#### What the alias does NOT buy: step 3 still has an order
+
+The alias ships **inside the app**. Until that build is serving in a given environment, it does not exist there — so step 3, which withdraws the old key, hands those users a grant containing only a key the running binary has never heard of. Same `401 role_nao_reconhecida`, except now it is aimed at exactly the people the operator just touched, one environment at a time, which reads like "those specific users are broken" rather than "we deployed in the wrong order".
+
+So the honest statement of the ordering is per-step, not per-migration:
+
+| Step | Safe before the deploy? |
+| --- | --- |
+| 1 — create the new role | yes |
+| 2 — grant the new key (union) | yes — both keys authenticate |
+| 3 — withdraw the old key | **no** — requires the alias-aware build serving *in that environment* |
+| 4 — delete the role | no — after 3 everywhere |
+
+If an operator genuinely has to demote someone before the deploy lands, the escape is to keep the legacy key in the union (`["quote.consultor", "quote.cotador"]`) and come back for it after — not to skip the deploy.
+
+⚠️ This is worth writing down because the un-qualified version of this recipe produced a real migration runbook with step 3 ahead of the deploy, and it took a PR reviewer to catch it — the ordering hazard is invisible from the API, which happily accepts either call at any time.
 
 Two properties are worth stating, because both were learned the expensive way:
 

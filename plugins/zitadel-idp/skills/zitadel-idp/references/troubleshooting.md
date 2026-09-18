@@ -198,6 +198,10 @@ const tenantId =
 
 Don't try to enrich the AT with profile claims — that's not how OAuth/OIDC works. Either accept the minimal AT (recommended) or call userinfo from the backend (extra round-trip per request, generally not worth it).
 
+⚠️ **A second, duller cause with the same face: the validator is reading a different audience than you are.** Quirk 13 covers the audience going stale after a volume reset; the variant that hides better is **two env files in the same repo that disagree**, where which one wins depends on how the process was started (exported into the environment vs. loaded by a dotenv call, with or without `override`). Measured 2026-09-18: `.env` and `.env.local` differed on the audience alone — every other key matched — so the backend authenticated fine when started one way and answered `401 jwt_invalido` when started the other, with no configuration change in between and nothing in the logs naming a file.
+
+Two habits that close it: **diff the two files by key** before suspecting anything (`comm` on the sorted key lists, then compare values only for the keys present in both — you never need to print a secret to do this), and make the startup recipe *one* documented command rather than a convention, because an env var that only works when passed on the command line (Node's `NODE_EXTRA_CA_CERTS` is the classic — it is read before any dotenv runs) turns "how you start it" into part of the contract.
+
 ### 401 storm with apparently-valid JWT — dashboard "flashes", every `/api` call returns 401, then 429
 
 **Symptom**: Right after a successful login, every authenticated SPA request to your backend returns `401`. The user sees the dashboard render briefly, then unmount, then re-render — visually it "flashes". The browser's network tab shows the same three or four queries firing 5–10× per second. Eventually the backend rate-limit (e.g. `express-rate-limit` 120/min) kicks in and replies `429`. The JWT, decoded by hand, looks **perfect**: signature valid, `iss` matches `AUTH_ISSUER`, `aud` array contains the `projectId`, `exp` is hours away.
@@ -435,6 +439,35 @@ const { payload } = await jwtVerify(token, jwks, {
 3. Token from a different Zitadel instance (e.g., dev token validated against staging issuer).
 
 **Fix**: log the token's `iss` claim and confirm it matches what your validator expects. Use `jwt.io` or `jose.decodeJwt(token)` (no verification, just decode) to inspect.
+
+### One account loops back to the login screen while the others log in fine
+
+**Symptom**: for a single user, login "flickers" — the IdP login page accepts the credentials, the browser lands on `/auth/callback`, and immediately bounces back to the IdP. Other accounts, on the same instance and the same app, log in normally. Nothing on screen mentions roles or permissions; it reads as a broken session or an OIDC misconfiguration.
+
+**What makes this loop**: the API answers `401` for a role it does not recognise, and a `401` is what the SPA is built to react to by re-authenticating (Quirk 37's L3 listener, or any equivalent). So an **authorization** problem is reported as an **authentication** problem, and the app dutifully tries to fix it by logging in again — forever. Quirks 41, 46 and 48 all end in this same `401 role_nao_reconhecida`, which is why the loop is the common tail of every role-related defect in this skill.
+
+**Triage, cheapest first.** The single most informative fact costs nothing: **another account with a different role works**. That alone rules out the instance, the JWKS, the audience, the redirect URIs and the Login UI — everything shared — and points at the one thing that differs, which is the role in the claim.
+
+Then, in order:
+
+1. **Decode the access token** and read `urn:zitadel:iam:org:project:roles` (Quirk 41). Role absent → grant gap (41/46). Role **present** → continue; the IdP has done its part.
+2. **Read the API's response body, not just the status.** `401` with a code meaning "role not recognised" says the reader parsed the token and rejected the *role*; `403` would say it understood the role and denied the route. The distinction is what tells you whether to look at the IdP or at the app.
+3. **Prove the process serving the port runs the code you are reading.** ⚠️ This is the step every other entry in this skill assumes, and the one that breaks the diagnosis when it is false.
+
+<CRITICAL>
+**"The code on disk supports this role" and "the running process supports this role" are different claims, and only the second one matters.** Measured 2026-09-18: a dev backend whose file watcher had silently stopped served a build from before the new role existed. Every check prescribed above passed — grant correct, claim present, `ROLE_PRECEDENCIA` and the claim-name map correct in the source — while the API kept answering `401` for that role and only that role.
+
+Reasoning from timestamps is **not** a substitute: the running child process was younger than the commit that added the role, which said it should be current, and it was not. What settles it is behavioural, not chronological:
+
+```bash
+# does a file change actually reload it? (PID must change)
+pgrep -P <supervisor-pid>; touch <a source file>; sleep 5; pgrep -P <supervisor-pid>
+```
+
+Same PID after a touch means the watcher is dead and the loaded code is frozen at whatever it read last. Restart and re-measure before suspecting anything else. In production the same question has a different form — which image tag is the container actually running (`docker inspect --format '{{.Config.Image}}'`) — and the same answer: compare the artifact, never the intent.
+</CRITICAL>
+
+**Design note worth acting on**: an unrecognised role means *authenticated, but not permitted*, so `403` is the honest status; `401` converts a permission problem into a session problem and hands the user a symptom that names neither. If the reader you control returns `401` here, the loop is a property of your own contract, not of Zitadel — and the fix (return `403`, let the SPA show a "no access" page) removes an entire class of confusing reports.
 
 ### Roles array always empty
 

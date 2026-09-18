@@ -2,6 +2,42 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-18 — Quirk 52: o laço de `401` que todo quirk de papel produz, e o passo que todos assumem — bump 0.15.0 → 0.16.0
+
+**Sintoma que teria evitado:** uma conta entra em laço — a tela do IdP aceita a senha, o navegador
+chega ao callback e volta ao login, repetidamente — enquanto **outras contas entram normalmente**.
+Nada na tela menciona papel ou permissão, e a leitura natural é sessão quebrada ou problema de OIDC.
+
+**O que faz o laço:** a API responde `401` para um papel que não reconhece, e o SPA é construído
+para reagir a `401` re-autenticando. Uma falha de **autorização** vira uma falha de
+**autenticação**, e o app tenta consertá-la fazendo login de novo — para sempre. Os Quirks 41, 46 e
+48 desembocam todos nesse mesmo `401 role_nao_reconhecida`; o sintoma compartilhado é que não
+tinha nome.
+
+**O fato mais barato da triagem é de graça:** outra conta com outro papel funciona. Isso elimina
+instância, JWKS, audience, redirect URIs e Login UI de uma vez, e aponta para a única coisa que
+difere — o papel na claim.
+
+**E o passo que faltava.** Os outros quirks prescrevem: decodifique o token, confira o grant,
+confira o YAML. Hoje esse caminho passou **inteiro** — grant certo, claim presente, `ROLE_PRECEDENCIA`
+e o mapa de nomes corretos no código — e a API seguia em `401` só para aquele papel. O que faltava
+era provar que **o processo que atende a porta roda o código que se está lendo**: um backend de dev
+cujo file watcher havia parado em silêncio servia um build anterior ao papel.
+
+⚠️ **Raciocinar por timestamp enganou ativamente.** O processo filho era mais **novo** que o commit
+que acrescentou o papel, o que dizia que ele estaria atual — e não estava. O que decide é
+comportamental: `touch` num arquivo e ver se o PID muda; em produção, ler a tag da imagem que o
+container roda. Compare o artefato, nunca a intenção.
+
+**Corolário de desenho, que vale agir:** papel não reconhecido é *autenticado e sem permissão* —
+`403` é o status honesto. `401` converte problema de permissão em problema de sessão e entrega ao
+usuário um sintoma que não nomeia nenhum dos dois.
+
+**Junto**, a entrada do `401` com `iss`/`aud`/`exp` corretos ganhou a causa irmã: **dois arquivos de
+env discordando da audience**, com o vencedor dependendo de como o processo sobe. Medido no mesmo
+dia — `.env` e `.env.local` diferindo só nessa chave, backend autenticando de um jeito e
+respondendo `401 jwt_invalido` do outro, sem nada nos logs nomeando arquivo.
+
 ## 2026-09-18 — Quirk 51: `reuse` é a mesma palavra para "já estava certo" e "li uma declaração velha" — bump 0.14.0 → 0.15.0
 
 **Sintoma que teria evitado:** um deploy de staging com **quatro passos verdes** que não criou papel

@@ -1,5 +1,45 @@
 # Changelog — zitadel-idp
 
+## [0.16.0] - 2026-09-18
+
+### Added
+
+- **Quirk 52 — todo quirk de papel desta skill termina no MESMO laço de `401`, e todos
+  assumem que o leitor que recusa o token é o build que você está lendo.** Os Quirks 41,
+  46 e 48 explicam como a claim acaba carregando um papel que o app não conhece; o
+  **sintoma** que eles compartilham não tinha nome, e ele não menciona papel nem
+  permissão: a tela de login aceita a credencial, o navegador chega ao callback e **volta
+  direto para o IdP**, em laço. A causa é que a API responde `401` para papel não
+  reconhecido, e o SPA é construído para reagir a `401` re-autenticando — uma falha de
+  **autorização** reportada como falha de **autenticação**.
+- **Entrada nova em `troubleshooting.md`** — "One account loops back to the login screen
+  while the others log in fine": triagem do mais barato para o mais caro, começando pelo
+  fato que custa zero (**outra conta, com outro papel, entra normalmente**, o que elimina
+  instância, JWKS, audience, redirect URIs e Login UI de uma vez) e terminando no passo
+  que as outras entradas assumem — provar que o processo que atende a porta roda o código
+  que você está lendo.
+- Linha na tabela de roteamento do `SKILL.md`.
+
+### Changed
+
+- A entrada "Backend rejects JWT 401 even though `iss`/`aud`/`exp`/signature are correct"
+  ganha a segunda causa, mais sem graça e mais difícil de ver: **dois arquivos de env no
+  mesmo repo discordando da audience**, onde quem vence depende de como o processo foi
+  iniciado. Medido: `.env` e `.env.local` diferindo **apenas** nessa chave, de modo que o
+  backend autenticava iniciado de um jeito e respondia `401 jwt_invalido` do outro, sem
+  mudança de configuração e sem nada nos logs nomeando arquivo algum.
+
+### Notes
+
+- **Raciocinar por timestamp não substitui medir**, e neste caso enganou ativamente: o
+  processo filho era **mais novo** que o commit que acrescentou o papel e mesmo assim não
+  o tinha. O que decide é comportamental — `touch` num arquivo-fonte e ver se o PID muda
+  (dev), ou ler a tag da imagem que o container roda de fato (prod). Compare o artefato,
+  nunca a intenção.
+- **Corolário de desenho**: papel não reconhecido é *autenticado e sem permissão*, então
+  `403` é o status honesto. Devolver `401` é o que fabrica o laço — e é o seu contrato
+  fazendo isso, não o Zitadel.
+
 ## [0.15.0] - 2026-09-18
 
 ### Added

@@ -199,6 +199,57 @@ warning and is ignored because `continue-on-error` masks it.
 
 ---
 
+## §6a. When you prove a sensor by BREAKING the code, the sabotage is the probe — and it can fail to land
+
+**Symptom**: you sabotage a file to confirm a linter/test actually catches the defect, the
+tool exits 0, and you conclude the sensor is blind. You then write that conclusion down —
+in a commit message, a review reply, a lessons file — and it is false.
+
+**Cause**: §6 above is about a probe that never ran. This is the same failure one layer
+in: the *edit* never happened. The scripted edits people reach for here fail **silently**
+when the pattern misses:
+
+| Edit method | Pattern doesn't match | Silent? |
+| --- | --- | --- |
+| Python `str.replace(a, b)` | returns the string **unchanged** | **yes** — no exception, no return code |
+| `sed -i 's/a/b/'` | leaves the file unchanged, exits **0** | **yes** |
+| `patch` / `git apply` | rejects with a non-zero exit | no |
+
+A multi-line pattern assembled from memory is the common way to miss: an intervening
+comment line, a different indent, a line you thought was adjacent and isn't. The two
+transcripts are byte-identical — *"I ran the sensor over the sabotaged code and it
+passed"* — and only one of them is true.
+
+This is worse than a wasted check. You publish a claim that a tool is blind when it is
+not, and the next person trusts it and skips the guard.
+
+**Fix — assert the sabotage landed, in both directions:**
+
+```bash
+python3 - <<'EOF'
+s = open(path).read()
+assert PATTERN in s, "pattern did not match — the sabotage never applied"
+open(path, 'w').write(s.replace(PATTERN, BROKEN, 1))
+EOF
+grep -n "<the defect>" "$path"     # must print the line you just injected
+<the sensor>; echo "exit=$?"       # must be non-zero
+git checkout -- "$path"
+<the sensor>; echo "exit=$?"       # must be zero again
+```
+
+Measured 2026-09-22: a sabotage meant to show `actionlint` ignoring
+`${{ }}` inside a shell comment never applied — the replace pattern skipped an intervening
+comment line. `actionlint` ran against the **original** file and exited 0, and that was
+recorded as "the sensor is blind". Re-run with the assertion in place: exit 1,
+`expression: potentially untrusted`, with line:column. The tool had been right all along
+(it is the same detection `cd-pipeline-pitfalls.md` §9 relies on).
+
+**Rule of thumb**: a green sensor over code you *believe* is sabotaged proves nothing
+until you have seen the defect in the file. Prefer `sed`+`grep` verification or a tool
+that fails loudly (`git apply`) over a silent string replace.
+
+---
+
 ## §7. `${{ vars.X }}` resolves at repository level too, not just environment
 
 **Symptom**: a workflow references `${{ vars.SOMETHING }}`, the environment's variable
@@ -318,6 +369,52 @@ Medido em 2026-09-18 (IdP JRC): quatro passos verdes enquanto o bootstrap não
 criava papel nenhum; quem desmentiu foi um `SELECT` na projeção de papéis,
 rodado à mão **depois**, por desconfiança — não pelo pipeline.
 
+## §10. `migrate deploy` green does not say WHICH role the application runs as
+
+**Symptom**: migrations apply, the container is `healthy`, the smoke passes — and the
+append-only guarantee you wrote a migration for is not in force. Nothing anywhere is red.
+
+**Cause**: a schema with `REVOKE UPDATE/DELETE` on audit tables needs **two** database
+identities, and the deploy carries both:
+
+| Who | Role | Why |
+| --- | --- | --- |
+| `prisma migrate deploy` / `migrate` / `alembic upgrade`, and the seed | the **owner** | it creates tables, roles and grants — the restricted role cannot |
+| the running application | the **restricted** role | the REVOKE is enforced by the database, not by the use case |
+
+Swapping them is worse than omitting one. Run migrations as the restricted role and they
+fail loudly, which is fine. Run the **application** as the owner and everything works —
+the REVOKE becomes decorative at runtime and survives only inside the integration test,
+where the fixture happens to connect correctly. The audit trail is rewritable and every
+signal says healthy.
+
+**Fix — prove the role from the database, after the smoke has opened the pool:**
+
+```bash
+docker compose -p "$PROJECT" -f "$COMPOSE_FILE" exec -T postgres \
+  psql -v ON_ERROR_STOP=1 -U <owner> -d <db> -tAc \
+  "SELECT DISTINCT usename FROM pg_stat_activity
+   WHERE datname='<db>' AND backend_type='client backend';"
+```
+
+Assert **both halves**: the restricted role is present, and the owner is **absent**. Only
+the first is the obvious check, and alone it passes while a second connection pool runs as
+the owner.
+
+Order matters and is easy to get wrong: the check must run **after** something opened the
+pool. A readiness endpoint that touches the database is the cheapest trigger — before any
+query, `pg_stat_activity` is legitimately empty and the assertion fails for the wrong
+reason.
+
+**Related**: if the migration creates the application role without a password (the right
+call — migrations are versioned and run in every environment, so they must not carry
+secrets), the deploy needs an explicit `ALTER ROLE ... PASSWORD` step **between** the
+migration and `up -d`. Skip it and the first boot is a crashloop that reads like a broken
+image. Feed that SQL through **stdin**, never `-c` or an argument: command arguments show
+up in `ps`, in the runner log and in the transcript.
+
+---
+
 ## Symptoms → section
 
 | Symptom | Section |
@@ -335,3 +432,6 @@ rodado à mão **depois**, por desconfiança — não pelo pipeline.
 | `cmd \| tail` reports success on a failing test suite | §8 |
 | Green deploy whose provisioning step (bootstrap/seed/data migration) did nothing | §9 |
 | Idempotent step logging `reuse`/`already exists` for everything — and it is a stale input | §9 |
+| A linter/test passes over code you believe you sabotaged | §6a |
+| Migrations green, container healthy, and an append-only REVOKE is not in force | §10 |
+| App cannot authenticate with a password that works in `psql` | §10, and `cd-pipeline-pitfalls.md` §11 |

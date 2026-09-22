@@ -2,6 +2,60 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-22 — O sensor que se prova quebrando o código, e três armadilhas de um CD novo — bump 2.31.0 → [2.32.0]
+
+**O quê:** quatro lições novas (93, 94, 95, 96), duas seções novas
+(`cd-verification-and-rollback.md` §6a e §10; `cd-pipeline-pitfalls.md` §11 e §12) e duas notas
+em seções existentes (`self-hosted-runner-docker.md` §12 e §11 C).
+
+**Por quê:** a construção de um CD de staging do zero — revisado por um revisor automatizado antes
+do primeiro deploy — produziu quatro classes que o runbook não cobria, e uma delas é sobre a
+própria prática de provar sensores que esta skill prega em toda parte.
+
+**§6a — a sabotagem É a sonda, e ela pode não pousar.** O §6 já ensinava a disparar uma sonda
+deliberada antes de acreditar no silêncio de uma captura. Falta a camada de dentro: quando se
+prova um sensor **quebrando o código**, a edição pode não acontecer. `str.replace` do Python
+devolve a string intacta quando o padrão não casa, e `sed -i` sai 0 sem tocar o arquivo — os dois
+em silêncio, e um padrão multilinha montado de memória erra por uma linha de comentário no meio.
+Os transcripts são idênticos: "rodei o sensor sobre o código sabotado e passou". Medido: uma
+sabotagem para mostrar o `actionlint` ignorando `${{ }}` em comentário de `run:` nunca entrou; o
+lint rodou no arquivo ORIGINAL, saiu 0, e isso virou a afirmação publicada de que a ferramenta era
+cega — contradizendo a lição 83 desta mesma skill. Refeito com `assert padrão in texto` mais
+`grep` do defeito: exit 1, `expression: potentially untrusted`, linha:coluna. Custo real de não
+ter isso: publica-se que uma ferramenta é cega quando não é, e o próximo confia e dispensa a
+guarda.
+
+**§10 — `migrate deploy` verde não diz com QUAL papel a aplicação roda.** Esquema com
+`REVOKE UPDATE/DELETE` em tabela append-only precisa de duas identidades, e o deploy carrega as
+duas: a migration exige o dono; a aplicação exige o papel restrito. Trocar é pior que omitir —
+migration com o restrito falha alto, mas a aplicação com o dono **funciona**, e o REVOKE vira
+decorativo em runtime, sobrevivendo só dentro do teste de integração onde a fixture conecta certo.
+Prova: `pg_stat_activity` depois que o smoke abriu o pool, assertando as duas metades (restrito
+presente E dono ausente) — só a primeira passa com um segundo pool rodando como dono.
+
+**§11 — caractere reservado de URI na senha do banco.** A senha está certa como senha e errada
+como componente de URL: `#` trunca como fragmento, `/` e `?` encerram a authority, `%` inicia
+escape. O banco recebe uma string e o driver manda outra, os dois lados parecem certos isolados, e
+a investigação vai para o papel e os grants, que não têm defeito. A cura recomendada é restringir
+o alfabeto (`^[A-Za-z0-9]+$`, `openssl rand -hex 32`), não percent-encodar: encodar obriga a manter
+duas formas do mesmo segredo e errar a distinção reproduz a falha silenciosa que se queria evitar.
+
+**§12 — redirect URI de OIDC é comparado byte a byte, e o e2e não enxerga metade deles.** Uma SPA
+registra três URIs; o callback quebra alto e qualquer teste de login o pega, mas o **silent renew**
+dispara no fim da vida do access token (5–15 min) e nenhum teste de login chega lá. Nomear o e2e
+como mitigação de "redirect errado" é sensor cego. Agrava que os caminhos não são simétricos — é
+comum só o callback morar sob um prefixo (`/auth/callback`, mas `/silent-renew`) —, e escrever
+`/auth/silent-renew` por analogia erra nos dois lados de uma vez. Sintoma: usuários deslogados "do
+nada" 15 minutos depois, sem deploy no histórico para culpar.
+
+**Notas em seções existentes.** O §12 do runner ganhou a saída melhor para o arquivo de compose:
+montar o diretório do host é certo para um `--env-file`, mas o compose já vem no checkout, e usá-lo
+é estritamente melhor — o deploy aplica o arquivo do commit deployado, e qualquer gate que **leia**
+o compose passa a medir o arquivo que será aplicado, em vez de aprovar um e aplicar outro. O §11 C
+ganhou a refutação de uma alegação que volta: a documentação de `GET /actions/runners` não lista
+`version`, a resposta viva lista (`"version":"2.337.0"`) — meça o endpoint antes de aceitar que um
+campo não existe.
+
 ## 2026-09-18 — Três armadilhas do primeiro deploy de staging num runner conteinerizado — bump 2.30.1 → [2.31.0]
 
 **O quê:** três lições novas (90, 91, 92) e três seções: `self-hosted-runner-docker.md` §12,

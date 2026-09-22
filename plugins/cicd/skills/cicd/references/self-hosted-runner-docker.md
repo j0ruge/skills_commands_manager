@@ -968,6 +968,24 @@ while IFS=$'\t' read -r NOME VERSAO; do
 done
 ```
 
+⚠️ **A documentação do endpoint NÃO lista `version` — a resposta viva lista.** O schema
+publicado para *list self-hosted runners* enumera `id`, `name`, `os`, `status`, `busy` e
+`labels`, e parar aí leva à conclusão de que esta checagem é impossível. Ela não é; o campo
+vem. Já foi levantado como defeito por revisor automatizado citando a doc, e refutado com
+uma chamada:
+
+```bash
+gh api repos/<owner>/<repo>/actions/runners --jq '.runners[0]'
+# {"busy":false,"id":95,...,"status":"online","version":"2.337.0"}
+```
+
+Meça o endpoint antes de aceitar que um campo não existe — e guarde a saída junto do
+código, porque a alegação volta na próxima revisão. Se um dia o campo realmente sumir, o
+`jq` devolve `null`, o `cut` propaga a string `null` para a expansão aritmética e, sob
+`set -u`, o passo aborta com `null: unbound variable` em vez de reportar currency: um
+default explícito (`${VERSAO:-desconhecida}`) mais um `continue` com `::warning::` mantém o
+watchdog útil em vez de vermelho por motivo errado.
+
 Duas escolhas que valem explicar:
 
 - **Limiar em minors, não em "igual à última".** A cadência de release é ~mensal e o GitHub
@@ -1042,6 +1060,25 @@ Três coisas que não são detalhe:
   CD lista os serviços e nunca inclui o runner, então esta montagem não chega lá
   por deploy nenhum.
 
+⚠️ **Para o arquivo de compose, há uma saída melhor que montar: não usar o do
+host.** A montagem acima é a resposta certa para um `--env-file` — o `.env` de
+operação genuinamente só existe no host. O compose, não: o CD já faz checkout do
+repositório, então `-f infra/<amb>/docker-compose.yml` (relativo ao
+`GITHUB_WORKSPACE`) resolve sem montagem nenhuma. E é estritamente melhor, por
+dois motivos que não são de conveniência:
+
+- o deploy passa a aplicar o compose **do commit que está sendo deployado**, em
+  vez do que estiver no host com drift próprio (§2a) — que é o que se quer dizer
+  quando se diz "deploy por SHA";
+- qualquer gate que **leia** o compose (recusar host do TLD errado, exigir
+  `init: true`, proibir `ports:`) passa a medir o arquivo que vai ser aplicado.
+  Apontado para o host, o gate aprova um arquivo e o deploy aplica outro.
+
+O clone do host continua necessário — é o único caminho de deploy do runner —, só
+não é a fonte do CD. Medido em 2026-09-22: um `COMPOSE_DIR=/opt/<proj>/...` num
+workflow novo, pego em review antes do primeiro deploy; todo `docker compose -f`
+teria falhado com a cópia do host perfeita no lugar.
+
 **Diagnóstico em um comando** — pergunte de dentro, não de fora:
 
 ```bash
@@ -1078,3 +1115,5 @@ valor — e as únicas montagens do runner eram o socket e o volume de trabalho.
 | Deploy ficou `queued` e ninguém percebeu por dias/semanas (sem ❌, sem alerta; site no ar com imagem velha) | §11 (detecção proativa — `timeout-minutes` não conta em fila; preflight gate + watchdog) |
 | Preflight precisa listar runners mas o `GITHUB_TOKEN` dá 403 / lista vazia | §11 (`/actions/runners` exige admin → PAT `Administration: Read`; watchdog usa só `GITHUB_TOKEN`/`actions:read`) |
 | Passo do CD diz que um caminho do HOST não existe (`--env-file`, `-f`) com o arquivo intacto lá | §12 (o CLI do compose roda DENTRO do runner; bind mount resolve no daemon, flag resolve no container — montar o diretório `ro`) |
+| `docker compose -f` apontando para o clone do operador, tendo checkout disponível | §12 (nota) — use o compose do CHECKOUT: deploy por SHA de verdade, e o gate passa a medir o arquivo que será aplicado |
+| Revisor afirma que `GET /actions/runners` não devolve `version` (citando a doc) | §11 C (nota) — o schema publicado omite, a resposta viva traz; refute com uma chamada |

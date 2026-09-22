@@ -605,6 +605,105 @@ file corrected ->                                                               
 Writing the sequence in prose (as this section does) is how you document it without breaking the
 very file you are editing.
 
+## §11. A URI-reserved character in a database password breaks the CONNECTION URL, not the password
+
+**Symptom**: the deploy sets the application role's password, the `ALTER ROLE` succeeds,
+and the application then fails to authenticate. The password is provably correct — you can
+log in with `psql` using the exact same string. The investigation goes to the role, the
+grants, `pg_hba.conf`; none of them is at fault.
+
+**Cause**: the password is correct *as a password* and wrong *as a URL component*. Drivers
+that take a connection string (`postgresql://user:pass@host/db` — Prisma, SQLAlchemy,
+`libpq` URI form, most ORMs) parse the userinfo section per RFC 3986. A `#` truncates it as
+a fragment, a `/` or `?` ends the authority, a `%` starts an escape, and `@` or `:` split
+the field. The database received one string and the driver sends another.
+
+What makes it expensive is that **both sides look right in isolation**: the secret store
+has the right value, the `ALTER ROLE` ran, the env var holds the literal password. Only the
+parsed URL differs, and nothing prints it.
+
+**Two fixes, and the simpler one is usually better:**
+
+| Approach | Cost |
+| --- | --- |
+| **Constrain the alphabet** — require `^[A-Za-z0-9]+$`, generate with `openssl rand -hex 32` | one guard; the same string is safe in the URL, the `.env` and the SQL literal |
+| **Percent-encode the userinfo** | you must keep **two forms of the same secret** — raw for `ALTER ROLE`, encoded for the URL — and getting that distinction wrong reproduces the exact silent failure you were avoiding |
+
+Alphanumeric costs nothing in entropy (`rand -hex 32` is 128 bits) and removes the class.
+Reach for encoding only when the password is imposed by someone else.
+
+Put the guard where the deploy materializes the `.env`, so it fails with the reason and the
+remedy instead of producing a subtly wrong URL:
+
+```bash
+for name in DB_PASSWORD DB_APP_PASSWORD; do
+  if ! [[ "${!name}" =~ ^[A-Za-z0-9]+$ ]]; then
+    echo "::error::${name} has a character outside [A-Za-z0-9]. It goes inside a connection URL, where URI-reserved characters break parsing silently. Regenerate: openssl rand -hex 32"
+    exit 1
+  fi
+done
+```
+
+**Related**: `cd-verification-and-rollback.md` §10 — the adjacent trap in the same step, where
+the URL parses fine but names the wrong *role*.
+
+---
+
+## §12. OIDC redirect URIs are compared byte for byte — and your e2e cannot see half of them
+
+**Symptom**: login works. The smoke is green, the end-to-end journey is green, the deploy
+is clean. Fifteen minutes later users are signed out "for no reason", and there is no
+deploy in the timeline to blame — the sign-outs start long after the release.
+
+**Cause**: an SPA registers **three** URIs with the identity provider, and they are matched
+literally, trailing slash included:
+
+| URI | Exercised when | Caught by a login test? |
+| --- | --- | --- |
+| redirect / callback | every login | **yes** — first thing that breaks |
+| post-logout | on sign-out | sometimes |
+| **silent renew** | when the access token expires | **no** |
+
+Silent renew fires on the access-token lifetime — commonly 5 to 15 minutes. Any test that
+logs in and asserts a page finishes in seconds, so it never reaches the refresh. Naming the
+e2e as the mitigation for "wrong redirect URI" is a blind sensor: it covers the URI that
+would have failed loudly anyway and misses the one whose failure is delayed and
+attributed to something else.
+
+The paths are also easy to get wrong because they are **not symmetric**. A common routing
+scheme puts only the callback under a prefix:
+
+```text
+/auth/callback      ← callback lives under /auth/
+/silent-renew       ← renew does NOT
+/login              ← post-logout
+```
+
+Writing `/auth/silent-renew` by analogy is the natural mistake, and it is wrong in two
+places at once: the SPA has no such route and the provider has no such registration.
+
+**Fix — a contract test, because three artifacts must agree and two of them stay quiet:**
+the provider's registered list, the CD's build arguments, and the SPA's router. The pair
+you can check in the application repo is the last two, and it catches the analogy mistake:
+
+```typescript
+// each --build-arg <VITE_OIDC_*_URI> in the CD workflow must name a real route
+const rotas = new Set([...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]));
+expect(rotas.size).toBeGreaterThan(5);            // anti-vacuity: a renamed router
+expect(rotas.has(new URL(buildArg(name)).pathname)).toBe(true);
+```
+
+The anti-vacuity floor is not decoration: without it, a moved or renamed router file yields
+an empty route set and every assertion passes for having nothing to compare against.
+
+Where the provider's list lives in **another repository** — a common, deliberate boundary —
+say so in the test, so the next reader knows which third of the contract is still unguarded.
+
+**Related**: §1 of this file — the `VITE_*` are baked at build time, so a wrong URI is
+frozen into the image and fixing the secret alone changes nothing without a rebuild.
+
+---
+
 ## §10. `compose run`/`up` não RECONSTRÓI imagem cuja tag já existe — a lição 29 pelo lado do build
 
 **Symptom**: um passo de bootstrap/seed/migration roda **verde** e não faz o que

@@ -1,5 +1,17 @@
 # Changelog — zitadel-idp
 
+## [0.16.1] - 2026-09-22
+
+### Fixed
+
+- **O snippet de CORS do Quirk 42 (`troubleshooting.md`) omitia `PUT` na
+  `Access-Control-Allow-Methods`** — e ele é copiado ao pé da letra. Num repo real a cópia virou
+  um backend que registrava `PUT` na rota de edição e nunca o anunciava no preflight: dava para
+  criar e submeter, jamais para salvar uma edição. O snippet agora traz `PUT`, mas a correção que
+  importa é a nota ao lado: **a lista de métodos é uma duplicata da tabela de rotas e vai
+  divergir.** Derive-a do router ou guarde a igualdade com um teste; a skill `cors` cobre o caso
+  inteiro em `casos-limite.md` §1a, inclusive por que a sonda usual de preflight não o pega.
+
 ## [0.16.0] - 2026-09-18
 
 ### Added

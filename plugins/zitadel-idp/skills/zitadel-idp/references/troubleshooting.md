@@ -538,7 +538,7 @@ export function createCors(opts: { allowedOrigins: string }) {
     if (origin && allow.has(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "authorization, content-type, idempotency-key");
       res.setHeader("Access-Control-Max-Age", "600");
     }
@@ -549,6 +549,8 @@ export function createCors(opts: { allowedOrigins: string }) {
 ```
 
 Wire in composition: `app.use(createCors({ allowedOrigins: env.CORS_ALLOWED_ORIGINS }))` immediately after `app.disable("x-powered-by")`. Env default `http://localhost:5173` for dev; prod is comma-joined list of the public SPA origins. The `cors` npm package works too — what matters is *first*.
+
+⚠️ **The method list above is a duplicate of your routing table, and it will drift.** Copying this snippet and later registering a `PUT` (or any method not listed) gives you the *next* failure mode, which is nastier because it is partial: the preflight still answers `204`, `GET` and `POST` keep working, and only that one action is blocked — so the suspicion lands on the screen, not on CORS. Chrome names it exactly: `Method PUT is not allowed by Access-Control-Allow-Methods in preflight response`. Derive the list from the registered routes, or guard the equality with a test that walks the router. The `cors` skill covers this end to end (`casos-limite.md` §1a), including why the usual preflight probe misses it.
 
 **Prevention**: add a Playwright smoke that authenticates via the real Zitadel and hits at least one `/api/*` endpoint. Even one spec catches this on the first commit that introduces it.
 

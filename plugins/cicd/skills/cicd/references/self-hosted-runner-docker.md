@@ -1090,6 +1090,67 @@ Medido em 2026-09-18 (IdP JRC, primeiro deploy de staging): pré-condição
 reprovando com o `.env` intacto no host, `0600 root`, quatro variáveis com
 valor — e as únicas montagens do runner eram o socket e o volume de trabalho.
 
+## §13. O runner conteinerizado precisa de TODO binário que o workflow invoca — e nada avisa que falta
+
+**Sintoma**: um step do CD morre com `<comando>: command not found` depois de atravessar
+gates, builds e push de imagens. O comando é trivial (`dig`, `nc`, `envsubst`, `rsync`,
+`openssl`), existe no host, existe na sua máquina, e no `ubuntu-latest` existiria também.
+
+**Causa**: o §12 é sobre o **filesystem** do runner; este é sobre o **ferramental** dele.
+Num runner conteinerizado a imagem é sua, e ela é mínima de propósito — o
+`myoung34/github-runner` traz o agente, não uma distro de CI. E há uma assimetria que faz
+o erro escapar de toda revisão:
+
+| Artefato | Onde vive | Quem o constrói | O que avisa quando divergem |
+| --- | --- | --- | --- |
+| o workflow | no repositório, revisado em PR | o CD | — |
+| a imagem do runner | Dockerfile no repositório, **construída à mão no host** | uma pessoa, fora do CD | **nada** |
+
+O `up -d` do CD nunca inclui o `runner` (§2a), então a imagem não é reconstruída por
+deploy nenhum: ela muda quando alguém lembra. Editar o workflow para usar uma ferramenta
+nova é uma linha inocente num PR verde, e a quebra aparece no ambiente, no deploy seguinte.
+
+Custo medido em 2026-09-22: `dig: command not found` no gate de DNS, **depois** de dois
+gates de CI, dois builds e dois pushes ao GHCR. O conserto foi uma palavra; o caro foi
+descobrir tarde.
+
+⚠️ **Não troque a ferramenta por uma que já está lá só para destravar.** O reflexo é
+substituir `dig` por `getent`, que existe em qualquer imagem — e num runner com
+`extra_hosts` o `getent` lê `/etc/hosts` e mede a **própria configuração do container**,
+não o DNS. O gate segue verde medindo outra coisa, que é pior que o `command not found`.
+Sonde antes de decidir se falta binário ou falta rota:
+
+```bash
+docker exec -i <runner> bash -s <<'EOF'
+for s in <dns-interno> <dns-externo>; do
+  timeout 3 bash -c "echo > /dev/udp/$s/53" 2>/dev/null && echo "$s alcancavel" || echo "$s FALHOU"
+done
+for b in dig nslookup host getent python3; do command -v "$b" >/dev/null && echo "$b presente" || echo "$b AUSENTE"; done
+EOF
+```
+
+(`docker exec` **sem `-i`** não repassa stdin: o heredoc chega vazio, o `bash -s` sai 0 e a
+sonda "passa" sem ter medido nada — a mesma família do §6a de
+`cd-verification-and-rollback.md`.)
+
+**Fix — um contrato entre os dois artefatos**, já que ninguém os lê junto. A superfície não
+é só o YAML: os scripts que ele chama contam (é o `smoke.sh` que usa `curl`, não o
+workflow). E meça nos **dois** sentidos:
+
+```typescript
+const FERRAMENTAS = [
+  { comando: "dig", pacote: "dnsutils" },
+  { comando: "jq", pacote: "jq" },
+  { comando: "curl", pacote: "curl" },
+];
+// 1. o Dockerfile instala cada pacote que o deploy usa
+// 2. o deploy ainda invoca cada comando da lista — senão a lista virou folclore
+//    e deixou de descrever a dependência real
+```
+
+Sem a segunda metade a lista só cresce, e passa a exigir do Dockerfile coisas que ninguém
+usa mais. Sem a primeira, volta o `command not found`.
+
 ## Sintomas → seção
 
 | Sintoma | Vai para |

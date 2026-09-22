@@ -250,6 +250,38 @@ that fails loudly (`git apply`) over a silent string replace.
 
 ---
 
+## §6b. A text-scanning assertion reads the COMMENT that explains the thing it guards
+
+**Symptom**: you delete the line the sensor exists to protect, run the sensor, and it stays
+green. The sensor is a `grep`/`toContain` over the file, and the file also contains a
+comment explaining why that line matters.
+
+**Cause**: the better the documentation, the blinder this sensor. A `<CRITICAL>` block
+that names the exact flag, function or variable is doing its job — and it satisfies the
+substring search all by itself. Deleting the real code changes nothing the assertion can
+see.
+
+Two measured instances, hours apart, on the same codebase:
+
+| Assertion | What kept it green | Fix |
+| --- | --- | --- |
+| compose must not contain `STORAGE_PATH`, `JRC_API`, `ZITADEL_` | the provenance header listing exactly those names, to say why they were left out | parse the file and scan the **resolved config**, not the text |
+| the role-proof SQL must contain `pid <> pg_backend_pid()` | the `<CRITICAL>` block explaining that exclusion | scan only **non-comment lines** |
+
+Note the first one is worse than a false negative: a raw-text assertion **forbids its own
+explanation**. The comment that would teach the next person becomes a test failure, so it
+gets deleted — the sensor quietly removes the documentation it depends on.
+
+**Fix**: make the assertion read the same thing the machine reads.
+
+- Structured file (YAML/JSON/TOML) → parse it and assert on the resolved object.
+- Code or script → strip comment lines before searching.
+- Either way, **sabotage it**: delete the guarded line and confirm red. Both cases above
+  were found exactly that way, and in both the first sabotage passed.
+
+**Related**: §6a — there the probe never landed; here it landed and the sensor could not
+see it. Same outcome, opposite cause, identical transcript.
+
 ## §7. `${{ vars.X }}` resolves at repository level too, not just environment
 
 **Symptom**: a workflow references `${{ vars.SOMETHING }}`, the environment's variable
@@ -415,6 +447,53 @@ up in `ps`, in the runner log and in the transcript.
 
 ---
 
+## §11. A gate that observes shared state through its OWN connection measures itself
+
+**Symptom**: a verification step that reads live server state fails every single time, on a
+system that is provably correct. Worse than a flaky gate: it reports a specific defect —
+often a security one — that does not exist, and sends the next person to audit code that
+is right.
+
+**Cause**: the gate opens a connection to ask the question, and the connection shows up in
+the answer. `pg_stat_activity` is the sharp case because the natural query runs through
+`psql` **as the database owner** — precisely the identity the gate asserts must be absent:
+
+```sql
+-- always fails: this psql session is itself a client backend owned by <owner>
+SELECT DISTINCT usename FROM pg_stat_activity
+WHERE datname='<db>' AND backend_type='client backend';
+```
+
+Measured on a live environment where the application was correct:
+
+```text
+with the probe's own connection:  <owner>, <app_role>
+excluding it:                     <app_role>
+detail:                           <owner>|psql|1    <app_role>||3
+```
+
+`<owner>|psql|1` is the question appearing in its own answer.
+
+**A gate that can never pass is as useless as one that never fails**, and it decays the
+same way: someone adds `continue-on-error`, or stops reading the step. Both ends of the
+range are broken — that is why §6 says to prove a sensor in **both** directions, not just
+that it can fail.
+
+**Fix**: exclude the observer.
+
+```sql
+AND pid <> pg_backend_pid()
+```
+
+The class is broader than Postgres. Any check that inspects shared state through something
+it created has to subtract itself: `docker ps` from inside a container that the same
+compose project owns, a process listing that includes the listing shell, a connection
+count taken by opening a connection, a lock check held by the checker. Ask **"does my own
+act of measuring appear in this result?"** before asserting absence — asserting *presence*
+usually survives the pollution, which is why only half of these gates are ever caught.
+
+---
+
 ## Symptoms → section
 
 | Symptom | Section |
@@ -435,3 +514,5 @@ up in `ps`, in the runner log and in the transcript.
 | A linter/test passes over code you believe you sabotaged | §6a |
 | Migrations green, container healthy, and an append-only REVOKE is not in force | §10 |
 | App cannot authenticate with a password that works in `psql` | §10, and `cd-pipeline-pitfalls.md` §11 |
+| A sensor stays green after you delete the very line it guards | §6b |
+| A verification step fails on every run, reporting a defect that is not there | §11 |

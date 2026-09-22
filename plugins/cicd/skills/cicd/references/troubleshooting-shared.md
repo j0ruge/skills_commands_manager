@@ -261,6 +261,66 @@ docker logs --tail 30 nginx-proxy-acme
 3. **Port 80 blocked:** Open port 80 in the firewall (required for the HTTP-01 challenge)
 4. **Certificate pending:** Restart the acme-companion and wait
 
+### 3c — issuance was ATTEMPTED and FAILED transiently, and nothing will retry soon
+
+The 3a/3b split above is not exhaustive, and the missing case is the one that wastes the
+most time, because **both** of the other diagnoses are wrong *and* their fixes are no-ops.
+
+**Symptom:** a brand-new vhost never gets its certificate, while DNS, port 80 and the
+companion are all demonstrably fine. Waiting does not help — ten minutes later nothing has
+changed.
+
+**Cause:** the companion *tried*, and the call to the ACME API failed on the network. The
+order is abandoned; the companion will not try again until its own cycle (typically hourly)
+or until an event wakes it. The log names it plainly:
+
+```text
+Creating/renewal <spa-host> certificates... (<spa-host>)
+[...] Single domain='<spa-host>'
+[...] Please refer to https://curl.haxx.se/libcurl/c/libcurl-errors.html for error code: 35
+[...] Create new order error. Le_OrderFinalize not found.
+```
+
+**The discriminator costs nothing and settles it instantly: look at a sibling hostname.**
+If another vhost got its certificate from the **same companion, minutes apart**, then DNS,
+port 80, firewall and the companion itself are all proven working — the failure is
+per-order, not environmental. That single observation eliminates every item in the 3a list
+before you test any of them:
+
+```bash
+docker logs --tail 120 <acme-container> 2>&1 | grep -iE "<host-a>|<host-b>|error|Verify"
+```
+
+**Fix:** confirm outbound reachability, then force reconciliation instead of waiting.
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' --max-time 15 https://acme-v02.api.letsencrypt.org/directory
+docker exec <acme-container> /app/signal_le_service || docker restart <acme-container>
+```
+
+Measured 2026-09-22: issuance completed ~30 s after the signal, for a host that had been
+stuck for over ten minutes.
+
+⚠️ **Consequence for the CD smoke, and it changes the design.** A smoke that retries on
+`curl: (60)` implicitly assumes 3b — *not issued yet, wait*. Under 3c the retry window is
+spent for nothing no matter how generous it is, and the deploy fails on a cause the retry
+cannot address. Two things follow:
+
+- **Do not "fix" it by enlarging the window.** Sixty seconds and six hundred fail the same
+  way; the number was never the variable.
+- On TLS failure, have the step (or the runbook line next to it) **say which of 3a/3b/3c it
+  is** — read the presented certificate (§3 above) and the companion log. "Retrying TLS"
+  as the only message is what makes 3c look like slowness for as long as anyone is willing
+  to wait.
+
+⚠️ **Flaky egress on the host produces this twice in one deploy, from two different
+directions.** The same session that hit the ACME failure also lost a `docker build` to
+`TLS handshake timeout` resolving `docker/dockerfile:1.7` from Docker Hub. Both read as
+"the pipeline is broken" and neither is; the tell is that both are **TLS to a third party**,
+and a plain re-run fixes them. Distinguishing this from a real defect is the same rule the
+backup/smoke gates use: **401/403 is ours, 5xx and timeouts are theirs** — and rollback
+does not repair someone else's network.
+
 ---
 
 ## 4. Runner Offline / Labels Not Found

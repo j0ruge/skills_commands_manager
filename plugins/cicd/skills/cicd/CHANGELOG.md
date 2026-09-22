@@ -2,6 +2,46 @@
 
 Lessons retrofitted into the skill, dated. Each entry describes **what** changed and **why** (the symptom it would have prevented).
 
+## 2026-09-22 — Quatro cegueiras de um primeiro deploy real — bump 2.32.0 → [2.33.0]
+
+**O quê:** quatro lições novas (97, 98, 99, 100), três seções novas
+(`self-hosted-runner-docker.md` §13; `cd-verification-and-rollback.md` §6b e §11) e um caso
+que faltava numa seção existente (`troubleshooting-shared.md` §3c).
+
+**Por quê:** o primeiro deploy de staging de um ERP — construído com o runbook em mãos —
+reprovou três vezes por três causas diferentes, e **nenhuma** estava coberta. Duas delas são
+sobre sensores que esta skill ensina a escrever.
+
+**§13 — o runner precisa de todo binário que o workflow invoca.** A lição 90/§12 é sobre o
+filesystem do runner; esta é sobre o ferramental. `dig: command not found` no gate de DNS,
+depois de dois gates de CI, dois builds e dois pushes ao GHCR. A assimetria que faz o erro
+escapar: o workflow é revisado em PR, a imagem do runner é construída **à mão no host, fora do
+CD** — o `up -d` do deploy nunca inclui o `runner`, então ela só muda quando alguém lembra. E o
+reflexo de destravar trocando `dig` por `getent` é pior que o erro: num runner com `extra_hosts`
+o `getent` lê `/etc/hosts` e mede a própria configuração, ficando verde sobre outra coisa.
+
+**§11 — um gate que observa estado compartilhado pela PRÓPRIA conexão mede a si mesmo.** A prova
+de papel lia `pg_stat_activity` exigindo que o dono do banco estivesse ausente — e a consulta
+roda por `psql` como o dono. Reprovaria todo deploy, acusando um defeito de segurança
+inexistente e mandando a próxima pessoa auditar código correto. Medido em ambiente vivo: com a
+conexão própria, `<dono>, <papel_app>`; sem ela, só `<papel_app>`; o detalhamento mostra
+`<dono>|psql|1`, a pergunta aparecendo na resposta. A classe é maior que Postgres — qualquer
+cheque que inspecione estado compartilhado por algo que ele próprio criou precisa subtrair-se.
+
+**§6b — a asserção sobre texto lê o COMENTÁRIO que explica a coisa que ela guarda.** Quanto
+melhor a documentação, mais cego o sensor: um `<CRITICAL>` que nomeia a função satisfaz o
+`toContain` sozinho, e apagar o código real não muda nada que a asserção enxergue. Dois casos
+medidos com horas de diferença no mesmo repositório. O primeiro é pior que falso negativo — uma
+asserção sobre texto cru **proíbe a própria explicação**, então o comentário que ensinaria a
+próxima pessoa vira falha de teste e é apagado.
+
+**§3c — a emissão do certificado foi TENTADA e falhou, e nada vai tentar de novo tão cedo.** O
+par 3a/3b não era exaustivo, e o caso que faltava é o que mais custa, porque os dois
+diagnósticos estão errados e os fixes deles são no-ops. O discriminador é de graça: se um
+hostname IRMÃO recebeu certificado do mesmo companion minutos antes, DNS, porta 80, firewall e
+companion estão todos provados. Isso muda o desenho do smoke — retry em `curl: (60)` assume
+"ainda não emitiu", e sob 3c a janela é gasta à toa por maior que seja.
+
 ## 2026-09-22 — O sensor que se prova quebrando o código, e três armadilhas de um CD novo — bump 2.31.0 → [2.32.0]
 
 **O quê:** quatro lições novas (93, 94, 95, 96), duas seções novas

@@ -60,6 +60,7 @@ de `blocked by CORS policy:`.
 | `The value of the 'Access-Control-Allow-Credentials' header … is ''` | `credentials: 'include'` sem `Allow-Credentials: true` | `true` no servidor **e** origem explícita (nunca `*`) |
 | `Response to preflight request doesn't pass access control check` | o `OPTIONS` falhou; a requisição real nem saiu | ver `casos-limite.md` §1 |
 | `Request header field <h> is not allowed by Access-Control-Allow-Headers` | o preflight não autorizou um header seu | listar o header (atenção: `authorization` sozinho já força preflight) |
+| `Method <M> is not allowed by Access-Control-Allow-Methods in preflight response` | o `OPTIONS` respondeu `2xx` — a allowlist é que não tem o método | acrescentar o método, e derivar a lista das rotas: `casos-limite.md` §1a |
 | `Redirect is not allowed for a preflight request` | `OPTIONS` levou 301/307/308 | responder o `OPTIONS` no lugar que recebe, sem redirect |
 | `header contains multiple values 'A, B'` | dois emissores (app **e** proxy) | escolher um dono — `configuracao.md` §0 |
 

@@ -530,7 +530,7 @@
     {
       "name": "zitadel-idp",
       "source": "./plugins/zitadel-idp",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "description": "Self-hosted Zitadel v4 OIDC field guide — a numbered quirk catalogue, working docker-compose and an idempotent TypeScript bootstrap. High-friction traps: FirstInstance env placement, JWT/JWKS over self-signed HTTPS, TLS-terminating proxy (`--tlsMode external`) and the console's mixed-content `Failed to fetch`, v2.66→v4 upgrade, API v1→v2, silent-renew, 401 storms. Triggers — zitadel, oidc self-hosted, silent-renew, JWKS, masterkey, v2.66→v4, tlsMode external, pre-cutover check.",
       "category": "development",
       "keywords": [
@@ -756,7 +756,7 @@
     {
       "name": "cors",
       "source": "./plugins/cors",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "description": "Diagnostica e configura CORS — o erro que mente sobre a causa. Decide qual portão barrou (CORS x CSP connect-src x mixed content, idênticos no JS), lê a mensagem literal do Chrome, e dá a receita por stack (nginx, Express, Django, Spring, FastAPI, CDN). Preflight, credenciais, Vary: Origin e as misconfigs que viram vulnerabilidade. Triggers — CORS, Access-Control-Allow-Origin, preflight, blocked by CORS policy, cross-origin, OPTIONS 401, no-cors, erro de CORS.",
       "category": "development",
       "keywords": [

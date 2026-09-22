@@ -54,12 +54,19 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$URL"
 curl -sS -D- -o /dev/null -H "Origin: $ORIGEM" "$URL" | grep -i '^access-control\|^vary'
 
 # 3) E o preflight? (obrigatório se há Authorization, ou método/header não-simples)
+#    $METODO é o método que FALHOU — não deixe POST fixo aqui (ver nota abaixo).
 curl -sS -D- -o /dev/null -X OPTIONS "$URL" \
   -H "Origin: $ORIGEM" \
-  -H 'Access-Control-Request-Method: POST' \
+  -H "Access-Control-Request-Method: $METODO" \
   -H 'Access-Control-Request-Headers: authorization,content-type' \
   | grep -i '^HTTP/\|^access-control'
 ```
+
+⚠️ **Sonde com o método que quebrou, não com um método qualquer.** O preflight é julgado
+**por método**: perguntar por `POST` quando quem falha é `PUT` devolve `204` e headers
+completos, e a sonda passa a atestar saúde exatamente onde há doença. A allowlist quase
+sempre contém `GET` e `POST` — são os primeiros que alguém escreve —, então o método
+ausente é justamente o que a sonda default não pergunta.
 
 Leitura dos três:
 
@@ -71,6 +78,11 @@ Leitura dos três:
 - **(3) não devolve `2xx`** → o preflight falha, e a requisição real nunca sai. Causas típicas:
   `OPTIONS` caindo em autenticação (`401`), redirect (`301/307/308` — **preflight não pode
   redirecionar**), ou header pedido fora de `Access-Control-Allow-Headers`.
+- **(3) devolve `204` e o browser bloqueia mesmo assim** → leia o
+  `access-control-allow-methods` da saída e procure o seu método ali. Preflight aprovado não é
+  preflight irrestrito: ele autoriza **o método que foi perguntado**. Este é o caso de sintoma
+  **parcial** — a lista funciona, o formulário salva, e só uma ação quebra —, e por ser parcial
+  a suspeita cai na tela, não no CORS. Ver `casos-limite.md` §1a.
 - **`Vary: Origin` ausente com allowlist dinâmica** → funciona hoje e quebra atrás de CDN. Ver
   `references/casos-limite.md` §3.
 
@@ -87,6 +99,7 @@ portões e vá para `references/diagnostico.md` §2 ler a mensagem exata.
 | `…has a value 'X' that is not equal to the supplied origin` | allowlist não inclui a sua origem | `configuracao.md` §1 |
 | `Response to preflight request doesn't pass access control check` | o `OPTIONS` não respondeu 2xx com os headers | `casos-limite.md` §1 |
 | `Request header field <h> is not allowed by Access-Control-Allow-Headers` | falta o header na resposta do preflight | `configuracao.md` |
+| `Method <M> is not allowed by Access-Control-Allow-Methods in preflight response` | o preflight respondeu `2xx`, mas a allowlist de métodos não tem o seu | `casos-limite.md` §1a |
 | `…'Access-Control-Allow-Credentials' header in the response is ''` | falta `true`, ou a origem veio como `*` | `configuracao.md` §2 |
 | `Redirect is not allowed for a preflight request` | `OPTIONS` recebeu 301/307/308 | `casos-limite.md` §1 |
 | `…header contains multiple values 'A, B'` | **dois** lugares emitindo CORS (app + proxy) | `configuracao.md` §0 |

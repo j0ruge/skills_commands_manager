@@ -2,6 +2,37 @@
 
 Formato: [Semantic Versioning](https://semver.org/)
 
+## 2026-09-22 — Preflight aprovado e requisição bloqueada — [1.1.0]
+
+**O quê:** nova seção `casos-limite.md` §1a — o preflight que responde `204` com todos os headers
+e ainda assim tem a requisição real recusada, porque `Access-Control-Allow-Methods` não lista o
+método. Junto: a mensagem literal do Chrome (`Method <M> is not allowed by
+Access-Control-Allow-Methods in preflight response`) entra nas duas tabelas sintoma→causa, o passo
+(3) da triagem deixa de sondar com `POST` fixo, o guia de leitura ganha a linha do `204`-mas-
+bloqueado, e `configuracao.md` §3 explica por que o exemplo de Express **não** passa `methods`.
+
+**Por quê:** numa sessão real, um review de PR pegou uma allowlist que omitia `PUT` num backend
+cuja rota de edição usava exatamente esse método. Três coisas que a skill não cobria ficaram
+visíveis de uma vez:
+
+1. **O sintoma é parcial, e por isso é caro.** `GET` e `POST` quase sempre estão na lista — são os
+   primeiros que alguém escreve. A tela carrega, o cadastro salva, só a edição quebra, e a
+   investigação começa na tela que falhou em vez do console. O preflight que *falha*, coberto no
+   §1, derruba tudo de uma vez e por isso é mais fácil.
+
+2. **A triagem da própria skill era cega para ele.** O passo (3) mandava
+   `Access-Control-Request-Method: POST` fixo. O preflight é julgado por método: perguntar por
+   `POST` quando quem falha é `PUT` devolve `204` completo, e a sonda passava a atestar saúde
+   exatamente onde havia doença. Sonda que só pergunta pelo caminho feliz não é sonda.
+
+3. **A lista de métodos é uma duplicata da tabela de rotas.** Escrita uma vez à mão, enquanto as
+   rotas crescem toda semana; e nenhum teste de backend emite preflight (`supertest` não passa
+   pela rede, mock de frontend intercepta antes dela), então a divergência só aparece num browser.
+   O conserto durável não é acrescentar o método que faltou — é derivar a lista do router, ou
+   guardar a igualdade com um teste que percorre as rotas registradas. O §1a traz esse teste com
+   as duas armadilhas dele: a asserção anti-vacuidade (varredura vazia passa igual a varredura
+   completa) e a exigência de vê-lo vermelho antes de confiar no verde.
+
 ## 2026-09-03 — Prompt audit — [1.0.1]
 
 Prompt audit (`/claude-api prompt-audit`, modelo-alvo Claude Fable 5.1); relatório completo fora do repo. Corpo limpo fora de um hunk.

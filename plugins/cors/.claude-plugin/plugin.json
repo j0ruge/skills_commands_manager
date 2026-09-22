@@ -4,7 +4,7 @@
   "author": {
     "name": "Chewiesoft"
   },
-  "version": "1.0.1",
+  "version": "1.1.0",
   "category": "development",
   "keywords": [
     "cors",
@@ -46,7 +46,10 @@
     "canvas-tainted",
     "font-cors",
     "playwright-cors",
-    "dev-server-proxy"
+    "dev-server-proxy",
+    "allow-methods",
+    "preflight-204-mas-bloqueado",
+    "method-not-allowed"
   ],
   "platforms": [
     "claude-code",

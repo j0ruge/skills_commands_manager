@@ -29,6 +29,71 @@ O preflight precisa de **2xx** (204 é o usual) e dos headers `Allow-Origin`, `A
 
 ---
 
+## §1a. Preflight aprovado e requisição real bloqueada — a allowlist de métodos
+
+O caso anterior é o preflight que **falha**. Este é o oposto e engana mais: o `OPTIONS`
+responde `204` com todos os headers, e o browser barra a requisição real assim mesmo.
+
+```
+Access to fetch at 'https://api.exemplo.com/itens/42' from origin 'https://app.exemplo.com'
+  has been blocked by CORS policy: Method PUT is not allowed by
+  Access-Control-Allow-Methods in preflight response.
+```
+
+O preflight autoriza **o método que foi perguntado**, não a rota. `Access-Control-Allow-Methods`
+é uma allowlist, e um método fora dela é recusado mesmo com o `204` e o `Allow-Origin` corretos.
+
+**O que torna este caso caro é o sintoma ser parcial.** `GET` e `POST` quase sempre estão na
+lista — são os primeiros que alguém escreve —, então a tela carrega, o cadastro salva, e só a
+edição quebra. Ninguém suspeita de CORS quando metade do app funciona: a investigação começa na
+tela que falhou e pode nunca chegar ao console. Contraste com o preflight que falha, onde **tudo**
+quebra de uma vez e a causa comum fica óbvia.
+
+⚠️ **A sonda default da triagem não pega isto**, porque ela pergunta por um método fixo. Repita
+o passo (3) do `SKILL.md` com `Access-Control-Request-Method:` no método que realmente falhou, ou
+leia o `access-control-allow-methods` da resposta e procure o seu método ali.
+
+### A causa de fundo: a lista de métodos é uma duplicata da tabela de rotas
+
+A allowlist é escrita à mão, uma vez, e a tabela de rotas cresce toda semana. Elas começam
+iguais e divergem no dia em que alguém registra um `PUT` — e nada reclama, porque nenhum teste
+de backend emite preflight: `supertest` não passa pela rede e o mock de frontend intercepta
+antes dela. A divergência só aparece num browser de verdade.
+
+Duplicata não se mantém sincronizada por disciplina. **Derive a lista das rotas registradas**, ou,
+se o framework não permitir, guarde a igualdade com um teste que percorre o router e exige que
+todo método apareça no header do preflight:
+
+```typescript
+/**
+ * Guarda que o preflight anuncia TODO método que o router registra.
+ *
+ * A asserção deriva os métodos das rotas descobertas em vez de repetir a lista:
+ * lista curada volta a divergir, varredura não.
+ */
+const res = await request(app).options(ROTA).set("origin", ORIGEM_PERMITIDA);
+const anunciados = new Set(
+  res.headers["access-control-allow-methods"].split(",").map((m) => m.trim().toUpperCase()),
+);
+const registrados = [...new Set(rotas.map((r) => r.metodo.toUpperCase()))];
+expect(registrados.length).toBeGreaterThan(0);        // anti-vacuidade
+expect(registrados.filter((m) => !anunciados.has(m))).toEqual([]);
+```
+
+Duas armadilhas ao escrever esse teste:
+
+- **Sem a asserção de que `registrados` não está vazio, o teste passa com zero rotas** — uma
+  varredura que não achou nada produz a mesma lista vazia de uma que achou tudo autorizado.
+- **Veja-o vermelho antes de confiar no verde**: remova um método da allowlist e confirme a
+  reprovação. Um sensor de CORS que nasce verde costuma estar medindo a própria configuração
+  default do framework, não a sua.
+
+E não resolva isto com `Access-Control-Allow-Methods: *` — o coringa não vale quando há
+credenciais, e o pedido volta a ser recusado justamente nas rotas autenticadas (`configuracao.md`
+§2).
+
+---
+
 ## §2. Erros perdem os headers — e o console culpa o CORS
 
 Muita configuração só emite CORS no caminho feliz. Aí um `401`, `422` ou `500` legítimo chega ao

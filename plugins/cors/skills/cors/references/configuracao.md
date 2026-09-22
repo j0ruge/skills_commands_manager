@@ -131,6 +131,12 @@ Armadilhas de Express:
 - **`app.options('*', cors())`** para o preflight quando o CORS é aplicado por rota em vez de global.
 - Roteador montado depois de um `express.static` ou de um redirect pode fazer o `OPTIONS` receber
   `301` — e preflight não redireciona (`casos-limite.md` §1).
+- **Note que o exemplo acima NÃO passa `methods`** — e isso é deliberado. O default do pacote
+  `cors` é `GET,HEAD,PUT,PATCH,POST,DELETE`, que cobre o que uma API REST registra. Quem escreve
+  `methods:` à mão, ou troca o pacote por um middleware inline, assume a obrigação de manter essa
+  lista igual à tabela de rotas — e é aí que nasce o preflight `204` cuja allowlist não tem o
+  método da requisição (`casos-limite.md` §1a). Se for escrever a lista, escreva junto o teste que
+  a compara com o router.
 
 ---
 

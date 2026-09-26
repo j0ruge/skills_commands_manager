@@ -188,6 +188,13 @@ CURSOR_SKILL_MAP: list[dict[str, Any]] = [
         "source_dir": "plugins/dotnet-wpf/skills/dotnet-wpf-e2e-testing",
     },
     {
+        "plugin": "todo-to-github-issues",
+        "cursor_name": "todo-to-github-issues",
+        "display": "TODO.md → issues do GitHub — espelho idempotente, auditoria e correção do formato do kit sdd",
+        "source_type": "skill",
+        "source_dir": "plugins/todo-to-github-issues/skills/todo-to-github-issues",
+    },
+    {
         "plugin": "unlovable",
         "cursor_name": "unlovable",
         "display": "Unlovable — remove todos os traços do Lovable (marca, og/preview, email, wrapper do Vite)",

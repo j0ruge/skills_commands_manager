@@ -1,0 +1,29 @@
+{
+  "name": "todo-to-github-issues",
+  "description": "Mirror an sdd-style TODO.md (`<!-- sdd:open -->` / `<!-- sdd:decided -->`) as GitHub issues, idempotently, re-syncing as the file changes; also audits and fixes an off-standard TODO.md and routes an `ACHADOS-*.md` report to the tracker. Triggers — TODO.md para issues, sincronizar issues do TODO, auditar TODO.md, relatório de achados, ACHADOS, gh issue create em lote.",
+  "author": {
+    "name": "Chewiesoft"
+  },
+  "version": "2.0.1",
+  "category": "development",
+  "keywords": [
+    "todo",
+    "TODO.md",
+    "github-issues",
+    "gh",
+    "issue-sync",
+    "backlog",
+    "sdd",
+    "sdd-kit",
+    "audit",
+    "lint",
+    "findings-report",
+    "ACHADOS",
+    "idempotent"
+  ],
+  "platforms": [
+    "claude-code",
+    "cursor"
+  ],
+  "skills": "./skills"
+}

@@ -117,8 +117,11 @@ def reparsed(old: str, new: str):
 
 
 it3 = items[3]
-last = it3.raw[-1]
-p = t.build_plan(reparsed(last, last + " extra"), issues)
+# Edit item 3 through its WHOLE block: its last line alone is an attribution (`— descoberto por … (data)`)
+# that repeats across items, and `replace(old, new, 1)` edited the first item carrying it (#102, measured
+# on the kit's TODO.md: 7 occurrences). The block is unique, so the edit lands where the check looks.
+block = "\n".join(it3.raw)
+p = t.build_plan(reparsed(block, block + " extra"), issues)
 check("body edit -> 1 update", len(p.update) == 1 and p.update[0][1]["number"] == 103)
 sec = next(i for i in items if i.section and i.section != items[0].section)
 p = t.build_plan(reparsed(f"# {sec.section}\n", f"# {sec.section} renomeada\n"), issues)

@@ -4,7 +4,7 @@ description: "Mirror an sdd-style TODO.md (`<!-- sdd:open -->` / `<!-- sdd:decid
 user_invocable: true
 argument_description: "plan (padrão) | apply | apply --close-orphans | audit | fix | fix --write"
 metadata:
-  version: 2.0.1
+  version: 2.0.2
 ---
 
 # TODO.md → GitHub issues
@@ -27,6 +27,7 @@ próximo `##`, e as `###` dentro dela viram as labels de seção.
 | `gh` instalado e autenticado | espelho e relatório | https://cli.github.com e `gh auth login` |
 | **o kit sdd** | espelho, `--audit`, `--fix` | `git clone https://github.com/j0ruge/sdd_agents ~/repos/sdd_agents`, ou `export SDD_HOME=<clone>` |
 | kit com `--count` no sensor | idem | kit anterior ao esqueleto: `git -C "$SDD_HOME" pull` |
+| kit com `WIDTH_CAP` no sensor | `--audit`, `--fix` | kit anterior à regra de largura (2026-09-25): `git -C "$SDD_HOME" pull` |
 | `TODO.md` com `<!-- sdd:open -->` | espelho | `--audit` mostra o que falta e `--fix` acrescenta (seção abaixo) |
 
 O kit é achado por `SDD_HOME` e, sem ele, pelo `sdd` no `PATH` ou por `~/repos/sdd_agents`. Um
@@ -53,7 +54,7 @@ renderizados em disco, sem rede). Mexeu no script? Rode `python3 scripts/test_to
 | Linha | Significa | O que fazer |
 |---|---|---|
 | `CREATE` | item sem issue | `--apply` cria a issue, com as labels `todo` e `todo: <seção>` |
-| `UPDATE` | texto, título ou seção mudou | `--apply` edita o corpo e troca a label da seção |
+| `UPDATE` | texto, título ou seção mudou — e o número da âncora é texto: um PR que desloca linhas do arquivo ancorado gera `UPDATE` em massa | `--apply` edita o corpo e troca a label da seção; em massa, prove antes que é só número (`--dump` contra o corpo vivo, dígitos normalizados) |
 | `SKIP` | o corpo traz `RESOLVED by <hash>` e não existe issue | nada: não se abre card para achado já fechado |
 | `ORPHAN` | a issue está aberta, mas o item saiu do arquivo | confira que o item foi **consertado** (não renomeado) e rode `--close-orphans` |
 | `RENAME?` | par `ORPHAN` + `CREATE` com ≥ 85% do mesmo texto: o título mudou | confirme com o humano; se for o mesmo achado, rode o comando impresso **antes** do `--apply`, e a issue antiga vira `UPDATE` |
@@ -87,8 +88,11 @@ python3 $S --fix --lang pt-BR             # repo sem OUTPUT_LANG em .sdd/config.
 - `RESOLVIDO por <hash>` → `RESOLVED by <hash>`, só dentro da seção aberta;
 - item de uma linha sem negrito: o texto antes do primeiro ` — ` vira o `**título**` (só se
   couber num título de issue, ≤ 150 caracteres);
-- linha física acima de 100 colunas quebrada com recuo de 2 espaços, sem mudar uma palavra — o
-  que costuma **revelar** um item acima do teto de 8 linhas que passava por estar numa linha só;
+- linha física acima do `WIDTH_CAP` do sensor do kit (hoje 120 caracteres) quebrada nessa largura,
+  com recuo de 2 espaços, sem mudar uma palavra — o que costuma **revelar** um item acima do teto
+  de 8 linhas que passava por estar numa linha só. A largura é **lida do kit** a cada execução: uma
+  cópia daqui (100) sobreviveu à regra do kit e fez o `--audit` inventar 6 itens acima do teto num
+  arquivo que o sensor chamava de limpo;
 - `- [x]` apagado **só** quando todo commit que ele declara (`RESOLVED by`/`RESOLVIDO por|em`)
   já está na branch padrão, provado por `git merge-base --is-ancestor`.
 

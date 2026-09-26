@@ -7,7 +7,7 @@
 
 AUTO is only what is deterministic and loses nothing: the marker under an unambiguous findings
 heading, the decided section, `RESOLVIDO por` -> `RESOLVED by`, a bold title cut at the first
-separator, an overlong physical line wrapped, the untouched legacy seed replaced, and a ticked
+separator, an overlong physical line wrapped at the kit's width, the untouched legacy seed replaced, and a ticked
 item deleted ONLY when `git merge-base --is-ancestor` proves its commit reached the default
 branch. Everything that needs judgement — an item over the cap, a narrative `##`, which heading
 holds the findings, what is decided — is listed as MANUAL with the rule, the line and the action.
@@ -39,7 +39,6 @@ HASH_RE = re.compile(r"(?:RESOLVED\**\s+by|RESOLVIDO\**\s+(?:por|em))\**\s+`?([0
 # `RESOLVED by `a` e `b`` declares TWO commits, and both must have merged: the fix may be split.
 MORE_HASH_RE = re.compile(r"^`?\s*(?:,|\be\b|\band\b|\+)\s*`([0-9a-f]{7,40})`")
 PT_RESOLVED_RE = re.compile(r"RESOLVIDO por(\**)(\s+`?[0-9a-f]{7,40}\b)")
-WRAP = 100
 TITLE_MAX = 150
 # a piece that is only a list marker (and its box) is never cut off from its first word: `- [ ]`
 # alone on a line is a bare box, and the rest of the item would fall outside it
@@ -80,8 +79,9 @@ class Manual:
 class Fixer:
     """One pass over the lines of a file; every method is one AUTO rule."""
 
-    def __init__(self, lines, seed_lines, repo_root, ref, open_heading):
+    def __init__(self, lines, seed_lines, repo_root, ref, open_heading, width):
         self.lines = list(lines)
+        self.width = width  # the kit's WIDTH_CAP, never a number of this skill's
         self.seed = seed_lines
         self.root = repo_root
         self.ref = ref
@@ -286,9 +286,9 @@ class Fixer:
             j = i
             while j < stop:
                 line = self.lines[j]
-                if len(line) > WRAP and line.strip():
+                if len(line) > self.width and line.strip():
                     indent = "  " if j == i else re.match(r"^[ \t]*", line).group(0) or "  "
-                    parts = wrap_line(line, indent)
+                    parts = wrap_line(line, indent, self.width)
                     if len(parts) > 1:
                         self.lines[j:j + 1] = parts
                         stop += len(parts) - 1
@@ -298,7 +298,8 @@ class Fixer:
                 j += 1
             i = stop
         if n:
-            self.auto.append(f"{n} overlong physical line(s) wrapped at {WRAP} columns (text unchanged)")
+            self.auto.append(f"{n} overlong physical line(s) wrapped at {self.width} columns, the kit's "
+                             "WIDTH_CAP (text unchanged)")
 
 
 def first_sep_outside_code(text, sep=" — "):
@@ -311,8 +312,8 @@ def first_sep_outside_code(text, sep=" — "):
     return -1
 
 
-def wrap_line(line, indent):
-    """Split one physical line at spaces outside code spans, each piece <= WRAP where possible,
+def wrap_line(line, indent, width):
+    """Split one physical line at spaces outside code spans, each piece <= width where possible,
     never letting a continuation open with something markdown reads as a new block. The words and
     their order are unchanged: joining the pieces with single spaces gives the line back."""
     lead = re.match(r"^[ \t]*", line).group(0)
@@ -328,7 +329,7 @@ def wrap_line(line, indent):
     words.append(cur)
     out, cur = [], lead + words[0]
     for w in words[1:]:
-        if len(cur) + 1 + len(w) <= WRAP or not w or BAD_LINE_START_RE.match(w) or MARKER_ONLY_RE.match(cur):
+        if len(cur) + 1 + len(w) <= width or not w or BAD_LINE_START_RE.match(w) or MARKER_ONLY_RE.match(cur):
             cur += " " + w
         else:
             out.append(cur)
@@ -401,6 +402,9 @@ def describe(rc, found):
 
 def fix_text(text, kit_root, repo_root, lang, open_heading):
     """(new text, auto notes, manual entries, seed path)."""
+    width = kit.width_cap(kit_root)
+    if width is None:  # run() refuses first; this is the guard for any other caller
+        raise RuntimeError(f"the kit at {kit_root} declares no WIDTH_CAP in its sensor")
     seed_path = os.path.join(kit_root, "templates", f"todo.{lang}.md") if lang else ""
     if not (lang and os.path.isfile(seed_path)):
         seed_path = os.path.join(kit_root, "templates", "todo.md")
@@ -414,7 +418,7 @@ def fix_text(text, kit_root, repo_root, lang, open_heading):
         note = f"the untouched legacy seed was replaced by {os.path.basename(seed_path)} (it held no finding)"
         return seed_text, [note], [], seed_path
     lines = text.split("\n")
-    f = Fixer(lines, seed_text.split("\n"), repo_root, default_ref(repo_root), open_heading)
+    f = Fixer(lines, seed_text.split("\n"), repo_root, default_ref(repo_root), open_heading, width)
     if os.path.isfile(legacy_path):
         with open(legacy_path, encoding="utf-8") as fh:
             f.legacy_preamble(fh.read().split("\n"))
@@ -435,6 +439,14 @@ def compress(lines):
 
 
 def run(a, kit_root):
+    # The width a physical line may take is the kit's (rule 5 of its sensor). A kit from before that
+    # rule has none to give, and guessing one is how a private 100 came to disagree with the kit's
+    # 120 — so the format modes refuse, like the rest of the preflight, with the command that fixes it.
+    if kit.width_cap(kit_root) is None:
+        print(f"FAIL  the kit at {kit_root} declares no WIDTH_CAP in tests/check-todo.sh — it predates the\n"
+              f"      width rule, and --audit/--fix wrap at the kit's width, never at one of their own.\n"
+              f"      Update it: git -C {kit_root} pull", file=sys.stderr)
+        return 3
     path = a.file
     if not os.path.isfile(path):
         print(f"FAIL  {path} not found", file=sys.stderr)

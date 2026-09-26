@@ -11,6 +11,7 @@ to COMPILE on the old interpreter would die before it could say why (no walrus, 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,23 @@ def find_kit(env=None, which=shutil.which, home=None):
 
 def sensor_path(root):
     return os.path.join(root, "tests", "check-todo.sh")
+
+
+WIDTH_CAP_RE = re.compile(r"^WIDTH_CAP=([0-9]+)[ \t]*$", re.MULTILINE)
+
+
+def width_cap(root):
+    """The widest physical line the kit's sensor accepts (its `WIDTH_CAP`), or None when the
+    sensor declares none — a kit from before its rule 5. Read from the sensor, never kept here:
+    this skill once wrapped at a WRAP = 100 of its own, the kit's rule 5 arrived at 120, and
+    --audit reported 42 overlong lines and six items over the cap on a TODO.md the kit called
+    clean. Anchored at column 0, so the name quoted in a comment is not a declaration."""
+    try:
+        with open(sensor_path(root), encoding="utf-8") as fh:
+            m = WIDTH_CAP_RE.search(fh.read())
+    except OSError:
+        return None
+    return int(m.group(1)) if m else None
 
 
 def preflight(need_gh, need_kit):

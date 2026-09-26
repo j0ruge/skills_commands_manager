@@ -892,7 +892,7 @@
     {
       "name": "todo-to-github-issues",
       "source": "./plugins/todo-to-github-issues",
-      "version": "2.0.1",
+      "version": "2.0.2",
       "description": "Mirror an sdd-style TODO.md (`<!-- sdd:open -->` / `<!-- sdd:decided -->`) as GitHub issues, idempotently, re-syncing as the file changes; also audits and fixes an off-standard TODO.md and routes an `ACHADOS-*.md` report to the tracker. Triggers — TODO.md para issues, sincronizar issues do TODO, auditar TODO.md, relatório de achados, ACHADOS, gh issue create em lote.",
       "category": "development",
       "keywords": [

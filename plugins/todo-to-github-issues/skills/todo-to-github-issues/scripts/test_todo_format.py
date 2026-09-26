@@ -117,22 +117,45 @@ check("a title longer than an issue title is left for the human",
       f"\n- [ ] {long_title}" in new and f"**{long_title}" not in new)
 
 # ── wrapping ────────────────────────────────────────────────────────────────────────────────────
-words = " ".join(f"palavra{k}" for k in range(60))
+# The width is the kit's (`WIDTH_CAP` in its sensor), never a number of this skill's: a private
+# WRAP = 100 outlived the kit's rule 5 (120) and made --audit report 42 overlong lines and six
+# items over the cap on a TODO.md the kit's own sensor called clean.
+W = kit.width_cap(ROOT)
+check("the kit's sensor declares the width of a physical line", isinstance(W, int) and W > 0)
+between = STANDARD.replace(GOOD, "- [ ] **Entre** — `bin/x:1` — `um_simbolo` " + "m" * (W - 60) + " fim.\n"
+                                 "  — descoberto por `sdd-qa` na missão `m` (2026-09-24)\n")
+check("...the fixture line sits between 100 and the kit's width",
+      100 < len(next(l for l in between.split("\n") if l.startswith("- [ ] **Entre**"))) <= W)
+new_b, auto_b, _ = fix(between)
+check("a line the kit accepts is not wrapped (the skill holds no width of its own)",
+      new_b == between and not any("wrapped" in a for a in auto_b))
+sensor_dir = tempfile.mkdtemp(prefix="todo-format-cap-")
+os.makedirs(os.path.join(sensor_dir, "tests"))
+write(kit.sensor_path(sensor_dir), "CAP=8\nWIDTH_CAP=77\n")
+check("width_cap reads the number the sensor declares", kit.width_cap(sensor_dir) == 77)
+# the name quoted in a comment, with nothing after the number: only the column-0 anchor refuses it
+write(kit.sensor_path(sensor_dir), "CAP=8\n# WIDTH_CAP=77\n")
+check("...and answers None when the sensor declares none", kit.width_cap(sensor_dir) is None)
+ns = type("A", (), {"file": os.path.join(BOX, "nada.md")})()
+check("--audit/--fix refuse a kit whose sensor declares no width (rc 3), never guess one",
+      f.run(ns, sensor_dir) == 3)
+words = " ".join(f"palavra{k}" for k in range(90))
 longi = STANDARD.replace(GOOD, f"- [ ] **Longo** — `bin/x:1` — {words} [link](http://x) `code span com espaço` fim.\n"
                                "  — descoberto por `x` (2026-09-24)\n")
 new, auto, _ = fix(longi)
 block = new.split("- [ ] **Longo**")[1].split("\n\n")[0]
 parts = ("- [ ] **Longo**" + block).split("\n")
 check("an overlong line is wrapped", len(parts) > 3 and any("wrapped" in a for a in auto))
-check("...no piece over the limit", all(len(p) <= f.WRAP for p in parts))
+check("...no piece over the kit's width", all(len(p) <= W for p in parts))
 check("...no continuation opens a new markdown block", all(not f.BAD_LINE_START_RE.match(p.strip()) for p in parts[1:]))
 orig = "- [ ] **Longo**" + longi.split("- [ ] **Longo**")[1].split("\n\n")[0]
 check("...the words are unchanged", "\n".join(parts).split() == orig.split())
-# Wrapping is honest about length: a 60-word item on ONE physical line passed the 8-line cap, and
-# wrapped it shows the 9 lines it really has. The only new violation may be the cap.
+# Wrapping is honest about length: a 90-word item on ONE physical line is refused by the kit's
+# width rule, and wrapped it shows the lines it really has. The only violation left is the cap.
+revealed = [m for _, m in f.sensor_violations(ROOT, new, BOX)[1]]
 check("...and the only thing wrapping reveals is the cap it was hiding",
-      [m for _, m in f.sensor_violations(ROOT, new, BOX)[1]] == ["9 content lines, cap is 8"])
-short = longi.replace(words, " ".join(f"palavra{k}" for k in range(30)))
+      len(revealed) == 1 and revealed[0].endswith("content lines, cap is 8") and len(parts) > 9)
+short = longi.replace(words, " ".join(f"palavra{k}" for k in range(40)))
 new2, _, _ = fix(short)
 check("a long line that fits the cap once wrapped passes the sensor", sensor_rc(new2) == 0 and new2 != short)
 tl = STANDARD.replace(GOOD, "- [ ] " + "y" * 120 + " — `a:1` — w. — descoberto por `x` (2026-09-24)\n")
@@ -196,5 +219,5 @@ r = run("--fix", "--write", "--file", todo, "--lang", "pt-BR")
 check("--fix --write over a clean file writes, and the sensor then accepts it",
       r.returncode == 0 and "ok    1 finding(s)" in r.stdout and kit.OPEN_MARKER in read(todo))
 
-subprocess.run(["rm", "-rf", repo, BOX], check=False)
+subprocess.run(["rm", "-rf", repo, BOX, sensor_dir], check=False)
 sys.exit(1 if fails else 0)

@@ -3,6 +3,34 @@
 Changelog **versionado** do plugin. O registro por sessão da skill fica em
 `skills/todo-to-github-issues/CHANGELOG.md`.
 
+## [2.0.2] — 2026-09-26
+
+### Fixed
+
+- **`--audit` / `--fix` quebravam linha numa largura que o kit não tem.** O `todo_format.py`
+  guardava um `WRAP = 100` próprio, de antes de o kit ter regra de largura. A regra 5 do sensor do
+  kit chegou em 2026-09-25 com `WIDTH_CAP=120`, e desde então a skill dava uma segunda opinião:
+  no `TODO.md` do próprio kit, que o sensor chama de limpo (82 achados, âncoras no alvo), o
+  `--audit` acusava 42 linhas longas e **6 itens acima do teto de 8 linhas** que só existiam na
+  quebra em 100. A largura agora é **lida do sensor** (`kit.width_cap`, `^WIDTH_CAP=N` na coluna
+  0); com ela o mesmo `--audit` dá `auto=0 manual=0`. Kit sem `WIDTH_CAP` (anterior à regra):
+  `--audit`/`--fix` recusam com rc 3 e o `git pull` que resolve, como o resto do preflight. O
+  espelho não usa a largura e não muda.
+- **`test_todo_issues.py` reprovava `body edit -> 1 update` no `TODO.md` real do kit** sem defeito
+  no espelho: a sonda editava o item 3 pela **última linha**, uma atribuição (`— descoberto por …`)
+  que se repete em 7 itens, e o `replace(…, 1)` editava o primeiro deles (#102). Agora edita o
+  bloco inteiro do item, que é único.
+
+### Added
+
+- Testes da largura em `test_todo_format.py`: a largura usada é a do kit; uma linha entre 100 e o
+  `WIDTH_CAP` **não** é quebrada (a regressão); `width_cap` ignora o nome citado num comentário; um
+  kit sem `WIDTH_CAP` é recusado com rc 3. Cada regra foi sabotada numa cópia e o teste ficou
+  vermelho (o probe do comentário só passou a morder depois de a fixture perder o texto depois do
+  número).
+- `SKILL.md`: o requisito do kit com `WIDTH_CAP`, e a nota de que o número da âncora é texto — um
+  PR que desloca linhas gera `UPDATE` em massa, que se prova com `--dump` antes do `--apply`.
+
 ## [2.0.1] — 2026-09-26
 
 A skill entra no marketplace. Até aqui ela vivia só em `~/.claude/skills/`, fora de qualquer
